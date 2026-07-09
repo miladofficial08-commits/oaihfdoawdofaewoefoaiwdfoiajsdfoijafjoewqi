@@ -170,13 +170,11 @@ export async function buildServer() {
 
 export async function main() {
   const app = await buildServer();
-  const port = Number(process.env.PORT ?? 4000);
-  // Railway and other cloud platforms require binding to 0.0.0.0 (all interfaces).
-  // Locally you can override via HOST=127.0.0.1 in your .env.
-  const host = process.env.HOST ?? '0.0.0.0';
-
-  await app.listen({ port, host });
-  console.log(`Tawano Lead-Gen Dashboard: http://${host}:${port}`);
+  await app.listen({
+    port: Number(process.env.PORT) || 4000,
+    host: '0.0.0.0',
+  });
+  console.log(`Tawano Lead-Gen Dashboard: http://0.0.0.0:${Number(process.env.PORT) || 4000}`);
 }
 
 if (require.main === module) {
