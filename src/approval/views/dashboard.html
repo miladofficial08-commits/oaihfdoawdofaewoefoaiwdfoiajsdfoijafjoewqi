@@ -1,0 +1,2519 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tawano Revenue Engine</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+  :root {
+    --bg: #07090e;
+    --surf: #0e1119;
+    --surf2: #10141d;
+    --elev: #141925;
+    --line: #1c2231;
+    --line2: #252d40;
+    --txt: #e6ecf5;
+    --txt2: #8a97af;
+    --txt3: #4d5870;
+    --txt4: #333d52;
+    --g: #22d17c;
+    --g2: #16a05c;
+    --gd: #0a2418;
+    --b: #4d90ff;
+    --bd: #0a1830;
+    --o: #f59e0b;
+    --od: #1c1200;
+    --p: #a78bfa;
+    --r: #f87171;
+    --rd: #1c0a0a;
+    --radius: 12px;
+    --shadow: 0 8px 32px rgba(0,0,0,.4);
+    --shadow-lg: 0 20px 60px rgba(0,0,0,.6);
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--txt); min-height: 100vh; display: flex; font-size: 13px; -webkit-font-smoothing: antialiased; }
+  button, select, input, textarea { font: inherit; }
+  a { color: inherit; text-decoration: none; }
+  ::selection { background: rgba(34,209,124,.3); }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #1e2532; border-radius: 6px; border: 2px solid var(--bg); }
+  ::-webkit-scrollbar-thumb:hover { background: #2a3346; }
+
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes scaleIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
+  @keyframes shimmer { 0% { background-position: -800px 0; } 100% { background-position: 800px 0; } }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(20px) scale(.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── SIDEBAR ── */
+  .sidebar { width: 244px; background: linear-gradient(180deg,#0c0f17,#090b11); border-right: 1px solid var(--line); position: fixed; top: 0; left: 0; height: 100vh; display: flex; flex-direction: column; z-index: 200; }
+  .logo-wrap { padding: 22px 22px 18px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 11px; }
+  .logo-icon { width: 34px; height: 34px; border-radius: 9px; background: linear-gradient(135deg,var(--g),var(--g2)); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 900; color: #05130b; flex-shrink: 0; box-shadow: 0 4px 14px rgba(34,209,124,.3); }
+  .logo-name { font-size: 16px; font-weight: 800; color: #fff; letter-spacing: -.4px; line-height: 1; }
+  .logo-name span { color: var(--g); }
+  .logo-sub { font-size: 9px; color: var(--txt4); margin-top: 3px; text-transform: uppercase; letter-spacing: .1em; }
+  .nav { padding: 14px 12px; flex: 1; display: flex; flex-direction: column; gap: 3px; overflow-y: auto; }
+  .nav-sec { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--txt4); padding: 12px 12px 6px; }
+  .nav-item { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: 9px; color: var(--txt2); font-size: 12.5px; font-weight: 600; cursor: pointer; transition: all .14s cubic-bezier(.4,0,.2,1); user-select: none; position: relative; }
+  .nav-item:hover { background: #161b28; color: #c2cde0; }
+  .nav-item.active { background: linear-gradient(90deg,rgba(34,209,124,.12),rgba(34,209,124,.02)); color: var(--g); }
+  .nav-item.active::before { content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--g); }
+  .nav-icon { font-size: 15px; width: 20px; text-align: center; flex-shrink: 0; }
+  .nav-badge { margin-left: auto; background: var(--g); color: #052012; font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 999px; min-width: 20px; text-align: center; line-height: 1.5; }
+  .nav-badge.blue { background: var(--b); color: #fff; }
+  .nav-badge.zero { background: #1c2231; color: var(--txt3); }
+  .sidebar-bottom { padding: 14px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+  .conn-pill { border-radius: 8px; padding: 8px 11px; font-size: 11px; font-weight: 600; display: flex; align-items: center; gap: 7px; cursor: default; }
+  .conn-pill .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; position: relative; }
+  .conn-ok { background: rgba(34,209,124,.08); color: var(--g); border: 1px solid rgba(34,209,124,.2); }
+  .conn-ok .dot { background: var(--g); }
+  .conn-ok .dot::after { content: ''; position: absolute; inset: -3px; border-radius: 50%; background: var(--g); opacity: .3; animation: pulse 2s infinite; }
+  .conn-err { background: rgba(248,113,113,.08); color: var(--r); border: 1px solid rgba(248,113,113,.2); }
+  .conn-err .dot { background: var(--r); }
+  .conn-lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ── MAIN ── */
+  .main { margin-left: 244px; flex: 1; min-height: 100vh; display: flex; flex-direction: column; }
+  .topbar { height: 58px; background: rgba(14,17,25,.8); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); padding: 0 26px; display: flex; align-items: center; gap: 14px; position: sticky; top: 0; z-index: 100; }
+  .topbar-title { font-size: 15px; font-weight: 700; color: #fff; letter-spacing: -.2px; }
+  .topbar-sub { color: var(--txt3); font-size: 12px; }
+  .flex1 { flex: 1; }
+  .search-trigger { display: flex; align-items: center; gap: 8px; background: var(--surf2); border: 1px solid var(--line2); color: var(--txt3); padding: 7px 12px; border-radius: 8px; font-size: 12px; cursor: pointer; transition: all .14s; }
+  .search-trigger:hover { border-color: #33405a; color: var(--txt2); }
+  .search-trigger kbd { background: #1c2231; border: 1px solid var(--line2); border-radius: 4px; padding: 1px 5px; font-size: 10px; font-family: inherit; color: var(--txt3); }
+  .topbar-btn { background: var(--surf2); border: 1px solid var(--line2); color: var(--txt2); padding: 8px 14px; border-radius: 8px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all .14s; }
+  .topbar-btn:hover { background: #1a2130; color: var(--txt); transform: translateY(-1px); }
+  .topbar-btn:active { transform: translateY(0); }
+  .page { display: none; padding: 24px 26px 56px; animation: fadeIn .35s ease both; }
+  .page.active { display: block; }
+
+  /* ── KPI CARDS ── */
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px; }
+  .kpi { background: linear-gradient(160deg,var(--elev),var(--surf)); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; position: relative; overflow: hidden; transition: transform .18s, border-color .18s; }
+  .kpi:hover { transform: translateY(-2px); border-color: var(--line2); }
+  .kpi::after { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+  .kpi.g::after { background: linear-gradient(90deg,var(--g),var(--g2)); }
+  .kpi.b::after { background: linear-gradient(90deg,var(--b),#2d60d0); }
+  .kpi.o::after { background: linear-gradient(90deg,var(--o),#d08020); }
+  .kpi.p::after { background: linear-gradient(90deg,var(--p),#7c60d8); }
+  .kpi-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--txt3); }
+  .kpi-val { font-size: 30px; font-weight: 800; color: #fff; margin-top: 8px; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.5px; }
+  .kpi.g .kpi-val { color: var(--g); }
+  .kpi.b .kpi-val { color: #7ab4ff; }
+  .kpi.o .kpi-val { color: #fbbf24; }
+  .kpi.p .kpi-val { color: #c4b5fd; }
+  .kpi-sub { font-size: 10px; color: var(--txt3); margin-top: 6px; }
+
+  /* ── PANELS ── */
+  .panel { background: var(--surf); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .ph { padding: 15px 20px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; }
+  .ph-title { font-size: 13px; font-weight: 700; color: #fff; }
+  .ph-muted { color: var(--txt3); font-size: 11px; }
+
+  .dash-grid { display: grid; grid-template-columns: 1fr 360px; gap: 18px; }
+  .funnel-wrap { padding: 20px; display: grid; gap: 11px; }
+  .f-row { display: flex; align-items: center; gap: 12px; }
+  .f-lbl { font-size: 11px; color: var(--txt2); width: 120px; flex-shrink: 0; }
+  .f-bar-bg { flex: 1; background: #090c12; border-radius: 5px; overflow: hidden; height: 28px; }
+  .f-bar { height: 100%; border-radius: 5px; display: flex; align-items: center; padding-left: 11px; font-size: 11px; font-weight: 700; color: rgba(255,255,255,.9); min-width: 28px; transition: width .7s cubic-bezier(.4,0,.2,1); }
+  .f-n { font-size: 12px; color: var(--txt2); width: 36px; text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+  .f-rate { font-size: 10px; color: var(--txt3); width: 42px; text-align: right; flex-shrink: 0; }
+
+  .act-list { padding: 14px 18px; display: grid; gap: 11px; max-height: 340px; overflow-y: auto; }
+  .act-item { display: flex; gap: 11px; align-items: flex-start; }
+  .act-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+  .act-body { flex: 1; min-width: 0; }
+  .act-title { font-size: 11px; color: #c0cce0; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .act-time { font-size: 10px; color: var(--txt3); margin-top: 2px; }
+
+  .skel { background: linear-gradient(90deg,#12161f 25%,#1a2030 50%,#12161f 75%); background-size: 1600px 100%; animation: shimmer 1.6s infinite linear; border-radius: 6px; }
+  .skel-card { height: 240px; border-radius: var(--radius); }
+
+  /* ── INDUSTRY PICKER ── */
+  .ind-hero { background: linear-gradient(150deg,var(--elev),var(--surf)); border: 1px solid var(--line); border-radius: 16px; padding: 24px; margin-bottom: 18px; }
+  .ind-hero h2 { font-size: 17px; font-weight: 800; color: #fff; letter-spacing: -.3px; }
+  .ind-hero p { font-size: 12.5px; color: var(--txt2); margin-top: 5px; line-height: 1.5; }
+  .ind-controls { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; align-items: center; }
+  .ind-controls select, .ind-controls input { background: #090c12; color: var(--txt); border: 1px solid var(--line2); border-radius: 9px; padding: 10px 13px; font-size: 13px; }
+  .ind-controls select:focus, .ind-controls input:focus { outline: none; border-color: var(--g); }
+  .ind-cat-tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+  .cat-tab { padding: 8px 15px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--txt2); background: var(--surf2); border: 1px solid var(--line); cursor: pointer; transition: all .14s; }
+  .cat-tab:hover { border-color: var(--line2); color: var(--txt); }
+  .cat-tab.active { background: rgba(34,209,124,.12); border-color: rgba(34,209,124,.35); color: var(--g); }
+  .ind-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; margin-bottom: 22px; }
+  .ind-card { background: var(--surf); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; cursor: default; transition: all .18s cubic-bezier(.4,0,.2,1); position: relative; overflow: hidden; }
+  .ind-card:hover { transform: translateY(-3px); border-color: rgba(34,209,124,.4); box-shadow: 0 12px 30px rgba(0,0,0,.35); }
+  .ind-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .ind-emoji { font-size: 26px; line-height: 1; }
+  .ind-cat-badge { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 3px 8px; border-radius: 5px; background: #12161f; color: var(--txt3); }
+  .ind-name { font-size: 14px; font-weight: 700; color: #fff; margin-top: 12px; line-height: 1.25; }
+  .ind-why { font-size: 11px; color: var(--txt2); margin-top: 6px; line-height: 1.45; min-height: 48px; }
+  .ind-metrics { display: flex; gap: 8px; margin-top: 12px; }
+  .ind-metric { flex: 1; background: #090c12; border-radius: 7px; padding: 8px 9px; }
+  .ind-metric b { display: block; font-size: 13px; color: var(--g); font-weight: 800; }
+  .ind-metric span { font-size: 9px; color: var(--txt3); text-transform: uppercase; letter-spacing: .04em; }
+  .ind-run { margin-top: 12px; display: flex; gap: 8px; align-items: center; }
+  .ind-run select { flex: 1; background: #090c12; color: var(--txt); border: 1px solid var(--line2); border-radius: 7px; padding: 8px; font-size: 11px; min-width: 0; }
+  .ind-run input { width: 58px; background: #090c12; color: var(--txt); border: 1px solid var(--line2); border-radius: 7px; padding: 8px; font-size: 11px; }
+  .ind-run-btn { background: linear-gradient(135deg,var(--g),var(--g2)); color: #05130b; border: 0; border-radius: 8px; padding: 9px 14px; font-size: 12px; font-weight: 800; cursor: pointer; white-space: nowrap; transition: all .14s; }
+  .ind-run-btn:hover { filter: brightness(1.1); }
+  .ind-run-btn:disabled { opacity: .6; cursor: default; }
+
+  /* ── FILTER BAR ── */
+  .filter-bar { background: var(--surf); border: 1px solid var(--line); border-radius: var(--radius); padding: 13px 16px; display: flex; gap: 9px; flex-wrap: wrap; margin-bottom: 14px; align-items: center; }
+  .filter-bar input, .filter-bar select { background: #090c12; color: var(--txt); border: 1px solid var(--line2); border-radius: 8px; padding: 8px 11px; font-size: 12px; min-width: 0; }
+  .filter-bar input:focus, .filter-bar select:focus { outline: none; border-color: var(--g); }
+  .filter-lbl { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 600; color: var(--txt2); cursor: pointer; padding: 8px 11px; background: #090c12; border: 1px solid var(--line2); border-radius: 8px; }
+
+  /* ── BEREICHE FILTER ── */
+  .branche-filter { position: relative; }
+  .bf-btn { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 600; color: var(--txt2); cursor: pointer; padding: 8px 11px; background: #090c12; border: 1px solid var(--line2); border-radius: 8px; }
+  .bf-btn:hover { border-color: #33405a; color: var(--txt); }
+  .bf-btn.has-sel { border-color: var(--g); color: var(--g); background: rgba(34,209,124,.08); }
+  .bf-btn .bf-caret { font-size: 9px; }
+  .bf-panel { position: absolute; top: calc(100% + 6px); left: 0; z-index: 150; background: var(--elev); border: 1px solid var(--line2); border-radius: 11px; padding: 8px; width: 280px; max-height: 400px; overflow-y: auto; box-shadow: var(--shadow-lg); display: none; }
+  .bf-panel.show { display: block; animation: scaleIn .15s ease; }
+  .bf-panel-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 6px 10px; border-bottom: 1px solid var(--line); margin-bottom: 6px; }
+  .bf-panel-head b { font-size: 12px; color: #fff; }
+  .bf-clear { font-size: 10px; font-weight: 700; color: var(--txt3); background: none; border: 0; cursor: pointer; }
+  .bf-clear:hover { color: var(--g); }
+  .bf-group { margin-bottom: 4px; }
+  .bf-cat { font-size: 10px; font-weight: 700; color: var(--txt2); text-transform: uppercase; letter-spacing: .05em; padding: 8px 6px 5px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+  .bf-cat:hover { color: var(--txt); }
+  .bf-cat-cb { width: 15px; height: 15px; border-radius: 4px; border: 2px solid var(--line2); flex-shrink: 0; position: relative; }
+  .bf-cat-cb.on { background: var(--g); border-color: var(--g); }
+  .bf-cat-cb.on::after { content: '✓'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #05130b; font-size: 10px; font-weight: 900; }
+  .bf-item { display: flex; align-items: center; gap: 9px; padding: 7px 6px 7px 22px; font-size: 12px; color: var(--txt); cursor: pointer; border-radius: 6px; }
+  .bf-item:hover { background: var(--surf2); }
+  .bf-item input { accent-color: var(--g); width: 15px; height: 15px; cursor: pointer; }
+  .bf-count { margin-left: auto; font-size: 10px; color: var(--txt3); background: #12161f; padding: 1px 7px; border-radius: 6px; font-variant-numeric: tabular-nums; }
+  .bf-count.zero { opacity: .4; }
+
+  /* ── STATUS RAIL ── */
+  .status-rail { background: var(--surf); border: 1px solid var(--line); border-radius: var(--radius); padding: 11px 15px; margin-bottom: 14px; display: flex; flex-wrap: wrap; gap: 7px; }
+  .s-chip { background: #090c12; border: 1px solid var(--line); border-radius: 7px; padding: 6px 11px; font-size: 11px; color: var(--txt2); cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 6px; transition: all .12s; }
+  .s-chip b { color: var(--txt); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .s-chip:hover { border-color: var(--line2); }
+  .s-chip.active { border-color: var(--g); background: rgba(34,209,124,.1); color: var(--g); }
+  .s-chip.active b { color: var(--g); }
+
+  /* ── BULK ACTION BAR ── */
+  .bulk-bar { background: linear-gradient(90deg,rgba(34,209,124,.12),rgba(34,209,124,.03)); border: 1px solid rgba(34,209,124,.3); border-radius: var(--radius); padding: 12px 18px; margin-bottom: 14px; display: none; align-items: center; gap: 14px; animation: scaleIn .2s ease; flex-wrap: wrap; }
+  .bulk-bar.show { display: flex; }
+  .bulk-count { font-size: 13px; font-weight: 700; color: var(--g); }
+  .bulk-count b { font-size: 16px; }
+
+  /* ── LEAD CARDS ── */
+  .leads-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 14px; }
+  .empty-state { grid-column: 1/-1; text-align: center; padding: 72px 0; color: var(--txt3); }
+  .empty-state .ei { font-size: 44px; margin-bottom: 16px; opacity: .5; }
+  .empty-state .et { font-size: 14px; }
+  .empty-state .es { font-size: 12px; color: var(--txt4); margin-top: 6px; }
+
+  .lc { background: var(--surf); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; transition: border-color .16s, box-shadow .16s; animation: fadeIn .3s ease both; }
+  .lc:hover { border-color: var(--line2); box-shadow: 0 8px 24px rgba(0,0,0,.25); }
+  .lc.sel { border-color: var(--g); box-shadow: 0 0 0 1px var(--g); }
+  .lc.pA { border-left: 3px solid var(--g); }
+  .lc.pB { border-left: 3px solid var(--o); }
+  .lc.pC { border-left: 3px solid var(--line2); }
+  .lc-head { padding: 14px 15px 9px; display: flex; justify-content: space-between; gap: 10px; }
+  .lc-check { display: flex; align-items: flex-start; gap: 10px; flex: 1; min-width: 0; }
+  .lc-cb { width: 18px; height: 18px; border-radius: 5px; border: 2px solid var(--line2); background: #090c12; cursor: pointer; flex-shrink: 0; margin-top: 2px; appearance: none; -webkit-appearance: none; transition: all .12s; position: relative; }
+  .lc-cb:checked { background: var(--g); border-color: var(--g); }
+  .lc-cb:checked::after { content: '✓'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #05130b; font-size: 12px; font-weight: 900; }
+  .lc-cb:disabled { opacity: .3; cursor: not-allowed; }
+  .lc-name { font-size: 13.5px; font-weight: 700; color: #fff; line-height: 1.2; }
+  .lc-sub { font-size: 11px; color: var(--txt3); margin-top: 3px; line-height: 1.4; }
+  .lc-right { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; flex-shrink: 0; }
+  .pri { font-size: 11px; font-weight: 800; padding: 3px 9px; border-radius: 6px; }
+  .pri.A { background: var(--gd); color: var(--g); }
+  .pri.B { background: #2a1e08; color: var(--o); }
+  .pri.C { background: #1c2030; color: var(--txt2); }
+  .stpill { font-size: 9px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; padding: 3px 8px; border-radius: 5px; white-space: nowrap; }
+  .st-new{background:#101830;color:#5a80b8}.st-checked{background:#101830;color:#6a9cd8}.st-draft_ready{background:var(--gd);color:var(--g)}.st-approved{background:var(--gd);color:var(--g);border:1px solid rgba(34,209,124,.25)}.st-contacted{background:#101840;color:#80aaff}.st-replied{background:#14203c;color:#a0c0ff}.st-demo_booked{background:#1a2408;color:#b0d860}.st-proposal_sent{background:#241c08;color:#e0b840}.st-won{background:#082018;color:var(--g)}.st-lost{background:#200a0a;color:var(--r)}.st-no_interest{background:#1e0e0e;color:#b07070}.st-not_suitable{background:#1c0c0c;color:#a86868}.st-duplicate{background:#1c0c10;color:#a07070}.st-missing_data{background:#1c1608;color:#b09048}.st-manual_review{background:#1c1408;color:#b08038}.st-do_not_contact{background:#200606;color:#f86060}.st-archived{background:#10141c;color:var(--txt3)}
+
+  .lc-chips { padding: 0 15px 9px 43px; display: flex; flex-wrap: wrap; gap: 5px; }
+  .chip { font-size: 10px; padding: 3px 8px; border-radius: 5px; background: #161b28; color: var(--txt2); }
+  .chip.ok { color: var(--g); background: #082018; }
+  .chip.miss { color: var(--r); background: #180808; }
+  .chip.info { color: #7ab4ff; background: #081428; }
+  .chip.warn { color: var(--o); background: #180e00; }
+
+  .lc-scores { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; padding: 0 15px 12px 43px; }
+  .lsc { background: #090c12; border-radius: 7px; padding: 8px 6px; }
+  .lsc span { display: block; color: var(--txt3); font-size: 9px; text-transform: uppercase; letter-spacing: .04em; text-align: center; }
+  .lsc-bar { height: 5px; background: #161b28; border-radius: 3px; margin-top: 5px; overflow: hidden; }
+  .lsc-bar i { display: block; height: 100%; border-radius: 3px; transition: width .6s cubic-bezier(.4,0,.2,1); }
+  .lsc-n { display: block; text-align: center; margin-top: 4px; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .sh { color: var(--g); } .sm { color: var(--o); } .sl { color: var(--txt3); }
+  .sh-bg { background: linear-gradient(90deg,var(--g),var(--g2)); } .sm-bg { background: var(--o); } .sl-bg { background: var(--line2); }
+
+  .lc-channels { padding: 0 15px 12px 43px; display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+  .ch { font-size: 10px; font-weight: 600; padding: 3px 9px; border-radius: 5px; cursor: default; white-space: nowrap; }
+  .ch-wa { background: #082018; color: var(--g); border: 1px solid #143828; }
+  .ch-em { background: #081428; color: #6aa4ff; border: 1px solid #122248; }
+  .ch-form { background: #141028; color: #9080d0; border: 1px solid #241848; }
+  .ch-tel { background: #181008; color: #c09030; border: 1px solid #302010; }
+  .ch-web { background: #161b28; color: #7888a0; border: 1px solid #222a40; display: inline-flex; }
+  .ch-web:hover { color: #c0cce0; }
+
+  .lc-msgs { padding: 0 15px 12px; display: grid; gap: 7px; }
+  .mb { background: #090c12; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); }
+  .mb-head { padding: 9px 11px; display: flex; justify-content: space-between; cursor: pointer; }
+  .mb-label { font-size: 10px; font-weight: 700; color: var(--txt2); text-transform: uppercase; letter-spacing: .05em; }
+  .mb-edit { color: var(--b); background: none; border: 0; cursor: pointer; font-size: 10px; }
+  .mb-body { display: none; padding: 0 11px 11px; }
+  .mb-body.open { display: block; }
+  .mb-body textarea { width: 100%; min-height: 84px; resize: vertical; border-radius: 6px; border: 1px solid var(--line2); background: var(--elev); color: #c0cce0; padding: 9px; font-size: 11px; line-height: 1.55; }
+
+  .lc-manual { margin: 0 15px 12px; display: grid; gap: 8px; }
+  .mc { background: #090c12; border: 1px solid var(--line); border-radius: 9px; padding: 11px; display: grid; gap: 8px; }
+  .mc h4 { font-size: 11px; color: var(--txt); font-weight: 700; }
+  .mc .target { color: #6aa4ff; font-size: 11px; overflow-wrap: anywhere; }
+  .mc textarea { width: 100%; min-height: 72px; resize: vertical; border-radius: 6px; border: 1px solid var(--line2); background: var(--elev); color: #c0cce0; padding: 9px; font-size: 11px; line-height: 1.55; }
+  .mc .row { display: flex; flex-wrap: wrap; gap: 7px; }
+
+  .email-form { padding-top: 9px; border-top: 1px solid var(--line); margin-top: 2px; display: grid; gap: 7px; }
+  .email-form input { background: var(--elev); color: var(--txt); border: 1px solid var(--line2); border-radius: 7px; padding: 8px 11px; font-size: 12px; width: 100%; }
+  .email-form input:focus { outline: none; border-color: var(--g); }
+  .email-form .send-row { display: flex; gap: 7px; }
+  .email-form .send-note { font-size: 10px; color: var(--txt3); line-height: 1.4; }
+  .ef-result { font-size: 11px; color: var(--txt2); min-height: 14px; }
+  .ef-result.ok { color: var(--g); }
+  .ef-result.err { color: var(--r); }
+
+  .lc-hist, .lc-explain { margin: 0 15px 12px; }
+  details > summary { list-style: none; }
+  details > summary::-webkit-details-marker { display: none; }
+  .hist-sum, .ex-sum { cursor: pointer; font-size: 10px; font-weight: 700; color: var(--txt3); text-transform: uppercase; letter-spacing: .06em; padding: 7px 11px; background: #090c12; border: 1px solid var(--line); border-radius: 7px; display: flex; align-items: center; justify-content: space-between; }
+  .hist-sum::after, .ex-sum::after { content: '▾'; }
+  details[open] .hist-sum::after, details[open] .ex-sum::after { content: '▴'; }
+  .hist-body, .ex-body { background: #090c12; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 7px 7px; padding: 10px 11px; display: grid; gap: 8px; }
+  .hr { display: flex; gap: 9px; }
+  .hd { width: 6px; height: 6px; border-radius: 50%; background: var(--line2); flex-shrink: 0; margin-top: 4px; }
+  .hd.ev-approved { background: var(--g); }
+  .hd.ev-manual_contact, .hd.ev-sent_marked { background: var(--b); }
+  .hd.ev-manual_call { background: var(--o); }
+  .hd.ev-draft_created { background: var(--p); }
+  .hb { flex: 1; min-width: 0; }
+  .ht { font-size: 10px; font-weight: 600; color: #7888a0; }
+  .hch { font-size: 9px; color: var(--txt3); margin-left: 4px; }
+  .hn { font-size: 10px; color: var(--txt3); margin-top: 2px; line-height: 1.4; overflow-wrap: anywhere; }
+  .hti { font-size: 9px; color: var(--txt4); margin-top: 2px; }
+  .ex-body h4 { font-size: 10px; color: #7888a0; text-transform: uppercase; letter-spacing: .05em; }
+  .ex-body ul { padding-left: 16px; color: var(--txt2); font-size: 11px; line-height: 1.45; }
+
+  .lc-notice { margin: 0 15px 12px; color: #c0a040; background: #180e00; border: 1px solid #382008; border-radius: 8px; padding: 9px 11px; font-size: 11px; line-height: 1.45; }
+
+  .lc-actions { border-top: 1px solid var(--line); padding: 11px 15px; display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
+  .lc-actions select { flex: 1; min-width: 120px; background: #090c12; color: var(--txt); border: 1px solid var(--line2); border-radius: 7px; padding: 8px 10px; font-size: 12px; }
+
+  /* ── BUTTONS ── */
+  .btn { border: 0; border-radius: 7px; padding: 8px 13px; font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap; transition: all .13s; }
+  .btn:active { transform: scale(.96); }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .btn-g { background: var(--gd); color: var(--g); border: 1px solid rgba(34,209,124,.25); }
+  .btn-g:hover { background: #0e2e1c; box-shadow: 0 4px 12px rgba(34,209,124,.15); }
+  .btn-solid { background: linear-gradient(135deg,var(--g),var(--g2)); color: #05130b; }
+  .btn-solid:hover { filter: brightness(1.1); box-shadow: 0 6px 18px rgba(34,209,124,.3); }
+  .btn-b { background: var(--bd); color: #6aa4ff; border: 1px solid #142858; }
+  .btn-b:hover { background: #0e2248; }
+  .btn-ghost { background: #161b28; color: #7888a0; border: 1px solid #222a40; }
+  .btn-ghost:hover { background: #1e2438; color: #c0cce0; }
+  .btn-warn { background: #181008; color: var(--o); border: 1px solid #382010; }
+  .btn-danger { background: #200808; color: #f87070; border: 1px solid #401010; }
+  .st-tag { font-size: 11px; font-weight: 700; color: var(--txt2); }
+
+  /* ── OUTREACH PAGE ── */
+  .ost-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 22px; }
+  .ost { background: var(--surf); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; transition: transform .16s; }
+  .ost:hover { transform: translateY(-2px); }
+  .ost-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--txt3); }
+  .ost-val { font-size: 25px; font-weight: 800; color: #fff; margin-top: 5px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .ost-sub { font-size: 10px; color: var(--txt3); margin-top: 4px; }
+  .ost.g .ost-val { color: var(--g); }
+  .ost.b .ost-val { color: #6aa4ff; }
+  .ost.o .ost-val { color: var(--o); }
+  .ost.p .ost-val { color: #c4b5fd; }
+
+  .kanban { display: grid; grid-template-columns: repeat(6, minmax(240px, 1fr)); gap: 12px; overflow-x: auto; min-height: 60vh; align-items: start; }
+  .kb-col { background: #0a0d15; border: 1px solid var(--line); border-radius: var(--radius); display: flex; flex-direction: column; }
+  .kb-head { padding: 13px 15px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; }
+  .kb-title { font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 7px; }
+  .kb-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .kb-cnt { font-size: 11px; font-weight: 700; background: var(--line); color: var(--txt2); padding: 2px 8px; border-radius: 999px; }
+  .kb-body { padding: 11px; display: flex; flex-direction: column; gap: 9px; flex: 1; }
+  .kb-empty { text-align: center; padding: 26px 10px; color: var(--txt4); font-size: 11px; }
+
+  .ocard { background: var(--surf); border: 1px solid var(--line); border-radius: 9px; padding: 12px; transition: all .14s; }
+  .ocard:hover { border-color: var(--line2); transform: translateY(-1px); }
+  .oc-name { font-size: 12px; font-weight: 700; color: var(--txt); line-height: 1.2; }
+  .oc-meta { font-size: 10px; color: var(--txt3); margin-top: 3px; }
+  .oc-email { font-size: 10px; color: var(--txt3); margin-top: 5px; display: flex; align-items: center; gap: 4px; }
+  .oc-email::before { content: '✉'; font-size: 9px; color: var(--b); }
+  .oc-date { font-size: 10px; color: var(--txt4); margin-top: 2px; }
+  .oc-msg { font-size: 10px; color: var(--txt2); margin-top: 7px; line-height: 1.4; border-top: 1px solid var(--line); padding-top: 7px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .oc-actions { margin-top: 9px; display: flex; gap: 5px; flex-wrap: wrap; }
+  .ob { font-size: 10px; font-weight: 600; padding: 5px 9px; border-radius: 5px; border: 0; cursor: pointer; transition: all .12s; }
+  .ob:active { transform: scale(.95); }
+  .ob:disabled { opacity: .5; cursor: default; }
+  .ob-next { background: #0a2818; color: var(--g); border: 1px solid #163820; }
+  .ob-next:hover { background: #0e3020; }
+  .ob-lost { background: #180808; color: var(--r); border: 1px solid #301010; }
+  .ob-ghost { background: #161b28; color: var(--txt2); }
+  .ob-ghost:hover { color: #a0aec0; }
+
+  /* ── INBOX ── */
+  .inbox-wrap { display: grid; grid-template-columns: 400px 1fr; gap: 16px; height: calc(100vh - 140px); }
+  .inbox-list { background: var(--surf); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; }
+  .inbox-list-head { padding: 14px 16px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; }
+  .inbox-list-scroll { overflow-y: auto; flex: 1; }
+  .inbox-item { padding: 13px 16px; border-bottom: 1px solid var(--line); cursor: pointer; transition: background .12s; }
+  .inbox-item:hover { background: var(--surf2); }
+  .inbox-item.active { background: rgba(34,209,124,.06); border-left: 3px solid var(--g); padding-left: 13px; }
+  .inbox-item.unseen .ii-from { color: #fff; }
+  .ii-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .ii-from { font-size: 12.5px; font-weight: 700; color: var(--txt); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 7px; }
+  .ii-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--g); flex-shrink: 0; }
+  .ii-time { font-size: 10px; color: var(--txt3); flex-shrink: 0; }
+  .ii-subj { font-size: 11.5px; color: var(--txt2); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ii-snip { font-size: 11px; color: var(--txt3); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ii-match { display: inline-block; font-size: 9px; font-weight: 700; color: var(--g); background: #082018; padding: 1px 6px; border-radius: 4px; margin-top: 5px; }
+  .inbox-detail { background: var(--surf); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; }
+  .inbox-detail-head { padding: 18px 22px; border-bottom: 1px solid var(--line); }
+  .idh-subj { font-size: 16px; font-weight: 700; color: #fff; }
+  .idh-meta { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 12px; color: var(--txt2); }
+  .idh-avatar { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg,var(--b),#2d60d0); display: flex; align-items: center; justify-content: center; font-weight: 800; color: #fff; font-size: 14px; flex-shrink: 0; }
+  .inbox-body { padding: 22px; overflow-y: auto; flex: 1; font-size: 13px; line-height: 1.7; color: #c8d3e5; white-space: pre-wrap; word-break: break-word; }
+  .inbox-reply { padding: 16px 22px; border-top: 1px solid var(--line); display: flex; gap: 10px; }
+  .inbox-empty { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--txt3); font-size: 13px; text-align: center; }
+
+  /* ── EMAIL SENDER PAGE ── */
+  .sender-grid { display: grid; grid-template-columns: 1fr 420px; gap: 18px; align-items: start; }
+  .sender-panel { background: var(--surf); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .sp-head { padding: 16px 20px; border-bottom: 1px solid var(--line); }
+  .sp-head h3 { font-size: 14px; font-weight: 700; color: #fff; }
+  .sp-head p { font-size: 11.5px; color: var(--txt2); margin-top: 4px; line-height: 1.45; }
+  .sp-body { padding: 18px 20px; display: grid; gap: 14px; }
+  .field { display: grid; gap: 6px; }
+  .field label { font-size: 11px; font-weight: 700; color: var(--txt2); text-transform: uppercase; letter-spacing: .05em; }
+  .field input, .field textarea { background: #090c12; color: var(--txt); border: 1px solid var(--line2); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+  .field input:focus, .field textarea:focus { outline: none; border-color: var(--g); }
+  .field textarea { resize: vertical; line-height: 1.6; }
+  .recip-list { display: grid; gap: 8px; max-height: 300px; overflow-y: auto; }
+  .recip-item { display: flex; align-items: center; gap: 10px; background: #090c12; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .recip-item input { flex: 1; background: transparent; border: 0; color: var(--txt); font-size: 12.5px; padding: 0; min-width: 0; }
+  .recip-item input:focus { outline: none; }
+  .recip-item .ri-name { width: 130px; flex: none; color: var(--txt); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+  .recip-item .ri-del { background: none; border: 0; color: var(--txt3); cursor: pointer; font-size: 16px; padding: 0 4px; }
+  .recip-item .ri-del:hover { color: var(--r); }
+  .recip-status { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 5px; flex-shrink: 0; }
+  .recip-status.ok { background: #082018; color: var(--g); }
+  .recip-status.err { background: #200808; color: var(--r); }
+  .recip-status.pending { background: #12161f; color: var(--txt3); }
+  .preview-box { background: #fff; color: #1a1a1a; border-radius: 10px; padding: 20px; font-family: Arial, sans-serif; font-size: 13px; line-height: 1.7; max-height: 420px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
+  .preview-subj { font-size: 13px; font-weight: 700; color: #111; padding-bottom: 10px; margin-bottom: 12px; border-bottom: 1px solid #e5e5e5; }
+  .tmpl-hint { font-size: 11px; color: var(--txt3); line-height: 1.5; }
+  .tmpl-hint code { background: #12161f; color: var(--g); padding: 1px 6px; border-radius: 4px; }
+
+  /* ── AUTO-VERSAND ── */
+  .as-grid { display: grid; grid-template-columns: 420px 1fr; gap: 18px; align-items: start; }
+  .as-form { display: grid; gap: 14px; }
+  .as-form select, .as-form input { background: #090c12; color: var(--txt); border: 1px solid var(--line2); border-radius: 8px; padding: 10px 12px; font-size: 13px; width: 100%; }
+  .as-form select:focus, .as-form input:focus { outline: none; border-color: var(--g); }
+  .as-tpl-list { display: grid; gap: 6px; max-height: 200px; overflow-y: auto; }
+  .as-tpl-cb { display: flex; align-items: center; gap: 9px; background: #090c12; border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; font-size: 12px; color: var(--txt); cursor: pointer; }
+  .as-tpl-cb:has(input:checked) { border-color: var(--g); background: rgba(34,209,124,.06); }
+  .as-tpl-cb input { accent-color: var(--g); width: 15px; height: 15px; }
+  .as-estimate { background: rgba(77,144,255,.08); border: 1px solid rgba(77,144,255,.25); border-radius: 9px; padding: 11px 14px; font-size: 12px; color: #8ab4ff; line-height: 1.5; }
+  .as-legal { background: var(--od); border: 1px solid #3a2800; border-radius: 9px; padding: 11px 14px; font-size: 11px; color: #c89040; line-height: 1.55; }
+  .job-card { background: var(--surf); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; display: grid; gap: 11px; animation: fadeIn .3s ease both; }
+  .job-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .job-name { font-size: 13.5px; font-weight: 700; color: #fff; }
+  .job-meta { font-size: 11px; color: var(--txt3); margin-top: 3px; }
+  .job-status { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 3px 9px; border-radius: 5px; white-space: nowrap; }
+  .js-running { background: var(--gd); color: var(--g); }
+  .js-running::before { content: '● '; animation: pulse 1.6s infinite; }
+  .js-paused { background: #1c1408; color: var(--o); }
+  .js-done { background: #082018; color: #4ade80; }
+  .js-stopped { background: #1c0c0c; color: var(--r); }
+  .job-prog-bg { height: 9px; background: #090c12; border-radius: 5px; overflow: hidden; }
+  .job-prog { height: 100%; background: linear-gradient(90deg,var(--g),var(--g2)); border-radius: 5px; transition: width .8s cubic-bezier(.4,0,.2,1); min-width: 2px; }
+  .job-nums { display: flex; gap: 16px; font-size: 11px; color: var(--txt2); flex-wrap: wrap; }
+  .job-nums b { color: var(--txt); font-variant-numeric: tabular-nums; }
+  .job-note { font-size: 11px; color: var(--txt3); font-style: italic; }
+  .job-actions { display: flex; gap: 7px; flex-wrap: wrap; }
+  .as-today { display: flex; align-items: center; gap: 10px; background: var(--surf); border: 1px solid var(--line); border-radius: var(--radius); padding: 13px 18px; margin-bottom: 14px; font-size: 12px; color: var(--txt2); }
+  .as-today b { color: var(--g); font-size: 15px; }
+
+  /* ── VORLAGEN SEITE ── */
+  .tpl-grid { display: grid; grid-template-columns: 340px 1fr; gap: 18px; align-items: start; }
+  .tpl-item { background: var(--surf); border: 1px solid var(--line); border-radius: 10px; padding: 13px 15px; cursor: pointer; transition: all .13s; }
+  .tpl-item:hover { border-color: var(--line2); }
+  .tpl-item.active { border-color: var(--g); background: rgba(34,209,124,.05); }
+  .tpl-item-name { font-size: 13px; font-weight: 700; color: #fff; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .tpl-item-subj { font-size: 11px; color: var(--txt3); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tpl-badge { font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: var(--gd); color: var(--g); }
+
+  /* ── ANALYSE ── */
+  .an-note { background: rgba(77,144,255,.08); border: 1px solid rgba(77,144,255,.25); border-radius: var(--radius); padding: 13px 16px; font-size: 12px; color: #8ab4ff; line-height: 1.55; margin-bottom: 16px; }
+  .an-note.warn { background: var(--od); border-color: #3a2800; color: #c89040; }
+  .an-kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 18px; }
+  .an-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .chart-wrap { padding: 18px 20px; }
+  .bars-days { display: flex; align-items: flex-end; gap: 6px; height: 140px; }
+  .bar-day { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; justify-content: flex-end; min-width: 0; }
+  .bar-pair { display: flex; align-items: flex-end; gap: 2px; width: 100%; height: 100%; justify-content: center; }
+  .bar-v { width: 45%; max-width: 18px; border-radius: 3px 3px 0 0; min-height: 2px; transition: height .6s cubic-bezier(.4,0,.2,1); }
+  .bar-v.sent { background: linear-gradient(180deg, var(--b), #2d60d0); }
+  .bar-v.open { background: linear-gradient(180deg, var(--g), var(--g2)); }
+  .bar-lbl { font-size: 8px; color: var(--txt4); white-space: nowrap; }
+  .bars-hours { display: flex; align-items: flex-end; gap: 3px; height: 110px; }
+  .bar-h { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; height: 100%; justify-content: flex-end; }
+  .bar-h .bar-v { width: 100%; max-width: none; background: linear-gradient(180deg, var(--p), #7c60d8); }
+  .chart-legend { display: flex; gap: 14px; margin-top: 12px; font-size: 10px; color: var(--txt3); }
+  .chart-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  .an-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .an-table th { color: var(--txt3); text-transform: uppercase; font-size: 9px; letter-spacing: .06em; padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--surf); }
+  .an-table td { padding: 9px 12px; color: var(--txt2); border-bottom: 1px solid #12161f; vertical-align: top; }
+  .an-table tr.mail-row { cursor: pointer; }
+  .an-table tr.mail-row:hover td { background: var(--surf2); }
+  .an-open { color: var(--g); font-weight: 700; }
+  .an-zero { color: var(--txt4); }
+  .an-bounce { color: var(--r); font-weight: 700; }
+  .an-events { background: #090c12; border-radius: 8px; padding: 10px 14px; margin: 4px 0 8px; display: grid; gap: 6px; }
+  .an-ev { display: flex; gap: 10px; font-size: 11px; align-items: baseline; }
+  .an-ev .t { color: var(--txt3); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+  .an-ev .ic-open { color: var(--g); } .an-ev .ic-click { color: var(--b); } .an-ev .ic-bounce { color: var(--r); }
+  .sms-recent { display: grid; gap: 8px; padding: 14px 18px; max-height: 300px; overflow-y: auto; }
+  .sms-item { background: #090c12; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .sms-item .top { display: flex; justify-content: space-between; font-size: 11px; }
+  .sms-item .to { color: var(--txt); font-weight: 600; }
+  .sms-item .msg { font-size: 11px; color: var(--txt3); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  @media (max-width: 1400px) { .an-kpis { grid-template-columns: repeat(3, 1fr); } .an-grid { grid-template-columns: 1fr; } }
+
+  /* ── INBOX TABS ── */
+  .inbox-tabs { display: flex; gap: 4px; }
+  .inbox-tab { padding: 6px 13px; border-radius: 7px; font-size: 11px; font-weight: 700; color: var(--txt3); background: transparent; border: 1px solid transparent; cursor: pointer; }
+  .inbox-tab.active { background: rgba(34,209,124,.1); color: var(--g); border-color: rgba(34,209,124,.3); }
+
+  /* ── COMMAND PALETTE ── */
+  .cmdk-overlay { position: fixed; inset: 0; background: rgba(4,6,10,.7); backdrop-filter: blur(4px); z-index: 9998; display: none; align-items: flex-start; justify-content: center; padding-top: 14vh; }
+  .cmdk-overlay.show { display: flex; animation: fadeIn .15s ease; }
+  .cmdk { width: 560px; max-width: 90vw; background: var(--elev); border: 1px solid var(--line2); border-radius: 14px; box-shadow: var(--shadow-lg); overflow: hidden; animation: scaleIn .18s ease; }
+  .cmdk-input { width: 100%; background: transparent; border: 0; border-bottom: 1px solid var(--line); color: var(--txt); font-size: 15px; padding: 18px 20px; }
+  .cmdk-input:focus { outline: none; }
+  .cmdk-results { max-height: 340px; overflow-y: auto; padding: 8px; }
+  .cmdk-item { padding: 11px 14px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 12px; color: var(--txt2); font-size: 13px; }
+  .cmdk-item.sel { background: rgba(34,209,124,.1); color: var(--g); }
+  .cmdk-item .ci-icon { font-size: 15px; width: 20px; text-align: center; }
+  .cmdk-empty { padding: 24px; text-align: center; color: var(--txt3); font-size: 12px; }
+
+  /* ── PREVIEW MODAL ── */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(4,6,10,.72); backdrop-filter: blur(5px); z-index: 9997; display: none; align-items: center; justify-content: center; padding: 24px; }
+  .modal-overlay.show { display: flex; animation: fadeIn .15s ease; }
+  .modal { width: 620px; max-width: 94vw; max-height: 90vh; background: var(--elev); border: 1px solid var(--line2); border-radius: 16px; box-shadow: var(--shadow-lg); overflow: hidden; display: flex; flex-direction: column; animation: scaleIn .18s ease; }
+  .modal-head { padding: 18px 22px 6px; display: flex; align-items: flex-start; justify-content: space-between; }
+  .modal-title { font-size: 16px; font-weight: 700; color: #fff; }
+  .modal-x { background: none; border: 0; color: var(--txt3); font-size: 24px; line-height: 1; cursor: pointer; padding: 0; }
+  .modal-x:hover { color: var(--txt); }
+  .modal-sub { padding: 0 22px 12px; font-size: 12px; color: var(--txt2); }
+  .prev-source { padding: 0 22px 14px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .prev-src-lbl { font-size: 11px; color: var(--txt3); font-weight: 600; margin-right: 2px; }
+  .prev-src-btn { font-size: 11px; font-weight: 600; padding: 5px 11px; border-radius: 7px; background: #090c12; color: var(--txt2); border: 1px solid var(--line2); cursor: pointer; }
+  .prev-src-btn:hover { border-color: #33405a; color: var(--txt); }
+  .prev-src-btn.on { background: rgba(34,209,124,.12); border-color: var(--g); color: var(--g); }
+  .modal-body { padding: 0 22px; overflow-y: auto; flex: 1; }
+  .modal-foot { padding: 16px 22px; border-top: 1px solid var(--line); display: flex; gap: 10px; justify-content: flex-end; }
+
+  /* ── TOAST ── */
+  #toast { position: fixed; right: 22px; bottom: 22px; display: none; background: var(--elev); border: 1px solid var(--line2); color: var(--txt); padding: 13px 18px; border-radius: 10px; font-size: 12.5px; box-shadow: var(--shadow-lg); z-index: 9999; max-width: 360px; align-items: center; gap: 11px; }
+  #toast.show { display: flex; animation: toastIn .25s cubic-bezier(.4,0,.2,1); }
+  #toast .t-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--g); flex-shrink: 0; }
+  #toast.err .t-dot { background: var(--r); }
+
+  .spin { display: inline-block; width: 13px; height: 13px; border: 2px solid rgba(255,255,255,.2); border-top-color: currentColor; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; }
+
+  @media (max-width: 1400px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } .ost-row { grid-template-columns: repeat(3, 1fr); } .sender-grid { grid-template-columns: 1fr; } .inbox-wrap { grid-template-columns: 340px 1fr; } }
+  @media (max-width: 1100px) { .dash-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 900px) { .sidebar { width: 60px; } .logo-sub,.nav-item span,.nav-badge,.nav-sec,.conn-lbl,.logo-name { display: none; } .main { margin-left: 60px; } .leads-grid { grid-template-columns: 1fr; } .kanban { grid-template-columns: repeat(3, minmax(220px, 1fr)); } .inbox-wrap { grid-template-columns: 1fr; height: auto; } }
+  </style>
+</head>
+<body>
+
+<!-- ══════════ SIDEBAR ══════════ -->
+<aside class="sidebar">
+  <div class="logo-wrap">
+    <div class="logo-icon">T</div>
+    <div>
+      <div class="logo-name">Tawano <span>Engine</span></div>
+      <div class="logo-sub">Revenue System v3</div>
+    </div>
+  </div>
+  <nav class="nav">
+    <div class="nav-item active" id="nav-dashboard" onclick="setPage('dashboard')">
+      <span class="nav-icon">▦</span><span>Übersicht</span>
+    </div>
+    <div class="nav-sec">Akquise</div>
+    <div class="nav-item" id="nav-pipeline" onclick="setPage('pipeline')">
+      <span class="nav-icon">◈</span><span>Leads finden</span>
+      <span class="nav-badge zero" id="nb-pipeline">0</span>
+    </div>
+    <div class="nav-item" id="nav-sender" onclick="setPage('sender')">
+      <span class="nav-icon">✉</span><span>E-Mail Sender</span>
+    </div>
+    <div class="nav-item" id="nav-sent" onclick="setPage('sent')">
+      <span class="nav-icon">↗</span><span>Gesendet</span>
+      <span class="nav-badge zero" id="nb-sent">0</span>
+    </div>
+    <div class="nav-item" id="nav-autosend" onclick="setPage('autosend')">
+      <span class="nav-icon">⚡</span><span>Auto-Versand</span>
+      <span class="nav-badge zero" id="nb-autosend">0</span>
+    </div>
+    <div class="nav-item" id="nav-templates" onclick="setPage('templates')">
+      <span class="nav-icon">📄</span><span>Vorlagen</span>
+    </div>
+    <div class="nav-item" id="nav-analytics" onclick="setPage('analytics')">
+      <span class="nav-icon">📊</span><span>Analyse</span>
+    </div>
+    <div class="nav-sec">Nachverfolgung</div>
+    <div class="nav-item" id="nav-inbox" onclick="setPage('inbox')">
+      <span class="nav-icon">📥</span><span>Posteingang</span>
+      <span class="nav-badge blue zero" id="nb-inbox">0</span>
+    </div>
+    <div class="nav-item" id="nav-outreach" onclick="setPage('outreach')">
+      <span class="nav-icon">→</span><span>Pipeline</span>
+      <span class="nav-badge blue zero" id="nb-outreach">0</span>
+    </div>
+  </nav>
+  <div class="sidebar-bottom">
+    <div id="smtp-pill" class="conn-pill conn-ok"><span class="dot"></span><span class="conn-lbl" id="smtp-txt">SMTP…</span></div>
+    <div id="imap-pill" class="conn-pill conn-ok"><span class="dot"></span><span class="conn-lbl" id="imap-txt">Posteingang…</span></div>
+    <button class="topbar-btn" style="font-size:10px;text-align:center" onclick="exportLeads()">⬇ Export CSV</button>
+  </div>
+</aside>
+
+<!-- ══════════ MAIN ══════════ -->
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title" id="topbar-title">Übersicht</div>
+    <div class="topbar-sub" id="topbar-sub"></div>
+    <div class="flex1"></div>
+    <div class="search-trigger" onclick="openCmdk()">
+      <span>⌘</span><span>Suche & Aktionen</span><kbd>⌘K</kbd>
+    </div>
+    <button class="topbar-btn" onclick="reload()">↻ Aktualisieren</button>
+  </div>
+
+  <!-- ─── DASHBOARD ─── -->
+  <div class="page active" id="p-dashboard">
+    <div class="kpi-row">
+      <div class="kpi g"><div class="kpi-lbl">Pipeline-Wert</div><div class="kpi-val" id="k-pipe">—</div><div class="kpi-sub">Gewichtet: <span id="k-weighted">—</span></div></div>
+      <div class="kpi b"><div class="kpi-lbl">Potenzial MRR</div><div class="kpi-val" id="k-mrr">—</div><div class="kpi-sub">Wiederkehrend</div></div>
+      <div class="kpi o"><div class="kpi-lbl">A-Leads</div><div class="kpi-val" id="k-a">—</div><div class="kpi-sub">Gesamt: <span id="k-total">—</span></div></div>
+      <div class="kpi p"><div class="kpi-lbl">Kontaktiert</div><div class="kpi-val" id="k-pend">—</div><div class="kpi-sub">E-Mails versendet</div></div>
+    </div>
+    <div class="dash-grid">
+      <div class="panel">
+        <div class="ph"><div class="ph-title">Sales Funnel</div><div class="ph-muted" id="conv-rate"></div></div>
+        <div class="funnel-wrap" id="funnel"></div>
+      </div>
+      <div class="panel">
+        <div class="ph"><div class="ph-title">Letzte Aktivität</div><div class="ph-muted" id="act-cnt"></div></div>
+        <div class="act-list" id="act-list"><div style="text-align:center;padding:30px;color:var(--txt4);font-size:12px">Lade...</div></div>
+      </div>
+    </div>
+
+    <!-- Shared E-Mail Vorlage -->
+    <div class="sender-panel" style="margin-top:18px">
+      <div class="sp-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+        <div>
+          <h3>📝 E-Mail Vorlage</h3>
+          <p>Eine Vorlage für alles: „Leads finden" (Auswahl + Senden) <b>und</b> „E-Mail Sender". Änderungen gelten sofort überall.</p>
+        </div>
+        <button class="btn btn-ghost" onclick="setPage('sender')" style="flex-shrink:0">Zum Sender →</button>
+      </div>
+      <div class="sp-body">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+          <div style="display:grid;gap:12px">
+            <div class="field">
+              <label>Betreff</label>
+              <input id="dtmpl-subject" type="text">
+            </div>
+            <div class="field">
+              <label>Nachricht</label>
+              <textarea id="dtmpl-body" rows="12"></textarea>
+            </div>
+            <div class="tmpl-hint">Platzhalter: <code>{name}</code> · <code>{branche}</code> · <code>{stadt}</code> werden pro Firma automatisch ersetzt.</div>
+            <div><button class="btn btn-solid" onclick="saveDashTemplate()">Vorlage speichern</button></div>
+          </div>
+          <div>
+            <label class="field" style="font-size:11px;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px">Vorschau (Beispiel)</label>
+            <div class="preview-box">
+              <div class="preview-subj" id="dprev-subj"></div>
+              <div id="dprev-body"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── LEADS FINDEN ─── -->
+  <div class="page" id="p-pipeline">
+    <div class="ind-hero">
+      <h2>🎯 Leads finden</h2>
+      <p>Wähle eine Branche aus – das System sucht passende Betriebe im Internet und analysiert sie automatisch für dein Voice-Agent-Angebot.</p>
+      <div class="ind-controls">
+        <select id="ind-region"><option value="">Region wählen…</option></select>
+      </div>
+    </div>
+    <div class="ind-cat-tabs" id="ind-cat-tabs"></div>
+    <div class="ind-grid" id="ind-grid"></div>
+
+    <div class="filter-bar">
+      <input id="fs" placeholder="Stadt" oninput="loadLeads()">
+      <input id="fb" placeholder="Branche" oninput="loadLeads()">
+      <select id="fp" onchange="loadLeads()">
+        <option value="">Alle Prioritäten</option>
+        <option value="A">A-Leads</option><option value="B">B-Leads</option><option value="C">C-Leads</option>
+      </select>
+      <select id="fst" onchange="loadLeads()">
+        <option value="">Alle Status</option>
+        <option value="new">Neu</option><option value="checked">Geprüft</option>
+        <option value="draft_ready">Entwurf bereit</option><option value="approved">Freigegeben</option>
+        <option value="contacted">Kontaktiert</option><option value="replied">Geantwortet</option>
+        <option value="demo_booked">Demo</option><option value="proposal_sent">Angebot</option>
+        <option value="won">Gewonnen</option><option value="lost">Verloren</option>
+        <option value="no_interest">Kein Interesse</option><option value="not_suitable">Ungeeignet</option>
+        <option value="duplicate">Duplikat</option><option value="missing_data">Fehlende Daten</option>
+        <option value="manual_review">Review</option><option value="do_not_contact">DNC</option>
+        <option value="archived">Archiviert</option>
+      </select>
+      <label class="filter-lbl"><input id="fa" type="checkbox" onchange="loadLeads()"> Archiviert</label>
+      <div class="branche-filter">
+        <button class="bf-btn" id="bfBtn" onclick="toggleBranchePanel(event)">🗂 Bereiche <span class="bf-caret">▾</span></button>
+        <div class="bf-panel" id="branchePanel">
+          <div class="bf-panel-head"><b>Nach Bereich filtern</b><button class="bf-clear" onclick="clearBrancheFilter()">Zurücksetzen</button></div>
+          <div id="branchePanelBody"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bulk-bar" id="bulkBar">
+      <div class="bulk-count"><b id="bulkCount">0</b> Leads ausgewählt</div>
+      <button class="btn btn-solid" onclick="bulkSendSelected()">✉ Vorlage an alle senden</button>
+      <button class="btn btn-ghost" onclick="clearSelection()">Auswahl aufheben</button>
+      <span style="font-size:11px;color:var(--txt3)">Nur Leads mit E-Mail werden angeschrieben</span>
+    </div>
+
+    <div class="status-rail" id="statusRail"></div>
+    <div class="leads-grid" id="grid"></div>
+  </div>
+
+  <!-- ─── E-MAIL SENDER ─── -->
+  <div class="page" id="p-sender">
+    <div class="sender-grid">
+      <div style="display:grid;gap:18px">
+        <div class="sender-panel">
+          <div class="sp-head">
+            <h3>Direkt-Versand</h3>
+            <p>E-Mail-Adressen eintragen → die Vorlage wird automatisch verwendet → ein Klick versendet an alle. Firmen die heute „schreib uns" gesagt haben, kommen hier rein.</p>
+          </div>
+          <div class="sp-body">
+            <div class="field">
+              <label>Empfänger (eine pro Zeile: <span style="text-transform:none;font-weight:500;color:var(--txt3)">Name, email@firma.de</span> — Name optional)</label>
+              <textarea id="bulk-input" rows="7" placeholder="Zahnarztpraxis Müller, info@praxis-mueller.de&#10;Elektro Schmidt, kontakt@elektro-schmidt.de&#10;info@friseur-beispiel.de"></textarea>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <button class="btn btn-ghost" onclick="parseRecipients()">Empfänger prüfen</button>
+              <span id="recip-info" style="font-size:12px;color:var(--txt3)"></span>
+            </div>
+            <div class="recip-list" id="recip-list"></div>
+            <button class="btn btn-solid" style="padding:12px;font-size:13px" id="bulk-send-btn" onclick="doBulkSend()">✉ Vorlage an alle senden</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid;gap:18px">
+        <div class="sender-panel">
+          <div class="sp-head">
+            <h3>📝 E-Mail Vorlage</h3>
+            <p>Diese Vorlage wird für jeden Versand verwendet. Der Voice-Agent zum Anrufen steht im Text.</p>
+          </div>
+          <div class="sp-body">
+            <div class="field">
+              <label>Betreff</label>
+              <input id="tmpl-subject" type="text">
+            </div>
+            <div class="field">
+              <label>Nachricht</label>
+              <textarea id="tmpl-body" rows="14"></textarea>
+            </div>
+            <div class="tmpl-hint">Platzhalter: <code>{name}</code> = Firmenname · <code>{branche}</code> = Branche · <code>{stadt}</code> = Stadt. Trag die echte Demo-Nummer deines Voice Agents ein.</div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-solid" onclick="saveTemplate()">Vorlage speichern</button>
+              <button class="btn btn-ghost" onclick="loadTemplate()">Zurücksetzen</button>
+            </div>
+          </div>
+        </div>
+        <div class="sender-panel">
+          <div class="sp-head"><h3>Vorschau</h3><p>So sieht die E-Mail aus (Beispiel-Firma).</p></div>
+          <div class="sp-body">
+            <div class="preview-box">
+              <div class="preview-subj" id="prev-subj"></div>
+              <div id="prev-body"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── GESENDET ─── -->
+  <div class="page" id="p-sent">
+    <div class="as-today">
+      Vom System verschickt: <b id="sent-total-n">0</b> gesamt · <b id="sent-today-n" style="color:#8ab4ff">0</b> heute
+      <span style="color:var(--txt3)">— alle E-Mails, die über dieses System rausgingen (manuell, Sammel & ⚡ Auto). Private Mails erscheinen hier nicht.</span>
+      <div class="flex1"></div>
+      <button class="topbar-btn" onclick="loadSentPage()">↻ Aktualisieren</button>
+    </div>
+    <div class="inbox-wrap">
+      <div class="inbox-list">
+        <div class="inbox-list-head">
+          <div class="ph-title">↗ Gesendete E-Mails</div>
+          <span class="ph-muted" id="sent-cnt"></span>
+        </div>
+        <div class="inbox-list-scroll" id="sent-list">
+          <div style="text-align:center;padding:40px;color:var(--txt4);font-size:12px">Lade…</div>
+        </div>
+      </div>
+      <div class="inbox-detail" id="sent-detail">
+        <div class="inbox-empty">
+          <div>
+            <div style="font-size:40px;opacity:.4;margin-bottom:12px">↗</div>
+            <div>Wähle eine E-Mail aus, um den vollen Text zu sehen</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── AUTO-VERSAND ─── -->
+  <div class="page" id="p-autosend">
+    <div class="as-today">
+      Heute gesendet: <b id="as-today-n">0</b> / <span id="as-today-cap">200</span> (globales Tageslimit – Schutz vor Account-Sperrung)
+      <div class="flex1"></div>
+      <button class="topbar-btn" onclick="loadAutoSend()">↻ Aktualisieren</button>
+    </div>
+    <div class="as-grid">
+      <div class="sender-panel">
+        <div class="sp-head">
+          <h3>⚡ Neue Auto-Kampagne</h3>
+          <p>Bereich + Anzahl wählen → das System verschickt automatisch in sicheren Zeitabständen, bis das Ziel erreicht ist. Läuft über Tage weiter, solange der Server an ist.</p>
+        </div>
+        <div class="sp-body as-form">
+          <div class="field">
+            <label>Bereich / Branche</label>
+            <select id="as-vertical"><option value="">Alle Branchen</option></select>
+          </div>
+          <div class="field">
+            <label>Anzahl E-Mails gesamt</label>
+            <input id="as-total" type="number" min="1" max="5000" value="100" oninput="updateEstimate()">
+          </div>
+          <div class="field">
+            <label>Tageslimit (Empfehlung: 100)</label>
+            <select id="as-daily" onchange="updateEstimate()">
+              <option value="30">30 / Tag – sehr sicher (neues Konto)</option>
+              <option value="50">50 / Tag – sicher</option>
+              <option value="100" selected>100 / Tag – empfohlen</option>
+              <option value="150">150 / Tag – nur eingewärmtes Konto</option>
+              <option value="200">200 / Tag – Maximum</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Vorlagen (werden zufällig rotiert)</label>
+            <div class="as-tpl-list" id="as-tpl-list"></div>
+          </div>
+          <div class="as-estimate" id="as-estimate"></div>
+          <div class="as-legal"><strong>⚠ Wichtig:</strong> Zu viele E-Mails auf einmal führen zur Sperrung des SMTP-Kontos und Spam-Einstufung. Das System hält deshalb automatisch ein: zufällige Abstände (60–180 Sek.), Sendefenster 8–20 Uhr, dein Tageslimit und ein hartes globales Limit von 200/Tag. Mehrere Vorlagen im Wechsel senken zusätzlich das Spam-Risiko.</div>
+          <button class="btn btn-solid" style="padding:12px;font-size:13px" id="as-create-btn" onclick="createSendJob()">⚡ Auto-Versand starten</button>
+        </div>
+      </div>
+      <div style="display:grid;gap:12px" id="as-jobs">
+        <div class="empty-state" style="padding:48px 0"><div class="ei">⚡</div><div class="et">Noch keine Auto-Kampagnen</div><div class="es">Erstelle links deine erste – das System übernimmt den Rest</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── VORLAGEN ─── -->
+  <div class="page" id="p-templates">
+    <div class="tpl-grid">
+      <div style="display:grid;gap:10px">
+        <button class="btn btn-solid" style="padding:11px" onclick="createNewTemplate()">+ Neue Vorlage</button>
+        <div id="tpl-list" style="display:grid;gap:8px"></div>
+      </div>
+      <div class="sender-panel">
+        <div class="sp-head">
+          <h3 id="tpl-edit-title">Vorlage bearbeiten</h3>
+          <p>Platzhalter <code style="color:var(--g)">{name}</code> <code style="color:var(--g)">{branche}</code> <code style="color:var(--g)">{stadt}</code> werden pro Firma automatisch ersetzt. Diese Vorlagen stehen überall zur Verfügung: Auto-Versand, Leads finden, E-Mail Sender.</p>
+        </div>
+        <div class="sp-body">
+          <div class="field"><label>Name der Vorlage</label><input id="tpl-edit-name" type="text"></div>
+          <div class="field"><label>Betreff</label><input id="tpl-edit-subject" type="text"></div>
+          <div class="field"><label>Nachricht</label><textarea id="tpl-edit-body" rows="13"></textarea></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-solid" onclick="saveEditedTemplate()">Speichern</button>
+            <button class="btn btn-danger" id="tpl-del-btn" onclick="deleteCurrentTemplate()">Löschen</button>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px">Vorschau (Beispiel)</label>
+            <div class="preview-box">
+              <div class="preview-subj" id="tpl-prev-subj"></div>
+              <div id="tpl-prev-body"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── ANALYSE ─── -->
+  <div class="page" id="p-analytics">
+    <div class="an-note warn" id="an-tracking-note" style="display:none"></div>
+
+    <div class="an-kpis">
+      <div class="kpi b"><div class="kpi-lbl">E-Mails gesendet</div><div class="kpi-val" id="an-sent">—</div><div class="kpi-sub"><span id="an-failed">0</span> fehlgeschlagen</div></div>
+      <div class="kpi g"><div class="kpi-lbl">Öffnungsrate</div><div class="kpi-val" id="an-openrate">—</div><div class="kpi-sub"><span id="an-opened">0</span> geöffnet</div></div>
+      <div class="kpi p"><div class="kpi-lbl">Klickrate</div><div class="kpi-val" id="an-clickrate">—</div><div class="kpi-sub"><span id="an-clicked">0</span> haben geklickt</div></div>
+      <div class="kpi o"><div class="kpi-lbl">Antworten</div><div class="kpi-val" id="an-replies">—</div><div class="kpi-sub" id="an-replyrate">—</div></div>
+      <div class="kpi"><div class="kpi-lbl">Zustellfehler</div><div class="kpi-val" id="an-bounces" style="color:var(--r)">—</div><div class="kpi-sub"><button class="bf-clear" style="color:var(--b);cursor:pointer" onclick="scanBounces()">↻ Posteingang prüfen</button></div></div>
+      <div class="kpi g"><div class="kpi-lbl">Interessenten</div><div class="kpi-val" id="an-interested">—</div><div class="kpi-sub">Geantwortet + Demo + Angebot + Gewonnen</div></div>
+    </div>
+
+    <div class="an-grid">
+      <div class="panel">
+        <div class="ph"><div class="ph-title">Versand & Öffnungen — letzte 14 Tage</div></div>
+        <div class="chart-wrap">
+          <div class="bars-days" id="an-days"></div>
+          <div class="chart-legend"><span><i style="background:var(--b)"></i>Gesendet</span><span><i style="background:var(--g)"></i>Geöffnet</span></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="ph"><div class="ph-title">Öffnungen nach Uhrzeit</div><div class="ph-muted">Wann deine Empfänger lesen</div></div>
+        <div class="chart-wrap">
+          <div class="bars-hours" id="an-hours"></div>
+          <div class="chart-legend"><span>0–23 Uhr · beste Sendezeit erkennen</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="an-grid">
+      <div class="panel" style="grid-column:1/-1">
+        <div class="ph">
+          <div class="ph-title">Jede einzelne E-Mail</div>
+          <div class="ph-muted" id="an-mail-cnt"></div>
+        </div>
+        <div style="max-height:480px;overflow-y:auto">
+          <table class="an-table">
+            <thead><tr><th>Empfänger</th><th>Betreff</th><th>Gesendet</th><th>Status</th><th>Öffnungen</th><th>Zuletzt geöffnet</th><th>Klicks</th><th>Geräte</th></tr></thead>
+            <tbody id="an-mails"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="an-grid">
+      <div class="panel">
+        <div class="ph"><div class="ph-title">📱 SMS-Marketing (Voice Agent)</div><div class="ph-muted" id="an-sms-note"></div></div>
+        <div class="chart-wrap" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding-bottom:8px">
+          <div class="ind-metric"><b id="an-sms-total">—</b><span>SMS gesamt</span></div>
+          <div class="ind-metric"><b id="an-sms-today">—</b><span>Heute</span></div>
+          <div class="ind-metric"><b id="an-sms-failed" style="color:var(--r)">—</b><span>Fehlgeschlagen</span></div>
+          <div class="ind-metric"><b id="an-sms-feedback">—</b><span>Link geklickt (Bewertungen)</span></div>
+        </div>
+        <div class="sms-recent" id="an-sms-recent"></div>
+      </div>
+      <div class="panel">
+        <div class="ph"><div class="ph-title">Lead-Funnel</div><div class="ph-muted">Vom Kontakt zum Kunden</div></div>
+        <div class="funnel-wrap" id="an-funnel"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── POSTEINGANG ─── -->
+  <div class="page" id="p-inbox">
+    <div class="inbox-wrap">
+      <div class="inbox-list">
+        <div class="inbox-list-head">
+          <div class="inbox-tabs">
+            <button class="inbox-tab active" id="itab-in" onclick="switchInboxTab('in')">📥 Eingang</button>
+            <button class="inbox-tab" id="itab-out" onclick="switchInboxTab('out')">↗ Gesendet</button>
+          </div>
+          <button class="topbar-btn" style="padding:5px 10px" onclick="inboxTab==='in'?loadInbox():loadSentList()">↻</button>
+        </div>
+        <div class="inbox-list-scroll" id="inbox-list">
+          <div style="text-align:center;padding:40px;color:var(--txt4);font-size:12px">Lade Posteingang…</div>
+        </div>
+      </div>
+      <div class="inbox-detail" id="inbox-detail">
+        <div class="inbox-empty">
+          <div>
+            <div style="font-size:40px;opacity:.4;margin-bottom:12px">📬</div>
+            <div>Wähle eine E-Mail aus, um sie zu lesen</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── PIPELINE (Outreach Kanban) ─── -->
+  <div class="page" id="p-outreach">
+    <div class="ost-row">
+      <div class="ost b"><div class="ost-lbl">Kontaktiert</div><div class="ost-val" id="os-c">—</div><div class="ost-sub">E-Mails raus</div></div>
+      <div class="ost p"><div class="ost-lbl">Geantwortet</div><div class="ost-val" id="os-r">—</div><div class="ost-sub" id="os-rr">—</div></div>
+      <div class="ost o"><div class="ost-lbl">Demo gebucht</div><div class="ost-val" id="os-d">—</div><div class="ost-sub" id="os-dr">—</div></div>
+      <div class="ost"><div class="ost-lbl">Angebot</div><div class="ost-val" id="os-p">—</div><div class="ost-sub">Gesendet</div></div>
+      <div class="ost g"><div class="ost-lbl">Gewonnen</div><div class="ost-val" id="os-w">—</div><div class="ost-sub" id="os-wr">—</div></div>
+      <div class="ost"><div class="ost-lbl">Verloren</div><div class="ost-val" id="os-l">—</div><div class="ost-sub">Inkl. kein Interesse</div></div>
+    </div>
+    <div class="kanban" id="kanban"></div>
+  </div>
+</div>
+
+<div class="cmdk-overlay" id="cmdkOverlay" onclick="if(event.target===this)closeCmdk()">
+  <div class="cmdk">
+    <input class="cmdk-input" id="cmdkInput" placeholder="Suche Leads, springe zu Seiten, führe Aktionen aus…" oninput="renderCmdk()" onkeydown="cmdkKey(event)">
+    <div class="cmdk-results" id="cmdkResults"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="previewOverlay" onclick="if(event.target===this)closePreview()">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="prevTitle">E-Mail Vorschau</div>
+      <button class="modal-x" onclick="closePreview()">×</button>
+    </div>
+    <div class="modal-sub" id="prevSub"></div>
+    <div class="prev-source" id="prevSourceRow"></div>
+    <div class="modal-body">
+      <div class="preview-box">
+        <div class="preview-subj" id="pvSubj"></div>
+        <div id="pvBody"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closePreview()">Abbrechen</button>
+      <button class="btn btn-solid" id="pvSendBtn" onclick="confirmPreviewSend()">✉ Jetzt senden</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"><span class="t-dot"></span><span id="toast-msg"></span></div>
+
+<script>
+// ════ STATE ════
+let currentPage = 'dashboard';
+let strategy = { verticals: [], regions: [] };
+let reportCache = {};
+let selectedLeads = new Set();
+let leadsCache = [];
+let inboxCache = [];
+let activeInboxUid = null;
+let templateCache = { subject: '', body: '' };
+let activeCat = 'all';
+let cmdkItems = [], cmdkSel = 0;
+let parsedRecipients = [];
+let selectedVerticals = new Set();
+let inboxTab = 'in';
+let sentCache = [];
+let templatesCache = [];
+let editingTplId = null;
+let jobsCache = [];
+
+const SL = { new:'Neu', checked:'Geprüft', draft_ready:'Entwurf bereit', approved:'Freigegeben',
+  contacted:'Kontaktiert', replied:'Geantwortet', demo_booked:'Demo gebucht',
+  proposal_sent:'Angebot', won:'Gewonnen', lost:'Verloren', no_interest:'Kein Interesse',
+  not_suitable:'Ungeeignet', duplicate:'Duplikat', missing_data:'Fehlende Daten',
+  manual_review:'Review', do_not_contact:'DNC', archived:'Archiviert' };
+
+const EL = { status_changed:'Status geändert', approved:'Freigegeben', sent_marked:'Als gesendet markiert',
+  manual_contact:'Kontaktiert', manual_call:'Anruf notiert', draft_created:'Entwurf erstellt',
+  message_edited:'Nachricht bearbeitet', archived:'Archiviert' };
+
+const CATLABELS = { all:'Alle', handwerk:'🔧 Handwerk', medizin:'⚕️ Medizin', recht:'⚖️ Recht & Finanzen', beauty:'💅 Beauty', service:'🧹 Service' };
+
+const KCOLS = [
+  { s:'contacted',     label:'Kontaktiert',  color:'#4d90ff', next:'replied',       nLabel:'Geantwortet ✓' },
+  { s:'replied',       label:'Geantwortet',  color:'#a78bfa', next:'demo_booked',   nLabel:'Demo gebucht ✓' },
+  { s:'demo_booked',   label:'Demo gebucht', color:'#f59e0b', next:'proposal_sent', nLabel:'Angebot gesendet ✓' },
+  { s:'proposal_sent', label:'Angebot',      color:'#f97316', next:'won',           nLabel:'Gewonnen ✓' },
+  { s:'won',           label:'Gewonnen',     color:'#22d17c', next:null,            nLabel:null },
+  { s:'lost',          label:'Verloren',     color:'#f87171', next:null,            nLabel:null },
+];
+
+// ════ NAVIGATION ════
+function setPage(name) {
+  currentPage = name;
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('p-' + name).classList.add('active');
+  document.getElementById('nav-' + name).classList.add('active');
+  const titles = { dashboard:'Übersicht', pipeline:'Leads finden', sender:'E-Mail Sender', sent:'Gesendet', autosend:'Auto-Versand', templates:'Vorlagen', analytics:'Analyse', inbox:'Posteingang', outreach:'Pipeline' };
+  document.getElementById('topbar-title').textContent = titles[name] || name;
+  if (name === 'pipeline') { loadLeads(); renderIndustryPicker(); }
+  if (name === 'sender') loadTemplate();
+  if (name === 'sent') loadSentPage();
+  if (name === 'autosend') loadAutoSend();
+  if (name === 'templates') loadTemplatesPage();
+  if (name === 'analytics') loadAnalytics();
+  if (name === 'inbox') { inboxTab==='in' ? loadInbox() : loadSentList(); }
+  if (name === 'outreach') loadOutreach();
+  if (name === 'dashboard') { renderDashboard(); hydrateTemplateEditors(); }
+}
+
+// ════ DATA ════
+async function reload() {
+  await Promise.all([loadReport(), loadSmtpStatus(), loadImapStatus(), loadStrategy(), ensureTemplate(), updateAutosendBadge()]);
+  if (currentPage === 'pipeline') loadLeads();
+  if (currentPage === 'outreach') loadOutreach();
+  if (currentPage === 'dashboard') { renderDashboard(); hydrateTemplateEditors(); }
+  if (currentPage === 'inbox') loadInbox();
+}
+
+async function loadReport() {
+  reportCache = await fetchJSON('/api/report');
+  const d = reportCache;
+  countUp('k-pipe', d.pipeline_value || 0, true);
+  set('k-weighted', eur(d.weighted_value || 0));
+  countUp('k-mrr', d.potential_mrr || 0, true);
+  countUp('k-a', d.a_leads || 0);
+  set('k-total', d.gesamt || 0);
+  const sc = d.status_counts || {};
+  countUp('k-pend', sc.contacted || 0);
+  const nbP = document.getElementById('nb-pipeline');
+  nbP.textContent = d.pending_approval || 0;
+  nbP.classList.toggle('zero', !(d.pending_approval > 0));
+  const outreachCnt = (sc.contacted||0)+(sc.replied||0)+(sc.demo_booked||0)+(sc.proposal_sent||0)+(sc.won||0);
+  const nbO = document.getElementById('nb-outreach');
+  nbO.textContent = outreachCnt;
+  nbO.classList.toggle('zero', !(outreachCnt > 0));
+}
+
+async function loadSmtpStatus() {
+  const pill = document.getElementById('smtp-pill');
+  const txt = document.getElementById('smtp-txt');
+  try {
+    const d = await fetchJSON('/api/smtp-status');
+    pill.className = 'conn-pill ' + (d.ok ? 'conn-ok' : 'conn-err');
+    txt.textContent = d.ok ? ('SMTP · ' + (d.from || d.host || 'OK')) : 'SMTP Fehler';
+    pill.title = d.ok ? ('SMTP: ' + d.host) : (d.error || 'Nicht konfiguriert');
+  } catch {
+    pill.className = 'conn-pill conn-err'; txt.textContent = 'SMTP unbekannt';
+  }
+}
+
+async function loadImapStatus() {
+  const pill = document.getElementById('imap-pill');
+  const txt = document.getElementById('imap-txt');
+  try {
+    const d = await fetchJSON('/api/inbox/status');
+    pill.className = 'conn-pill ' + (d.ok ? 'conn-ok' : 'conn-err');
+    txt.textContent = d.ok ? ('Posteingang · ' + (d.unseen||0) + ' neu') : 'Posteingang aus';
+    pill.title = d.ok ? (d.host + ' · ' + (d.total||0) + ' Mails') : (d.error || 'Nicht konfiguriert');
+    const nb = document.getElementById('nb-inbox');
+    nb.textContent = d.unseen || 0;
+    nb.classList.toggle('zero', !(d.unseen > 0));
+  } catch {
+    pill.className = 'conn-pill conn-err'; txt.textContent = 'Posteingang aus';
+  }
+}
+
+async function loadStrategy() {
+  strategy = await fetchJSON('/api/strategy');
+  renderIndustryPicker();
+}
+
+// ════ DASHBOARD ════
+function renderDashboard() {
+  const sc = reportCache.status_counts || {};
+  const total = Math.max(1, reportCache.gesamt || 1);
+  const won = sc.won || 0; const contacted = sc.contacted || 0;
+  const conv = contacted > 0 ? Math.round(won / contacted * 100) : 0;
+  set('conv-rate', 'Win Rate: ' + conv + '%');
+  const rows = [
+    { label:'Alle Leads',   n: reportCache.gesamt||0, color:'#252d40' },
+    { label:'A-Leads',      n: reportCache.a_leads||0, color:'#4d90ff' },
+    { label:'Freigegeben',  n: sc.approved||0,          color:'#7ab4ff' },
+    { label:'Kontaktiert',  n: sc.contacted||0,         color:'#6aa4ff' },
+    { label:'Geantwortet',  n: sc.replied||0,           color:'#a78bfa' },
+    { label:'Demo',         n: sc.demo_booked||0,       color:'#f59e0b' },
+    { label:'Angebot',      n: sc.proposal_sent||0,     color:'#f97316' },
+    { label:'Gewonnen',     n: sc.won||0,               color:'#22d17c' },
+  ];
+  const maxN = Math.max(1, ...rows.map(r => r.n));
+  document.getElementById('funnel').innerHTML = rows.map(r => {
+    const pct = Math.max(3, Math.round(r.n / maxN * 100));
+    const rate = r.label !== 'Alle Leads' ? Math.round(r.n / total * 100) + '%' : '';
+    return `<div class="f-row">
+      <div class="f-lbl">${r.label}</div>
+      <div class="f-bar-bg"><div class="f-bar" style="width:${pct}%;background:${r.color}">${r.n > 0 ? r.n : ''}</div></div>
+      <div class="f-n">${r.n}</div>
+      <div class="f-rate">${rate}</div>
+    </div>`;
+  }).join('');
+  loadActivityFeed();
+}
+
+async function loadActivityFeed() {
+  try {
+    const statuses = ['contacted','replied','won','demo_booked'];
+    const results = await Promise.all(statuses.map(s => fetchJSON('/api/leads?status='+s).catch(()=>[])));
+    const leads = results.flat();
+    const events = leads
+      .flatMap(l => (l.outreach_events||[]).map(e => ({ ...e, ln: l.name })))
+      .sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, 15);
+    set('act-cnt', events.length + ' Ereignisse');
+    if (!events.length) { document.getElementById('act-list').innerHTML = '<div style="text-align:center;padding:30px;color:var(--txt4);font-size:12px">Noch keine Outreach-Aktivität</div>'; return; }
+    const dotColor = t => t==='approved'?'#22d17c':t==='manual_contact'?'#4d90ff':t==='manual_call'?'#f59e0b':'#252d40';
+    document.getElementById('act-list').innerHTML = events.map(e => `
+      <div class="act-item">
+        <span class="act-dot" style="background:${dotColor(e.event_type)}"></span>
+        <div class="act-body">
+          <div class="act-title">${esc(e.ln||'')} — ${EL[e.event_type]||e.event_type}</div>
+          <div class="act-time">${fmtDate(e.created_at)}</div>
+        </div>
+      </div>`).join('');
+  } catch { document.getElementById('act-list').innerHTML = '<div style="color:var(--txt3);font-size:11px;padding:16px">Fehler beim Laden</div>'; }
+}
+
+// ════ INDUSTRY PICKER ════
+function renderIndustryPicker() {
+  const regionSel = document.getElementById('ind-region');
+  if (regionSel && strategy.regions?.length && regionSel.options.length <= 1) {
+    regionSel.innerHTML = '<option value="">Region wählen…</option>' +
+      strategy.regions.map(r => `<optgroup label="${esc(r.label)}">` +
+        r.cities.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('') + '</optgroup>').join('');
+  }
+  const cats = ['all', ...new Set((strategy.verticals||[]).map(v => v.category).filter(Boolean))];
+  document.getElementById('ind-cat-tabs').innerHTML = cats.map(c =>
+    `<div class="cat-tab ${activeCat===c?'active':''}" onclick="setCat('${c}')">${CATLABELS[c]||c}</div>`).join('');
+  renderIndustryCards();
+}
+
+function setCat(c) { activeCat = c; renderIndustryPicker(); }
+
+function renderIndustryCards() {
+  const grid = document.getElementById('ind-grid');
+  if (!grid || !strategy.verticals?.length) { if(grid) grid.innerHTML = ''; return; }
+  const list = activeCat === 'all' ? strategy.verticals : strategy.verticals.filter(v => v.category === activeCat);
+  grid.innerHTML = list.map(vt => `
+    <div class="ind-card">
+      <div class="ind-card-top">
+        <span class="ind-emoji">${vt.icon||'🎯'}</span>
+        <span class="ind-cat-badge">${(CATLABELS[vt.category]||vt.category||'').replace(/^\S+\s/,'')}</span>
+      </div>
+      <div class="ind-name">${esc(vt.label)}</div>
+      <div class="ind-why">${esc(vt.whyNow)}</div>
+      <div class="ind-metrics">
+        <div class="ind-metric"><b>${eur(vt.avgDealValue)}</b><span>Deal</span></div>
+        <div class="ind-metric"><b>${eur(vt.monthlyRetainer)}</b><span>MRR</span></div>
+      </div>
+      <div class="ind-run">
+        <select id="term-${vt.id}">${vt.searchTerms.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('')}</select>
+        <input id="max-${vt.id}" type="number" min="1" max="100" value="20" title="Anzahl Leads">
+        <button class="ind-run-btn" id="run-${vt.id}" onclick="runIndustry('${vt.id}')">▶ Suchen</button>
+      </div>
+    </div>`).join('');
+}
+
+async function runIndustry(id) {
+  const branche = document.getElementById('term-'+id)?.value;
+  const stadt = document.getElementById('ind-region')?.value;
+  const max = Number(document.getElementById('max-'+id)?.value || 20);
+  if (!stadt) { toast('Bitte zuerst oben eine Region/Stadt wählen', true); return; }
+  const btn = document.getElementById('run-'+id);
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Suche…';
+  toast('Suche ' + branche + ' in ' + stadt + '…');
+  try {
+    const r = await post('/api/run', { branche, stadt, max, skipAi: true });
+    const body = await r.json();
+    if (!r.ok) { toast(body.error || 'Suche fehlgeschlagen', true); return; }
+    toast('✓ ' + (body.total||0) + ' Leads gefunden für ' + branche);
+    await loadReport();
+    loadLeads();
+  } catch (e) {
+    toast('Fehler bei der Suche', true);
+  } finally {
+    btn.disabled = false; btn.innerHTML = '▶ Suchen';
+  }
+}
+
+// ════ PIPELINE / LEADS ════
+async function loadLeads() {
+  const p = new URLSearchParams();
+  const s=v('fs'), b=v('fb'), pr=v('fp'), st=v('fst');
+  if (s) p.set('stadt',s); if (b) p.set('branche',b);
+  if (pr) p.set('prioritaet',pr); if (st) p.set('status',st);
+  if (document.getElementById('fa')?.checked) p.set('includeArchived','1');
+  const grid = document.getElementById('grid');
+  grid.innerHTML = Array(4).fill('<div class="skel skel-card"></div>').join('');
+  const leads = await fetchJSON('/api/leads?'+p);
+  leadsCache = leads;
+  renderBrancheFilter();
+  renderLeads(applyVerticalFilter(leads));
+  renderStatusRail(reportCache.status_counts || {});
+}
+
+// ════ BEREICHE FILTER ════
+function verticalForLead(l) {
+  const b = (l.branche||'').toLowerCase().trim();
+  if (!b) return null;
+  for (const vt of strategy.verticals||[]) {
+    if (vt.searchTerms.some(t => { const tl=t.toLowerCase(); return b.includes(tl)||tl.includes(b); })) return vt;
+    if (vt.label.toLowerCase().includes(b)) return vt;
+  }
+  return null;
+}
+function applyVerticalFilter(leads) {
+  if (!selectedVerticals.size) return leads;
+  return leads.filter(l => { const vt = verticalForLead(l); return vt && selectedVerticals.has(vt.id); });
+}
+function renderBrancheFilter() {
+  const body = document.getElementById('branchePanelBody');
+  if (!body || !strategy.verticals?.length) return;
+  const counts = {};
+  (leadsCache||[]).forEach(l => { const vt = verticalForLead(l); if (vt) counts[vt.id] = (counts[vt.id]||0)+1; });
+  const cats = {};
+  strategy.verticals.forEach(vt => { (cats[vt.category] = cats[vt.category]||[]).push(vt); });
+  let html = '';
+  for (const [cat, list] of Object.entries(cats)) {
+    const allSel = list.every(vt => selectedVerticals.has(vt.id));
+    html += `<div class="bf-group">
+      <div class="bf-cat" onclick="toggleBrancheCat('${cat}')"><span class="bf-cat-cb ${allSel?'on':''}"></span>${CATLABELS[cat]||cat}</div>
+      ${list.map(vt=>`<label class="bf-item" onclick="event.stopPropagation()">
+        <input type="checkbox" ${selectedVerticals.has(vt.id)?'checked':''} onchange="toggleVertical('${vt.id}',this.checked)">
+        ${esc(vt.label)}
+        <span class="bf-count ${counts[vt.id]?'':'zero'}">${counts[vt.id]||0}</span>
+      </label>`).join('')}
+    </div>`;
+  }
+  body.innerHTML = html;
+  updateBrancheBtn();
+}
+function updateBrancheBtn() {
+  const btn = document.getElementById('bfBtn');
+  if (!btn) return;
+  const n = selectedVerticals.size;
+  btn.classList.toggle('has-sel', n > 0);
+  btn.innerHTML = (n > 0 ? `🗂 ${n} Bereich${n>1?'e':''}` : '🗂 Bereiche') + ' <span class="bf-caret">▾</span>';
+}
+function toggleVertical(id, on) {
+  if (on) selectedVerticals.add(id); else selectedVerticals.delete(id);
+  renderBrancheFilter();
+  renderLeads(applyVerticalFilter(leadsCache));
+}
+function toggleBrancheCat(cat) {
+  const list = (strategy.verticals||[]).filter(vt => vt.category === cat);
+  const allSel = list.every(vt => selectedVerticals.has(vt.id));
+  list.forEach(vt => { if (allSel) selectedVerticals.delete(vt.id); else selectedVerticals.add(vt.id); });
+  renderBrancheFilter();
+  renderLeads(applyVerticalFilter(leadsCache));
+}
+function clearBrancheFilter() {
+  selectedVerticals.clear();
+  renderBrancheFilter();
+  renderLeads(applyVerticalFilter(leadsCache));
+}
+function toggleBranchePanel(e) {
+  e.stopPropagation();
+  document.getElementById('branchePanel').classList.toggle('show');
+}
+document.addEventListener('click', e => {
+  const bf = document.querySelector('.branche-filter');
+  if (bf && !bf.contains(e.target)) document.getElementById('branchePanel')?.classList.remove('show');
+});
+
+function renderStatusRail(counts) {
+  const statuses = ['new','checked','draft_ready','approved','contacted','replied','demo_booked','proposal_sent','won','lost','no_interest','not_suitable','duplicate','missing_data','manual_review','do_not_contact'];
+  const active = v('fst');
+  document.getElementById('statusRail').innerHTML = statuses.map(s => `
+    <button class="s-chip ${active===s?'active':''}" onclick="setStatusFilter('${s}')">
+      <b>${counts[s]||0}</b>${SL[s]||s}
+    </button>`).join('');
+}
+
+function setStatusFilter(s) { document.getElementById('fst').value = s; loadLeads(); }
+
+function renderLeads(leads) {
+  const g = document.getElementById('grid');
+  if (!leads.length) { g.innerHTML = '<div class="empty-state"><div class="ei">◈</div><div class="et">Keine Leads in dieser Ansicht</div><div class="es">Wähle oben eine Branche und suche neue Leads</div></div>'; return; }
+  g.innerHTML = leads.map(buildLeadCard).join('');
+  updateBulkBar();
+}
+
+function buildLeadCard(l) {
+  const hasMsgs = l.nachricht_chatbot || l.nachricht_telefon || l.nachricht_website;
+  const inOutreach = ['contacted','replied','demo_booked','proposal_sent','won','lost'].includes(l.status);
+  const isSel = selectedLeads.has(l.id);
+  return `<div class="lc p${l.prioritaet} ${isSel?'sel':''}" id="c${l.id}">
+    <div class="lc-head">
+      <div class="lc-check">
+        <input type="checkbox" class="lc-cb" ${isSel?'checked':''} ${l.email?'':'disabled'} title="${l.email?'Für Sammel-Versand auswählen':'Keine E-Mail'}" onchange="toggleSelect('${l.id}',this.checked)">
+        <div>
+          <div class="lc-name">${esc(l.name)}</div>
+          <div class="lc-sub">${esc(l.branche)} · ${esc(l.stadt)}${l.stadtbezirk?' / '+esc(l.stadtbezirk):''}${l.adresse?' · '+esc(l.adresse):''}</div>
+        </div>
+      </div>
+      <div class="lc-right">
+        <span class="pri ${l.prioritaet}">${l.prioritaet}</span>
+        <span class="stpill st-${l.status}">${SL[l.status]||l.status}</span>
+      </div>
+    </div>
+    ${buildChips(l)}
+    ${buildChannels(l)}
+    <div class="lc-scores">
+      ${scoreBar('Chatbot', l.score_chatbot||0)}
+      ${scoreBar('KI-Tel', l.score_telefon||0)}
+      ${scoreBar('Web', l.score_website||0)}
+      ${scoreBar('Gesamt', l.score_gesamt||0)}
+    </div>
+    ${buildExplain(l)}
+    ${buildMsgs(l)}
+    ${buildManualOutreach(l)}
+    ${l.telefonstrategie_empfohlen?'<div class="lc-notice">Telefon-Strategie empfohlen — kein automatischer Anruf.</div>':''}
+    ${buildHistory(l)}
+    <div class="lc-actions">
+      <select id="k${l.id}">
+        ${l.email?'<option value="email">E-Mail</option>':''}
+        ${l.whatsapp?'<option value="whatsapp">WhatsApp</option>':''}
+        ${l.kontaktformular_url?'<option value="kontaktformular">Formular</option>':''}
+        ${l.telefon?'<option value="telefon">Telefon</option>':''}
+        ${!l.whatsapp&&!l.email&&!l.kontaktformular_url&&!l.telefon?'<option value="">Kein Kanal</option>':''}
+      </select>
+      ${l.email?`<button class="btn btn-solid" onclick="quickSend('${l.id}')">✉ E-Mail senden</button>`:''}
+      ${['checked','manual_review','new'].includes(l.status)?`<button class="btn btn-g" onclick="prepareDraft('${l.id}')">Entwurf erstellen</button>`:''}
+      ${l.telefon?`<button class="btn btn-warn" onclick="manualCall('${l.id}')">Anruf notieren</button>`:''}
+      ${l.status==='draft_ready'&&hasMsgs?`<button class="btn btn-g" onclick="approve('${l.id}')">Approve</button>`:''}
+      ${!['not_suitable','contacted','do_not_contact'].includes(l.status)?`<button class="btn btn-ghost" onclick="reject('${l.id}')">Ablehnen</button>`:''}
+      ${l.status!=='archived'?`<button class="btn btn-ghost" onclick="archiveLead('${l.id}')">Archivieren</button>`:'<span class="st-tag">Archiviert</span>'}
+      <details style="position:relative">
+        <summary class="btn btn-ghost">···</summary>
+        <button class="btn btn-danger" style="position:absolute;bottom:calc(100% + 4px);right:0;white-space:nowrap;z-index:50" onclick="deleteLead('${l.id}','${l.status}',${Boolean(l.contacted_at||l.gesendet_at)})">Endgültig löschen</button>
+      </details>
+      ${inOutreach?`<button class="btn btn-b" onclick="goOutreach('${l.id}')">→ Pipeline</button>`:''}
+    </div>
+  </div>`;
+}
+
+function scoreBar(label, n) {
+  const cls = sc2(n);
+  return `<div class="lsc">
+    <span>${label}</span>
+    <div class="lsc-bar"><i class="${cls}-bg" style="width:${Math.min(100,n)}%"></i></div>
+    <b class="lsc-n ${cls}">${n}</b>
+  </div>`;
+}
+
+function buildChips(l) {
+  const c = [];
+  if (l.google_bewertung) c.push(`<span class="chip info">★ ${l.google_bewertung} (${l.google_anzahl_reviews})</span>`);
+  if (l.hat_chatbot) c.push('<span class="chip ok">Chatbot</span>');
+  else if (l.hat_website) c.push('<span class="chip miss">Kein Chatbot</span>');
+  if (l.hat_online_buchung) c.push('<span class="chip ok">Online-Buchung</span>');
+  if (l.hat_notdienst_hinweis) c.push('<span class="chip info">Notdienst</span>');
+  if (l.website_alt) c.push('<span class="chip warn">Alte Website</span>');
+  if (!l.hat_website&&!l.website) c.push('<span class="chip miss">Keine Website</span>');
+  return c.length?`<div class="lc-chips">${c.join('')}</div>`:'';
+}
+
+function buildChannels(l) {
+  const pts = Array.isArray(l.contact_points) ? l.contact_points : fallbackCPs(l);
+  const by = Object.fromEntries(pts.map(p=>[p.type,p]));
+  const out = [];
+  if (by.email) out.push(`<span class="ch ch-em" title="${esc(by.email.value)}">✉ E-Mail</span>`);
+  if (by.whatsapp) out.push('<span class="ch ch-wa">WhatsApp</span>');
+  if (by.kontaktformular) out.push('<span class="ch ch-form">Formular</span>');
+  if (by.telefon) out.push(`<span class="ch ch-tel" title="${esc(by.telefon.value)}">Telefon</span>`);
+  if (by.website) out.push(`<a class="ch ch-web" href="${esc(by.website.value)}" target="_blank">Website →</a>`);
+  return out.length?`<div class="lc-channels">${out.join('')}</div>`:'';
+}
+
+function buildExplain(l) {
+  const r = safeJson(l.score_gruende)||{}, ev = safeJson(l.website_evidence)||[];
+  return `<details class="lc-explain"><summary class="ex-sum">Analyse & Begründung</summary>
+    <div class="ex-body">
+      <div>
+        <h4>Warum relevant</h4>
+        ${rList('Chatbot',r.chatbot)}${rList('KI-Telefon',r.telefon)}${rList('Website',r.website)}
+      </div>
+      <div>
+        <h4>Website-Evidence</h4>
+        ${ev.length?`<ul>${ev.map(e=>`<li>${esc(e)}</li>`).join('')}</ul>`:'<ul><li>Keine Evidence vorhanden.</li></ul>'}
+      </div>
+    </div>
+  </details>`;
+}
+
+function buildHistory(l) {
+  const evts = Array.isArray(l.outreach_events) ? l.outreach_events : [];
+  if (!evts.length) return '';
+  return `<details class="lc-hist"><summary class="hist-sum">Verlauf (${evts.length})</summary>
+    <div class="hist-body">${evts.slice(0,6).map(e=>`
+      <div class="hr">
+        <span class="hd ev-${e.event_type}"></span>
+        <div class="hb">
+          <span class="ht">${EL[e.event_type]||e.event_type}</span>
+          ${e.channel?`<span class="hch">· ${esc(e.channel)}</span>`:''}
+          ${e.note&&!e.note.includes('rekonstruiert')?`<div class="hn">${esc(e.note.slice(0,200))}</div>`:''}
+          <div class="hti">${fmtDate(e.created_at)}</div>
+        </div>
+      </div>`).join('')}
+    </div>
+  </details>`;
+}
+
+function buildMsgs(l) {
+  const blocks = [];
+  if (l.nachricht_chatbot) blocks.push({type:'chatbot',label:'Chatbot',text:l.nachricht_chatbot});
+  if (l.nachricht_telefon) blocks.push({type:'telefon',label:'KI-Telefon',text:l.nachricht_telefon});
+  if (l.nachricht_website) blocks.push({type:'website',label:'Website',text:l.nachricht_website});
+  if (!blocks.length) return '';
+  return `<div class="lc-msgs">${blocks.map(b=>`
+    <div class="mb">
+      <div class="mb-head" onclick="toggleMsg(this)">
+        <span class="mb-label">${b.label}</span>
+        <button class="mb-edit" onclick="event.stopPropagation();editMsg('${l.id}','${b.type}',this)">Bearbeiten</button>
+      </div>
+      <div class="mb-body"><textarea id="m${l.id}${b.type}" readonly>${esc(b.text)}</textarea></div>
+    </div>`).join('')}</div>`;
+}
+
+function buildManualOutreach(l) {
+  if (l.status !== 'approved') return '';
+  const targets = [
+    ['email','E-Mail',l.email],['whatsapp','WhatsApp',l.whatsapp],
+    ['kontaktformular','Formular',l.kontaktformular_url],['social','Social',firstSocial(l)],
+    ['telefon','Telefon',l.telefon],
+  ].filter(([,,t])=>t);
+  if (!targets.length) return '<div class="lc-notice">Keine Kontaktmöglichkeit gefunden.</div>';
+  return `<div class="lc-manual">${targets.map(([ch,lbl,tgt])=>manualCardHtml(l,ch,lbl,tgt)).join('')}</div>`;
+}
+
+function manualCardHtml(l, ch, lbl, tgt) {
+  const id = `manual-${l.id}-${ch}`;
+  const txt = buildManualMsg(l, ch);
+  const subj = ch==='email'?`Betreff: Kurze Idee für ${l.name}`:'';
+  return `<div class="mc">
+    <h4>${lbl}</h4>
+    <div class="target">${esc(tgt)}</div>
+    ${subj?`<div class="target" style="color:var(--txt3);font-size:10px">${esc(subj)}</div>`:''}
+    <textarea id="${id}" readonly>${esc(txt)}</textarea>
+    <div class="row">
+      <button class="btn btn-ghost" onclick="copyText('${id}')">Kopieren</button>
+      ${ch==='email'?`<button class="btn btn-b" id="sendbtn-${l.id}" onclick="toggleSendForm('${l.id}','${id}','${esc(l.email||'')}','${esc(l.name||'')}')">E-Mail senden</button>`:''}
+      <button class="btn btn-g" onclick="markManualContact('${l.id}','${ch}','${id}')">Als kontaktiert markieren</button>
+    </div>
+  </div>`;
+}
+
+function buildManualMsg(l, ch) {
+  const base = l.approved_nachricht||l.nachricht_chatbot||l.nachricht_telefon||l.nachricht_website||'';
+  if (!base) return '';
+  if (['whatsapp','kontaktformular','social'].includes(ch)) return base.split('\n').filter(Boolean).slice(0,3).join('\n').slice(0,650);
+  if (ch==='telefon') return 'Nur manueller Anruf — kein automatischer Versand.\n\n'+base;
+  return base;
+}
+
+// ════ SELECTION / BULK ════
+function toggleSelect(id, checked) {
+  if (checked) selectedLeads.add(id); else selectedLeads.delete(id);
+  document.getElementById('c'+id)?.classList.toggle('sel', checked);
+  updateBulkBar();
+}
+function clearSelection() {
+  selectedLeads.clear();
+  document.querySelectorAll('.lc-cb:checked').forEach(cb => cb.checked = false);
+  document.querySelectorAll('.lc.sel').forEach(c => c.classList.remove('sel'));
+  updateBulkBar();
+}
+function updateBulkBar() {
+  const bar = document.getElementById('bulkBar');
+  const n = selectedLeads.size;
+  document.getElementById('bulkCount').textContent = n;
+  bar.classList.toggle('show', n > 0);
+}
+function bulkSendSelected() {
+  const recipients = leadsCache
+    .filter(l => selectedLeads.has(l.id) && l.email)
+    .map(l => ({ id: l.id, name: l.name, email: l.email, branche: l.branche, stadt: l.stadt }));
+  if (!recipients.length) { toast('Keine ausgewählten Leads mit E-Mail', true); return; }
+  openBulkPreview(recipients, 'pipeline');
+}
+function quickSend(id) { openSinglePreview(id); }
+
+// ════ OUTREACH KANBAN ════
+async function loadOutreach() {
+  const sc = reportCache.status_counts || {};
+  const lost = (sc.lost||0)+(sc.no_interest||0);
+  set('os-c', sc.contacted||0); set('os-r', sc.replied||0);
+  set('os-d', sc.demo_booked||0); set('os-p', sc.proposal_sent||0);
+  set('os-w', sc.won||0); set('os-l', lost);
+  const sent = Math.max(1, sc.contacted||1);
+  set('os-rr', pct(sc.replied,sent) + ' Reply Rate');
+  set('os-dr', pct(sc.demo_booked,sent) + ' Demo Rate');
+  set('os-wr', pct(sc.won,sent) + ' Win Rate');
+
+  const outSts = ['contacted','replied','demo_booked','proposal_sent','won','lost','no_interest'];
+  const results = await Promise.all(outSts.map(s => fetchJSON('/api/leads?status='+s).catch(()=>[])));
+  const leads = results.flat();
+  const byStatus = {};
+  for (const l of leads) {
+    const key = l.status==='no_interest'?'lost':l.status;
+    if (!byStatus[key]) byStatus[key]=[];
+    byStatus[key].push(l);
+  }
+  document.getElementById('kanban').innerHTML = KCOLS.map(col => {
+    const cls = byStatus[col.s]||[];
+    return `<div class="kb-col">
+      <div class="kb-head">
+        <div class="kb-title"><span class="kb-dot" style="background:${col.color}"></span><span style="color:${col.color}">${col.label}</span></div>
+        <span class="kb-cnt">${cls.length}</span>
+      </div>
+      <div class="kb-body">
+        ${cls.length ? cls.map(l=>buildOCard(l,col)).join('') : '<div class="kb-empty">Leer</div>'}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function buildOCard(l, col) {
+  const sentEvt = (l.outreach_events||[]).find(e=>e.event_type==='manual_contact'||e.event_type==='sent_marked');
+  const msg = l.approved_nachricht||l.nachricht_chatbot||l.nachricht_telefon||l.nachricht_website||'';
+  const priColor = l.prioritaet==='A'?'#22d17c':l.prioritaet==='B'?'#f59e0b':'#3a4458';
+  return `<div class="ocard">
+    <div class="oc-name">${esc(l.name)}</div>
+    <div class="oc-meta">${esc(l.branche)} · ${esc(l.stadt)} · <span style="color:${priColor}">${l.prioritaet}-Lead</span></div>
+    ${l.email?`<div class="oc-email">${esc(l.email)}</div>`:''}
+    ${sentEvt?`<div class="oc-date">${fmtDate(sentEvt.created_at)}</div>`:''}
+    ${msg?`<div class="oc-msg">${esc(msg)}</div>`:''}
+    <div class="oc-actions">
+      ${col.next?`<button class="ob ob-next" onclick="updateStatus('${l.id}','${col.next}',this)">${col.nLabel}</button>`:''}
+      ${col.s!=='lost'&&col.s!=='won'?`<button class="ob ob-lost" onclick="updateStatus('${l.id}','lost',this)">Verloren</button>`:''}
+      <button class="ob ob-ghost" onclick="goOutreach('${l.id}')">Details</button>
+    </div>
+  </div>`;
+}
+
+async function updateStatus(id, status, btn) {
+  btn.disabled = true; btn.textContent = '...';
+  const r = await post('/api/status', { id, status });
+  if (!r.ok) { toast('Fehler beim Update', true); btn.disabled=false; return; }
+  toast('→ ' + (SL[status]||status));
+  await Promise.all([loadReport(), loadOutreach()]);
+}
+
+function goOutreach(id) {
+  document.getElementById('fst').value = '';
+  setPage('pipeline');
+  setTimeout(async ()=>{
+    await loadLeads();
+    const el = document.getElementById('c'+id);
+    if (el) el.scrollIntoView({ behavior:'smooth', block:'center' });
+  }, 200);
+}
+
+// ════ POSTEINGANG ════
+async function loadInbox() {
+  const list = document.getElementById('inbox-list');
+  list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--txt4);font-size:12px">Lade Posteingang…</div>';
+  try {
+    const emails = await fetchJSON('/api/inbox?limit=40');
+    inboxCache = Array.isArray(emails) ? emails : [];
+    renderInboxList(inboxCache);
+    loadImapStatus();
+  } catch {
+    list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--r);font-size:12px">Posteingang nicht erreichbar.<br><span style="color:var(--txt3)">IMAP in .env prüfen</span></div>';
+  }
+}
+
+function renderInboxList(emails) {
+  const list = document.getElementById('inbox-list');
+  if (!emails.length) {
+    list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--txt4);font-size:12px">Keine E-Mails im Posteingang</div>';
+    return;
+  }
+  const leadEmails = new Set(leadsCache.map(l => (l.email||'').toLowerCase()).filter(Boolean));
+  list.innerHTML = emails.map(e => {
+    const isLead = leadEmails.has((e.from||'').toLowerCase());
+    return `<div class="inbox-item ${e.seen?'':'unseen'} ${activeInboxUid===e.uid?'active':''}" onclick="openEmail(${e.uid})">
+      <div class="ii-top">
+        <div class="ii-from">${e.seen?'':'<span class="ii-dot"></span>'}${esc(e.fromName)}</div>
+        <div class="ii-time">${fmtShort(e.date)}</div>
+      </div>
+      <div class="ii-subj">${esc(e.subject)}</div>
+      <div class="ii-snip">${esc(e.snippet)}</div>
+      ${isLead?'<span class="ii-match">✓ Bekannter Lead</span>':''}
+    </div>`;
+  }).join('');
+}
+
+async function openEmail(uid) {
+  activeInboxUid = uid;
+  const e = inboxCache.find(x => x.uid === uid);
+  if (!e) return;
+  renderInboxList(inboxCache);
+  const initials = (e.fromName||'?').trim().charAt(0).toUpperCase();
+  const matchLead = leadsCache.find(l => (l.email||'').toLowerCase() === (e.from||'').toLowerCase());
+  document.getElementById('inbox-detail').innerHTML = `
+    <div class="inbox-detail-head">
+      <div class="idh-subj">${esc(e.subject)}</div>
+      <div class="idh-meta">
+        <div class="idh-avatar">${esc(initials)}</div>
+        <div>
+          <div style="color:#fff;font-weight:600">${esc(e.fromName)}</div>
+          <div style="font-size:11px;color:var(--txt3)">${esc(e.from)} · ${fmtDate(e.date)}</div>
+        </div>
+        ${matchLead?`<button class="btn btn-b" style="margin-left:auto" onclick="markReplied('${matchLead.id}')">→ Als „Geantwortet" markieren</button>`:''}
+      </div>
+    </div>
+    <div class="inbox-body">${esc(e.body)}</div>
+    <div class="inbox-reply">
+      <a class="btn btn-solid" href="mailto:${esc(e.from)}?subject=${encodeURIComponent('Re: '+e.subject)}">↩ Antworten</a>
+      ${matchLead?`<button class="btn btn-ghost" onclick="goOutreach('${matchLead.id}')">Lead ansehen</button>`:''}
+    </div>`;
+  if (!e.seen) {
+    post('/api/inbox/'+uid+'/seen', {}).catch(()=>{});
+    e.seen = true;
+    loadImapStatus();
+  }
+}
+
+async function markReplied(leadId) {
+  const r = await post('/api/status', { id: leadId, status: 'replied' });
+  if (r.ok) { toast('✓ Als geantwortet markiert'); loadReport(); }
+}
+
+// ════ E-MAIL VORLAGE (geteilt: Übersicht + Sender) ════
+async function ensureTemplate() {
+  const t = await fetchJSON('/api/email-template').catch(()=>null);
+  if (t && t.subject !== undefined) templateCache = t;
+  return templateCache;
+}
+function renderTpl(t, vars) {
+  const rep = s => (s||'')
+    .replace(/\{name\}/g, vars.name||'')
+    .replace(/\{branche\}/g, vars.branche||'')
+    .replace(/\{stadt\}/g, vars.stadt||'');
+  return { subject: rep(t.subject), body: rep(t.body) };
+}
+const TMPL_EDITORS = [['tmpl','prev'], ['dtmpl','dprev']];
+function fillTemplateFields(t) {
+  TMPL_EDITORS.forEach(([pfx]) => {
+    const s = document.getElementById(pfx+'-subject'), b = document.getElementById(pfx+'-body');
+    if (s) s.value = t.subject || '';
+    if (b) b.value = t.body || '';
+  });
+  updateAllPreviews();
+}
+function updateAllPreviews() {
+  const sample = { name:'Zahnarztpraxis Dr. Müller', branche:'Zahnarzt', stadt:'Düsseldorf' };
+  TMPL_EDITORS.forEach(([pfx, ppfx]) => {
+    const subjEl = document.getElementById(pfx+'-subject'), bodyEl = document.getElementById(pfx+'-body');
+    if (!subjEl) return;
+    const r = renderTpl({ subject: subjEl.value, body: bodyEl.value }, sample);
+    const ps = document.getElementById(ppfx+'-subj'), pb = document.getElementById(ppfx+'-body');
+    if (ps) ps.textContent = r.subject;
+    if (pb) pb.textContent = r.body;
+  });
+}
+function bindTemplateInputs() {
+  ['tmpl-subject','tmpl-body','dtmpl-subject','dtmpl-body'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && !el._bound) { el.addEventListener('input', updateAllPreviews); el._bound = true; }
+  });
+}
+async function hydrateTemplateEditors() {
+  await ensureTemplate();
+  fillTemplateFields(templateCache);
+  bindTemplateInputs();
+}
+// Sender-Seite ruft weiterhin loadTemplate() auf
+async function loadTemplate() { await hydrateTemplateEditors(); }
+async function putTemplate(subject, body) {
+  if (!subject || !body) { toast('Betreff und Text sind Pflicht', true); return false; }
+  const r = await fetch('/api/email-template', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ subject, body }) });
+  if (!r.ok) { toast('Speichern fehlgeschlagen', true); return false; }
+  templateCache = { subject, body };
+  fillTemplateFields(templateCache);
+  toast('✓ Vorlage gespeichert – gilt überall');
+  return true;
+}
+function saveTemplate() { putTemplate(document.getElementById('tmpl-subject')?.value?.trim(), document.getElementById('tmpl-body')?.value?.trim()); }
+function saveDashTemplate() { putTemplate(document.getElementById('dtmpl-subject')?.value?.trim(), document.getElementById('dtmpl-body')?.value?.trim()); }
+
+// ════ E-MAIL VORSCHAU MODAL ════
+let previewCtx = null;
+function showPreview() { document.getElementById('previewOverlay').classList.add('show'); }
+function closePreview() { document.getElementById('previewOverlay').classList.remove('show'); previewCtx = null; }
+function currentPreviewContent() {
+  const { mode, lead, recipients, source } = previewCtx;
+  const ex = mode === 'single' ? lead : recipients[0];
+  if (mode === 'single' && source && source !== 'vorlage') {
+    const map = { chatbot: lead.nachricht_chatbot, telefon: lead.nachricht_telefon, website: lead.nachricht_website };
+    return { subject: renderTpl(templateCache, ex).subject, body: map[source] || '' };
+  }
+  return renderTpl(templateCache, ex);
+}
+function renderPreviewBody() {
+  const c = currentPreviewContent();
+  set('pvSubj', c.subject);
+  document.getElementById('pvBody').textContent = c.body;
+}
+function buildSourceRow() {
+  const row = document.getElementById('prevSourceRow');
+  if (!previewCtx || previewCtx.mode !== 'single') { row.innerHTML = ''; return; }
+  const l = previewCtx.lead;
+  const opts = [['vorlage','Vorlage']];
+  if (l.nachricht_chatbot) opts.push(['chatbot','Chatbot-Text']);
+  if (l.nachricht_telefon) opts.push(['telefon','KI-Telefon-Text']);
+  if (l.nachricht_website) opts.push(['website','Website-Text']);
+  if (opts.length === 1) { row.innerHTML = ''; return; }
+  row.innerHTML = '<span class="prev-src-lbl">Textquelle:</span>' +
+    opts.map(([k,lbl]) => `<button class="prev-src-btn ${previewCtx.source===k?'on':''}" onclick="switchPreviewSource('${k}')">${lbl}</button>`).join('');
+}
+function switchPreviewSource(src) { previewCtx.source = src; buildSourceRow(); renderPreviewBody(); }
+
+async function openSinglePreview(id) {
+  const l = leadsCache.find(x => x.id === id);
+  if (!l || !l.email) { toast('Keine E-Mail vorhanden', true); return; }
+  await ensureTemplate();
+  previewCtx = { mode:'single', lead:l, source:'vorlage' };
+  set('prevTitle', 'E-Mail Vorschau');
+  set('prevSub', 'An: ' + l.name + ' · ' + l.email);
+  buildSourceRow(); renderPreviewBody();
+  document.getElementById('pvSendBtn').innerHTML = '✉ Jetzt senden';
+  showPreview();
+}
+async function openBulkPreview(recipients, origin) {
+  if (!recipients.length) { toast('Keine Empfänger mit E-Mail', true); return; }
+  await ensureTemplate();
+  previewCtx = { mode:'bulk', recipients, origin, source:'vorlage' };
+  set('prevTitle', 'Vorschau – Sammel-Versand');
+  set('prevSub', `Wird an ${recipients.length} Firma(en) gesendet – jeweils mit eingesetztem Namen. Beispiel unten: ${recipients[0].name}`);
+  buildSourceRow(); renderPreviewBody();
+  document.getElementById('pvSendBtn').innerHTML = `✉ An ${recipients.length} senden`;
+  showPreview();
+}
+async function confirmPreviewSend() {
+  if (!previewCtx) return;
+  const btn = document.getElementById('pvSendBtn');
+  const label = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Sende…';
+  try {
+    if (previewCtx.mode === 'single') {
+      const { lead } = previewCtx;
+      const c = currentPreviewContent();
+      const r = await post('/api/send-email', { id: lead.id, to: lead.email, subject: c.subject, body: c.body });
+      const d = await r.json().catch(()=>({}));
+      if (!r.ok) { toast(d.error||'Senden fehlgeschlagen', true); return; }
+      toast('✓ E-Mail gesendet an ' + lead.name);
+    } else {
+      const r = await post('/api/bulk-send', { recipients: previewCtx.recipients });
+      const d = await r.json().catch(()=>({}));
+      if (!r.ok) { toast(d.error||'Versand fehlgeschlagen', true); return; }
+      toast(`✓ ${d.sent} gesendet${d.failed?', '+d.failed+' fehlgeschlagen':''}`);
+      if (previewCtx.origin === 'pipeline') clearSelection();
+      if (previewCtx.origin === 'sender') {
+        (d.results||[]).forEach(res => {
+          const i = parsedRecipients.findIndex(p => p.email === res.email);
+          if (i >= 0) { parsedRecipients[i]._sent = res.success; parsedRecipients[i]._failed = !res.success; }
+        });
+        renderRecipients();
+      }
+    }
+    closePreview();
+    await loadReport();
+    if (currentPage === 'pipeline') loadLeads();
+  } finally {
+    btn.disabled = false; btn.innerHTML = label;
+  }
+}
+
+function parseRecipients() {
+  const raw = document.getElementById('bulk-input')?.value || '';
+  const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+  parsedRecipients = lines.map(line => {
+    const emailMatch = line.match(/[\w.+-]+@[\w.-]+\.\w+/);
+    const email = emailMatch ? emailMatch[0] : '';
+    let name = line.replace(email, '').replace(/[,;]/g,'').trim();
+    if (!name) name = email ? email.split('@')[0] : '(ohne Name)';
+    return { name, email, valid: !!email };
+  });
+  renderRecipients();
+}
+
+function renderRecipients() {
+  const el = document.getElementById('recip-list');
+  const valid = parsedRecipients.filter(r => r.valid).length;
+  const invalid = parsedRecipients.length - valid;
+  document.getElementById('recip-info').textContent =
+    parsedRecipients.length ? `${valid} gültig${invalid?', '+invalid+' ohne E-Mail':''}` : '';
+  el.innerHTML = parsedRecipients.map((r,i) => `
+    <div class="recip-item">
+      <span class="ri-name" title="${esc(r.name)}">${esc(r.name)}</span>
+      <input value="${esc(r.email)}" onchange="parsedRecipients[${i}].email=this.value;parsedRecipients[${i}].valid=/@/.test(this.value);renderRecipients()" placeholder="E-Mail fehlt">
+      <span class="recip-status ${r._sent?'ok':r._failed?'err':(r.valid?'pending':'err')}">${r._sent?'✓ Gesendet':r._failed?'✗ Fehler':(r.valid?'Bereit':'Ungültig')}</span>
+      <button class="ri-del" onclick="parsedRecipients.splice(${i},1);renderRecipients()">×</button>
+    </div>`).join('');
+}
+
+function doBulkSend() {
+  if (!parsedRecipients.length) parseRecipients();
+  const recipients = parsedRecipients.filter(r => r.valid).map(x => ({ name: x.name, email: x.email }));
+  if (!recipients.length) { toast('Keine gültigen Empfänger', true); return; }
+  openBulkPreview(recipients, 'sender');
+}
+
+// ════ AUTO-VERSAND ════
+async function updateAutosendBadge() {
+  try {
+    const [jobs, stats] = await Promise.all([fetchJSON('/api/send-jobs'), fetchJSON('/api/send-stats')]);
+    const running = jobs.filter(j => j.status === 'running').length;
+    const nb = document.getElementById('nb-autosend');
+    if (nb) { nb.textContent = running; nb.classList.toggle('zero', !running); }
+    const ns = document.getElementById('nb-sent');
+    if (ns) { ns.textContent = stats.sent_today_total || 0; ns.classList.toggle('zero', !(stats.sent_today_total > 0)); }
+  } catch {}
+}
+async function loadAutoSend() {
+  const [stats, jobs, tpls] = await Promise.all([
+    fetchJSON('/api/send-stats').catch(()=>({})),
+    fetchJSON('/api/send-jobs').catch(()=>[]),
+    fetchJSON('/api/email-templates').catch(()=>[]),
+  ]);
+  jobsCache = jobs; templatesCache = tpls;
+  set('as-today-n', stats.sent_today_total ?? 0);
+  set('as-today-cap', stats.global_daily_cap ?? 200);
+  // Branchen-Select
+  const sel = document.getElementById('as-vertical');
+  if (sel && sel.options.length <= 1 && strategy.verticals?.length) {
+    sel.innerHTML = '<option value="">Alle Branchen</option>' +
+      strategy.verticals.map(vt => `<option value="${vt.id}">${vt.icon||''} ${esc(vt.label)}</option>`).join('');
+  }
+  // Vorlagen-Checkboxen
+  const tl = document.getElementById('as-tpl-list');
+  const prevChecked = new Set([...document.querySelectorAll('#as-tpl-list input:checked')].map(i=>i.value));
+  tl.innerHTML = tpls.map((t,i) => `<label class="as-tpl-cb">
+    <input type="checkbox" value="${t.id}" ${prevChecked.size ? (prevChecked.has(t.id)?'checked':'') : (i===0?'checked':'')} onchange="updateEstimate()">
+    <span>${esc(t.name)}</span>
+    <span style="margin-left:auto;font-size:10px;color:var(--txt3)">${esc((t.subject||'').slice(0,30))}…</span>
+  </label>`).join('');
+  updateEstimate();
+  renderJobs();
+  // Nav-Badge: laufende Jobs
+  const running = jobs.filter(j => j.status === 'running').length;
+  const nb = document.getElementById('nb-autosend');
+  nb.textContent = running; nb.classList.toggle('zero', !running);
+}
+function updateEstimate() {
+  const total = Number(document.getElementById('as-total')?.value || 0);
+  const daily = Number(document.getElementById('as-daily')?.value || 100);
+  const tplN = document.querySelectorAll('#as-tpl-list input:checked').length;
+  const days = total > 0 ? Math.ceil(total / daily) : 0;
+  const el = document.getElementById('as-estimate');
+  if (el) el.innerHTML = total > 0
+    ? `📅 <b>${total} E-Mails</b> bei <b>${daily}/Tag</b> ≈ <b>${days} Tag${days>1?'e':''}</b> Laufzeit · ${tplN||1} Vorlage${tplN>1?'n':''} im Zufalls-Wechsel · Versand nur 8–20 Uhr, alle 1–3 Minuten eine`
+    : 'Anzahl eingeben…';
+}
+async function createSendJob() {
+  const totalTarget = Number(document.getElementById('as-total')?.value || 0);
+  const dailyLimit = Number(document.getElementById('as-daily')?.value || 100);
+  const verticalId = document.getElementById('as-vertical')?.value || undefined;
+  const templateIds = [...document.querySelectorAll('#as-tpl-list input:checked')].map(i => i.value);
+  if (!totalTarget || totalTarget < 1) { toast('Anzahl E-Mails eingeben', true); return; }
+  if (!templateIds.length) { toast('Mindestens eine Vorlage auswählen', true); return; }
+  const days = Math.ceil(totalTarget / dailyLimit);
+  if (!confirm(`Auto-Versand starten?\n\n${totalTarget} E-Mails · ${dailyLimit}/Tag · ca. ${days} Tag(e)\n${templateIds.length} Vorlage(n) im Wechsel\n\nDas System verschickt ab sofort automatisch.`)) return;
+  const btn = document.getElementById('as-create-btn');
+  btn.disabled = true;
+  const r = await post('/api/send-jobs', { totalTarget, dailyLimit, verticalId, templateIds });
+  const d = await r.json().catch(()=>({}));
+  btn.disabled = false;
+  if (!r.ok) { toast(d.error||'Fehler beim Starten', true); return; }
+  toast('⚡ Auto-Versand läuft!');
+  loadAutoSend();
+}
+function renderJobs() {
+  const el = document.getElementById('as-jobs');
+  if (!jobsCache.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:48px 0"><div class="ei">⚡</div><div class="et">Noch keine Auto-Kampagnen</div><div class="es">Erstelle links deine erste – das System übernimmt den Rest</div></div>';
+    return;
+  }
+  const stLabel = { running:'Läuft', paused:'Pausiert', done:'Fertig', stopped:'Gestoppt' };
+  el.innerHTML = jobsCache.map(j => {
+    const pctN = Math.min(100, Math.round(j.sent_count / Math.max(1, j.total_target) * 100));
+    const tplNames = (j.template_ids||[]).map(id => templatesCache.find(t=>t.id===id)?.name || id).join(', ');
+    return `<div class="job-card">
+      <div class="job-head">
+        <div>
+          <div class="job-name">${esc(j.name)}</div>
+          <div class="job-meta">Vorlagen: ${esc(tplNames)} · ${j.daily_limit}/Tag · Fenster ${j.window_start}–${j.window_end} Uhr</div>
+        </div>
+        <span class="job-status js-${j.status}">${stLabel[j.status]||j.status}</span>
+      </div>
+      <div class="job-prog-bg"><div class="job-prog" style="width:${pctN}%"></div></div>
+      <div class="job-nums">
+        <span><b>${j.sent_count}</b> / ${j.total_target} gesendet (${pctN}%)</span>
+        <span>Heute: <b>${j.sent_today||0}</b> / ${j.daily_limit}</span>
+        ${j.failed_count?`<span style="color:var(--r)">Fehler: <b>${j.failed_count}</b></span>`:''}
+      </div>
+      ${j.note?`<div class="job-note">${esc(j.note)}</div>`:''}
+      <div class="job-actions">
+        ${j.status==='running'?`<button class="btn btn-warn" onclick="jobAction('${j.id}','paused')">⏸ Pausieren</button>`:''}
+        ${j.status==='paused'?`<button class="btn btn-g" onclick="jobAction('${j.id}','running')">▶ Fortsetzen</button>`:''}
+        ${['running','paused'].includes(j.status)?`<button class="btn btn-danger" onclick="jobAction('${j.id}','stopped')">■ Stoppen</button>`:''}
+        <button class="btn btn-ghost" onclick="viewJobSent('${j.id}')">Gesendete ansehen</button>
+        ${['done','stopped'].includes(j.status)?`<button class="btn btn-ghost" onclick="deleteJob('${j.id}')">Entfernen</button>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+async function jobAction(id, status) {
+  if (status === 'stopped' && !confirm('Auto-Versand wirklich stoppen? Kann nicht fortgesetzt werden.')) return;
+  const r = await fetch('/api/send-jobs/'+id, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ status }) });
+  if (!r.ok) { toast('Fehler', true); return; }
+  toast(status==='running'?'▶ Fortgesetzt':status==='paused'?'⏸ Pausiert':'■ Gestoppt');
+  loadAutoSend();
+}
+async function deleteJob(id) {
+  await fetch('/api/send-jobs/'+id, { method:'DELETE' });
+  toast('Job entfernt'); loadAutoSend();
+}
+function viewJobSent(id) { setPage('inbox'); switchInboxTab('out'); }
+
+// ════ VORLAGEN SEITE ════
+async function loadTemplatesPage() {
+  templatesCache = await fetchJSON('/api/email-templates').catch(()=>[]);
+  renderTplList();
+  if (!editingTplId || !templatesCache.find(t=>t.id===editingTplId)) editingTplId = templatesCache[0]?.id || null;
+  if (editingTplId) selectTemplate(editingTplId);
+  ['tpl-edit-subject','tpl-edit-body'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && !el._bound) { el.addEventListener('input', updateTplPreview); el._bound = true; }
+  });
+}
+function renderTplList() {
+  document.getElementById('tpl-list').innerHTML = templatesCache.map(t => `
+    <div class="tpl-item ${t.id===editingTplId?'active':''}" onclick="selectTemplate('${t.id}')">
+      <div class="tpl-item-name">${esc(t.name)} ${t.id==='default'?'<span class="tpl-badge">Standard</span>':''}</div>
+      <div class="tpl-item-subj">${esc(t.subject)}</div>
+    </div>`).join('');
+}
+function selectTemplate(id) {
+  editingTplId = id;
+  const t = templatesCache.find(x => x.id === id);
+  if (!t) return;
+  document.getElementById('tpl-edit-name').value = t.name || '';
+  document.getElementById('tpl-edit-subject').value = t.subject || '';
+  document.getElementById('tpl-edit-body').value = t.body || '';
+  set('tpl-edit-title', 'Vorlage: ' + t.name);
+  document.getElementById('tpl-del-btn').style.display = t.id === 'default' ? 'none' : '';
+  renderTplList(); updateTplPreview();
+}
+function updateTplPreview() {
+  const sample = { name:'Zahnarztpraxis Dr. Müller', branche:'Zahnarzt', stadt:'Düsseldorf' };
+  const r = renderTpl({ subject: document.getElementById('tpl-edit-subject')?.value, body: document.getElementById('tpl-edit-body')?.value }, sample);
+  set('tpl-prev-subj', r.subject);
+  const pb = document.getElementById('tpl-prev-body'); if (pb) pb.textContent = r.body;
+}
+async function saveEditedTemplate() {
+  if (!editingTplId) return;
+  const name = document.getElementById('tpl-edit-name')?.value?.trim();
+  const subject = document.getElementById('tpl-edit-subject')?.value?.trim();
+  const body = document.getElementById('tpl-edit-body')?.value?.trim();
+  if (!subject || !body) { toast('Betreff und Text sind Pflicht', true); return; }
+  const r = await fetch('/api/email-templates/'+editingTplId, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name, subject, body }) });
+  if (!r.ok) { toast('Speichern fehlgeschlagen', true); return; }
+  toast('✓ Vorlage gespeichert');
+  if (editingTplId === 'default') { templateCache = { subject, body }; }
+  loadTemplatesPage();
+}
+async function createNewTemplate() {
+  const r = await post('/api/email-templates', { name: 'Vorlage ' + (templatesCache.length + 1) });
+  const t = await r.json().catch(()=>null);
+  if (!r.ok || !t?.id) { toast('Fehler beim Erstellen', true); return; }
+  editingTplId = t.id;
+  toast('Neue Vorlage erstellt');
+  loadTemplatesPage();
+}
+async function deleteCurrentTemplate() {
+  if (!editingTplId || editingTplId === 'default') return;
+  if (!confirm('Vorlage wirklich löschen?')) return;
+  const r = await fetch('/api/email-templates/'+editingTplId, { method:'DELETE' });
+  const d = await r.json().catch(()=>({}));
+  if (!r.ok) { toast(d.error||'Löschen fehlgeschlagen', true); return; }
+  editingTplId = null; toast('Vorlage gelöscht');
+  loadTemplatesPage();
+}
+
+// ════ GESENDET-TAB ════
+function switchInboxTab(tab) {
+  inboxTab = tab;
+  document.getElementById('itab-in').classList.toggle('active', tab==='in');
+  document.getElementById('itab-out').classList.toggle('active', tab==='out');
+  if (tab === 'in') loadInbox(); else loadSentList();
+}
+async function loadSentList() {
+  const list = document.getElementById('inbox-list');
+  list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--txt4);font-size:12px">Lade gesendete E-Mails…</div>';
+  sentCache = await fetchJSON('/api/sent-emails?limit=100').catch(()=>[]);
+  if (!sentCache.length) {
+    list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--txt4);font-size:12px">Noch keine E-Mails gesendet</div>';
+    return;
+  }
+  list.innerHTML = sentCache.map(e => `
+    <div class="inbox-item" onclick="openSentEmail('${e.id}')">
+      <div class="ii-top">
+        <div class="ii-from">${e.success?'':'⚠ '}${esc(e.to_name||e.to_email)}</div>
+        <div class="ii-time">${fmtShort(e.sent_at)}</div>
+      </div>
+      <div class="ii-subj">${esc(e.subject||'')}</div>
+      <div class="ii-snip">${esc((e.body||'').slice(0,120))}</div>
+      ${e.success
+        ? '<span class="ii-match">✓ Zugestellt an Server</span>'
+        : `<span class="ii-match" style="color:var(--r);background:#200808">✗ Fehler</span>`}
+      ${e.job_id?'<span class="ii-match" style="color:#8ab4ff;background:#0a1830;margin-left:4px">⚡ Auto</span>':''}
+    </div>`).join('');
+}
+function openSentEmail(id) {
+  const e = sentCache.find(x => x.id === id);
+  if (!e) return;
+  const initials = (e.to_name||e.to_email||'?').trim().charAt(0).toUpperCase();
+  document.getElementById('inbox-detail').innerHTML = `
+    <div class="inbox-detail-head">
+      <div class="idh-subj">${esc(e.subject||'(kein Betreff)')}</div>
+      <div class="idh-meta">
+        <div class="idh-avatar" style="background:linear-gradient(135deg,var(--g),var(--g2))">${esc(initials)}</div>
+        <div>
+          <div style="color:#fff;font-weight:600">An: ${esc(e.to_name||'')} &lt;${esc(e.to_email)}&gt;</div>
+          <div style="font-size:11px;color:var(--txt3)">${fmtDate(e.sent_at)} · ${e.success?'✓ Erfolgreich gesendet':'✗ Fehlgeschlagen: '+esc(e.error||'')}${e.message_id?' · ID '+esc(e.message_id.slice(0,24))+'…':''}</div>
+        </div>
+      </div>
+    </div>
+    <div class="inbox-body">${esc(e.body||'')}</div>`;
+}
+
+// ════ GESENDET-SEITE ════
+function sentItemHtml(e, onclickFn) {
+  return `<div class="inbox-item" onclick="${onclickFn}('${e.id}')">
+    <div class="ii-top">
+      <div class="ii-from">${e.success?'':'⚠ '}${esc(e.to_name||e.to_email)}</div>
+      <div class="ii-time">${fmtShort(e.sent_at)}</div>
+    </div>
+    <div class="ii-subj">${esc(e.subject||'')}</div>
+    <div class="ii-snip">${esc((e.body||'').slice(0,120))}</div>
+    ${e.success
+      ? '<span class="ii-match">✓ Gesendet</span>'
+      : `<span class="ii-match" style="color:var(--r);background:#200808">✗ Fehler</span>`}
+    ${e.job_id?'<span class="ii-match" style="color:#8ab4ff;background:#0a1830;margin-left:4px">⚡ Auto</span>':''}
+  </div>`;
+}
+function sentDetailHtml(e) {
+  const initials = (e.to_name||e.to_email||'?').trim().charAt(0).toUpperCase();
+  return `
+    <div class="inbox-detail-head">
+      <div class="idh-subj">${esc(e.subject||'(kein Betreff)')}</div>
+      <div class="idh-meta">
+        <div class="idh-avatar" style="background:linear-gradient(135deg,var(--g),var(--g2))">${esc(initials)}</div>
+        <div>
+          <div style="color:#fff;font-weight:600">An: ${esc(e.to_name||'')} &lt;${esc(e.to_email)}&gt;</div>
+          <div style="font-size:11px;color:var(--txt3)">${fmtDate(e.sent_at)} · ${e.success?'✓ Erfolgreich gesendet':'✗ Fehlgeschlagen: '+esc(e.error||'')}${e.message_id?' · ID '+esc(e.message_id.slice(0,24))+'…':''}</div>
+        </div>
+      </div>
+    </div>
+    <div class="inbox-body">${esc(e.body||'')}</div>`;
+}
+async function loadSentPage() {
+  const list = document.getElementById('sent-list');
+  list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--txt4);font-size:12px">Lade…</div>';
+  sentCache = await fetchJSON('/api/sent-emails?limit=200').catch(()=>[]);
+  const stats = await fetchJSON('/api/send-stats').catch(()=>({}));
+  set('sent-total-n', stats.sent_total ?? sentCache.length);
+  set('sent-today-n', stats.sent_today_total ?? 0);
+  set('sent-cnt', sentCache.length + ' angezeigt');
+  const nb = document.getElementById('nb-sent');
+  if (nb) { nb.textContent = stats.sent_today_total ?? 0; nb.classList.toggle('zero', !(stats.sent_today_total > 0)); }
+  if (!sentCache.length) {
+    list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--txt4);font-size:12px">Noch keine E-Mails über das System verschickt</div>';
+    return;
+  }
+  list.innerHTML = sentCache.map(e => sentItemHtml(e, 'openSentDetail')).join('');
+}
+function openSentDetail(id) {
+  const e = sentCache.find(x => x.id === id);
+  if (!e) return;
+  document.getElementById('sent-detail').innerHTML = sentDetailHtml(e);
+}
+
+// ════ ANALYSE ════
+let anMailsCache = [];
+async function loadAnalytics() {
+  const [an, sms] = await Promise.all([
+    fetchJSON('/api/analytics/email').catch(()=>null),
+    fetchJSON('/api/analytics/sms').catch(()=>null),
+  ]);
+  if (!an) return;
+
+  // Tracking-Hinweis
+  const note = document.getElementById('an-tracking-note');
+  if (!an.tracking.public) {
+    note.style.display = 'block';
+    note.innerHTML = '<strong>⚠ Tracking noch nicht live:</strong> Öffnungs-Pixel und Klick-Links sind in jede neue E-Mail eingebaut, aber der Server ist nur lokal erreichbar (' + esc(an.tracking.base_url||'PUBLIC_BASE_URL fehlt') + '). Damit Gmail & Co. Öffnungen melden können, muss <code style="color:var(--o)">PUBLIC_BASE_URL</code> in der .env auf eine öffentliche Adresse zeigen (z.B. Cloudflare Tunnel oder Deployment). Zustellfehler-Erkennung über den Posteingang funktioniert schon jetzt.';
+  } else { note.style.display = 'none'; }
+
+  // KPIs
+  const t = an.totals;
+  set('an-sent', t.ok||0); set('an-failed', t.failed||0);
+  set('an-openrate', an.open_rate + '%'); set('an-opened', t.opened||0);
+  set('an-clickrate', an.click_rate + '%'); set('an-clicked', t.clicked||0);
+  set('an-bounces', t.bounced||0);
+  const sc = reportCache.status_counts || {};
+  const replies = (sc.replied||0)+(sc.demo_booked||0)+(sc.proposal_sent||0)+(sc.won||0);
+  set('an-replies', sc.replied||0);
+  set('an-replyrate', pct(sc.replied, Math.max(1, sc.contacted||1)) + ' der Kontaktierten');
+  set('an-interested', replies);
+
+  // Chart: 14 Tage
+  const maxDay = Math.max(1, ...an.days.map(d => Math.max(d.sent, d.opened)));
+  document.getElementById('an-days').innerHTML = an.days.map(d => `
+    <div class="bar-day" title="${d.day}: ${d.sent} gesendet, ${d.opened} geöffnet">
+      <div class="bar-pair">
+        <div class="bar-v sent" style="height:${Math.max(2, d.sent/maxDay*100)}%"></div>
+        <div class="bar-v open" style="height:${Math.max(2, d.opened/maxDay*100)}%"></div>
+      </div>
+      <div class="bar-lbl">${d.day.slice(8,10)}.${d.day.slice(5,7)}</div>
+    </div>`).join('');
+
+  // Chart: Uhrzeiten
+  const maxH = Math.max(1, ...an.opens_by_hour);
+  document.getElementById('an-hours').innerHTML = an.opens_by_hour.map((n,h) => `
+    <div class="bar-h" title="${h}:00 Uhr – ${n} Öffnungen">
+      <div class="bar-v" style="height:${Math.max(2, n/maxH*100)}%"></div>
+      ${h%6===0?`<div class="bar-lbl">${h}</div>`:'<div class="bar-lbl">&nbsp;</div>'}
+    </div>`).join('');
+
+  // Mail-Tabelle
+  anMailsCache = an.emails||[];
+  set('an-mail-cnt', anMailsCache.length + ' E-Mails (neueste zuerst)');
+  document.getElementById('an-mails').innerHTML = anMailsCache.map(m => {
+    const status = m.bounces > 0 ? '<span class="an-bounce">↩ Bounce</span>'
+      : m.success ? '<span class="an-open">✓ Zugestellt</span>' : '<span class="an-bounce">✗ Fehler</span>';
+    return `<tr class="mail-row" onclick="toggleMailEvents('${m.id}', this)">
+      <td><b style="color:var(--txt)">${esc(m.to_name||'')}</b><br><span style="font-size:10px;color:var(--txt3)">${esc(m.to_email)}</span></td>
+      <td>${esc((m.subject||'').slice(0,50))}</td>
+      <td style="white-space:nowrap">${fmtDate(m.sent_at)}</td>
+      <td>${status}${m.job_id?' <span style="color:#8ab4ff;font-size:9px">⚡</span>':''}</td>
+      <td class="${m.opens>0?'an-open':'an-zero'}">${m.opens>0?'👁 '+m.opens+'×':'—'}</td>
+      <td style="white-space:nowrap" class="${m.last_open?'':'an-zero'}">${m.last_open?fmtDate(m.last_open):'—'}</td>
+      <td class="${m.clicks>0?'an-open':'an-zero'}">${m.clicks>0?'🔗 '+m.clicks:'—'}</td>
+      <td class="${m.devices>1?'an-open':'an-zero'}" title="Mehrere Geräte kann auf Weiterleitung hindeuten">${m.devices||0}</td>
+    </tr><tr class="ev-row" id="ev-${m.id}" style="display:none"><td colspan="8"></td></tr>`;
+  }).join('') || '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--txt4)">Noch keine E-Mails versendet</td></tr>';
+
+  // SMS
+  if (sms) {
+    if (sms.error) set('an-sms-note', sms.error);
+    else set('an-sms-note', 'Live aus dem Voice-Agent-System');
+    set('an-sms-total', sms.total ?? '—');
+    set('an-sms-today', sms.today ?? '—');
+    set('an-sms-failed', sms.failed ?? '—');
+    set('an-sms-feedback', sms.feedback_count ?? '—');
+    document.getElementById('an-sms-recent').innerHTML = (sms.recent||[]).map(s => `
+      <div class="sms-item">
+        <div class="top"><span class="to">${esc(s.phone_number)}</span><span style="color:${s.status==='sent'?'var(--g)':'var(--r)'}">${s.status==='sent'?'✓':'✗'} ${fmtShort(s.created_at)}</span></div>
+        <div class="msg">${esc(s.message||'')}</div>
+      </div>`).join('') || '<div style="color:var(--txt4);font-size:12px;text-align:center;padding:16px">Noch keine SMS</div>';
+  }
+
+  // Funnel (kompakt)
+  const rows = [
+    { label:'Kontaktiert', n: sc.contacted||0, color:'#6aa4ff' },
+    { label:'Geöffnet', n: t.opened||0, color:'#22d17c' },
+    { label:'Geklickt', n: t.clicked||0, color:'#a78bfa' },
+    { label:'Geantwortet', n: sc.replied||0, color:'#f59e0b' },
+    { label:'Demo gebucht', n: sc.demo_booked||0, color:'#f97316' },
+    { label:'Gewonnen', n: sc.won||0, color:'#22d17c' },
+  ];
+  const maxF = Math.max(1, ...rows.map(r => r.n));
+  document.getElementById('an-funnel').innerHTML = rows.map(r => `
+    <div class="f-row"><div class="f-lbl">${r.label}</div>
+      <div class="f-bar-bg"><div class="f-bar" style="width:${Math.max(3, Math.round(r.n/maxF*100))}%;background:${r.color}">${r.n>0?r.n:''}</div></div>
+      <div class="f-n">${r.n}</div></div>`).join('');
+}
+
+async function toggleMailEvents(id, rowEl) {
+  const evRow = document.getElementById('ev-'+id);
+  if (!evRow) return;
+  if (evRow.style.display !== 'none') { evRow.style.display = 'none'; return; }
+  const events = await fetchJSON('/api/analytics/email/'+id+'/events').catch(()=>[]);
+  const icons = { open:'👁', click:'🔗', bounce:'↩' };
+  const labels = { open:'Geöffnet', click:'Link geklickt', bounce:'Zustellfehler (Bounce)' };
+  evRow.querySelector('td').innerHTML = events.length
+    ? `<div class="an-events">${events.map(e => `
+        <div class="an-ev"><span class="t">${fmtDate(e.created_at)}</span>
+          <span class="ic-${e.event_type}">${icons[e.event_type]||'·'} ${labels[e.event_type]||e.event_type}</span>
+          ${e.url?`<span style="color:var(--txt3);overflow:hidden;text-overflow:ellipsis">→ ${esc(e.url.slice(0,80))}</span>`:''}
+          ${e.user_agent&&e.event_type!=='bounce'?`<span style="color:var(--txt4);font-size:9px">${esc(deviceName(e.user_agent))}</span>`:''}
+          ${e.event_type==='bounce'&&e.user_agent?`<span style="color:var(--txt4);font-size:10px">${esc(e.user_agent.slice(0,90))}</span>`:''}
+        </div>`).join('')}</div>`
+    : '<div class="an-events"><span style="color:var(--txt4);font-size:11px">Noch keine Ereignisse — Öffnungen erscheinen hier sobald der Empfänger die Mail lädt (benötigt öffentliche PUBLIC_BASE_URL).</span></div>';
+  evRow.style.display = '';
+}
+
+function deviceName(ua) {
+  if (/GoogleImageProxy/i.test(ua)) return 'Gmail';
+  if (/iPhone|iPad/i.test(ua)) return 'iPhone/iPad';
+  if (/Android/i.test(ua)) return 'Android';
+  if (/Windows/i.test(ua)) return 'Windows-PC';
+  if (/Macintosh/i.test(ua)) return 'Mac';
+  if (/Outlook/i.test(ua)) return 'Outlook';
+  return ua.slice(0, 30);
+}
+
+async function scanBounces() {
+  toast('Durchsuche Posteingang nach Zustellfehlern…');
+  const r = await post('/api/analytics/scan-bounces', {});
+  const d = await r.json().catch(()=>({}));
+  if (d.error) { toast(d.error, true); return; }
+  toast(`✓ ${d.scanned} Mails geprüft, ${d.found} Fehlermeldungen, ${d.matched} neu zugeordnet`);
+  loadAnalytics();
+}
+
+// ════ LEAD ACTIONS ════
+async function approve(id) {
+  const kanal = document.getElementById('k'+id)?.value;
+  const nachricht = getFirstMsg(id);
+  if (!nachricht) { toast('Keine Nachricht vorhanden', true); return; }
+  await post('/api/approve', { id, kanal, nachricht });
+  toast('Lead freigegeben'); setTimeout(reloadPipeline, 400);
+}
+async function prepareDraft(id) {
+  toast('KI erstellt Entwurf…');
+  const r = await post('/api/prepare-draft', { id });
+  const b = await r.json();
+  if (!r.ok) { toast(b.error||'Fehler', true); return; }
+  toast('Entwurf erstellt'); setTimeout(reloadPipeline, 400);
+}
+async function reject(id) { await post('/api/reject', { id }); toast('Abgelehnt'); setTimeout(reloadPipeline, 400); }
+async function manualCall(id) {
+  const note = prompt('Call-Notiz (nur tatsächlich ausgeführte Anrufe):');
+  if (!note) return;
+  const r = await post('/api/manual-call', { id, note });
+  if (!r.ok) { toast('Fehler', true); return; }
+  toast('Anruf dokumentiert'); setTimeout(reloadPipeline, 400);
+}
+async function markManualContact(id, kanal, textId) {
+  const nachricht = document.getElementById(textId)?.value||'';
+  const r = await post('/api/manual-contact', { id, kanal, nachricht });
+  if (!r.ok) { toast('Fehler', true); return; }
+  toast('Als kontaktiert markiert'); setTimeout(reloadPipeline, 400);
+}
+async function archiveLead(id) { await post('/api/archive', { id }); toast('Archiviert'); setTimeout(reloadPipeline, 400); }
+async function deleteLead(id, status, wasContacted) {
+  if (!confirm('Wirklich endgültig löschen? Archivieren ist sicherer.')) return;
+  let confirmContacted = false;
+  if (wasContacted||['contacted','replied','demo_booked','proposal_sent','won'].includes(status)) {
+    confirmContacted = confirm('Dieser Lead wurde kontaktiert. Wirklich löschen?');
+    if (!confirmContacted) return;
+  }
+  const r = await fetch('/api/leads', { method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ id, confirmContacted }) });
+  const b = await r.json().catch(()=>({}));
+  if (!r.ok) { toast(b.error||'Löschen blockiert', true); return; }
+  toast('Lead gelöscht'); setTimeout(reloadPipeline, 400);
+}
+async function reloadPipeline() { await loadReport(); loadLeads(); }
+
+// ════ MSG EDITING ════
+function toggleMsg(el) { el.nextElementSibling.classList.toggle('open'); }
+function editMsg(id, type, btn) {
+  const ta = document.getElementById('m'+id+type);
+  if (ta.readOnly) { ta.readOnly=false; btn.textContent='Speichern'; ta.closest('.mb-body').classList.add('open'); }
+  else { saveMsg(id, type, ta.value, btn); }
+}
+async function saveMsg(id, type, text, btn) {
+  await post('/api/edit-message', { id, type, nachricht:text });
+  document.getElementById('m'+id+type).readOnly = true;
+  btn.textContent = 'Bearbeiten'; toast('Gespeichert');
+}
+
+// ════ EMAIL FORM (Lead card) ════
+function toggleSendForm(leadId, textId, toEmail, leadName) {
+  const btn = document.getElementById('sendbtn-'+leadId);
+  const existing = document.getElementById('sf-'+leadId);
+  if (existing) { existing.remove(); if (btn) btn.textContent='E-Mail senden'; return; }
+  const form = document.createElement('div');
+  form.className = 'email-form'; form.id = 'sf-'+leadId;
+  form.innerHTML = `
+    <input id="ef-to-${leadId}" type="email" placeholder="Empfänger" value="${esc(toEmail)}">
+    <input id="ef-sub-${leadId}" type="text" placeholder="Betreff" value="${esc('Kurze Idee für '+leadName)}">
+    <div class="send-row">
+      <button class="btn btn-g" style="flex:1" onclick="doSendEmail('${leadId}','${textId}')">Jetzt senden</button>
+      <button class="btn btn-ghost" onclick="toggleSendForm('${leadId}','${textId}','${esc(toEmail)}','${esc(leadName)}')">Abbrechen</button>
+    </div>
+    <div class="send-note">Versand per SMTP — erscheint nicht im Mail-Client "Gesendet". Du erhältst eine BCC-Kopie im Posteingang.</div>
+    <div class="ef-result" id="ef-res-${leadId}"></div>`;
+  if (btn) { btn.parentNode.insertBefore(form, btn.nextSibling); btn.textContent='Abbrechen'; }
+}
+
+async function doSendEmail(leadId, textId) {
+  const to = document.getElementById('ef-to-'+leadId)?.value?.trim();
+  const subject = document.getElementById('ef-sub-'+leadId)?.value?.trim();
+  const body = document.getElementById(textId)?.value?.trim();
+  const res = document.getElementById('ef-res-'+leadId);
+  if (!to||!subject||!body) { if (res) { res.className='ef-result err'; res.textContent='Alle Felder ausfüllen.'; } return; }
+  if (res) { res.className='ef-result'; res.textContent='Sende...'; }
+  const r = await post('/api/send-email', { id:leadId, to, subject, body });
+  const d = await r.json().catch(()=>({}));
+  if (r.ok) {
+    if (res) { res.className='ef-result ok'; res.textContent='Gesendet an '+to; }
+    toast('E-Mail gesendet an '+to);
+    setTimeout(reloadPipeline, 1800);
+  } else {
+    if (res) { res.className='ef-result err'; res.textContent='Fehler: '+(d.error||'Unbekannt'); }
+    toast('Senden fehlgeschlagen', true);
+  }
+}
+
+// ════ COMMAND PALETTE ════
+function openCmdk() {
+  document.getElementById('cmdkOverlay').classList.add('show');
+  const inp = document.getElementById('cmdkInput');
+  inp.value = ''; inp.focus();
+  cmdkSel = 0; renderCmdk();
+}
+function closeCmdk() { document.getElementById('cmdkOverlay').classList.remove('show'); }
+function renderCmdk() {
+  const q = document.getElementById('cmdkInput').value.toLowerCase().trim();
+  const nav = [
+    { icon:'▦', label:'Übersicht', action:()=>{closeCmdk();setPage('dashboard')} },
+    { icon:'◈', label:'Leads finden', action:()=>{closeCmdk();setPage('pipeline')} },
+    { icon:'✉', label:'E-Mail Sender', action:()=>{closeCmdk();setPage('sender')} },
+    { icon:'📥', label:'Posteingang', action:()=>{closeCmdk();setPage('inbox')} },
+    { icon:'→', label:'Pipeline (Outreach)', action:()=>{closeCmdk();setPage('outreach')} },
+    { icon:'↻', label:'Alles aktualisieren', action:()=>{closeCmdk();reload()} },
+  ];
+  let items = nav.filter(i => !q || i.label.toLowerCase().includes(q));
+  if (q.length >= 2) {
+    const leadHits = leadsCache.filter(l => (l.name||'').toLowerCase().includes(q) || (l.stadt||'').toLowerCase().includes(q)).slice(0,6);
+    items = items.concat(leadHits.map(l => ({ icon:'◈', label:`${l.name} · ${l.stadt}`, action:()=>{closeCmdk();goOutreach(l.id)} })));
+  }
+  cmdkItems = items;
+  if (cmdkSel >= items.length) cmdkSel = 0;
+  const el = document.getElementById('cmdkResults');
+  if (!items.length) { el.innerHTML = '<div class="cmdk-empty">Keine Treffer</div>'; return; }
+  el.innerHTML = items.map((it,i) => `<div class="cmdk-item ${i===cmdkSel?'sel':''}" onclick="cmdkItems[${i}].action()" onmouseenter="cmdkSel=${i};highlightCmdk()"><span class="ci-icon">${it.icon}</span>${esc(it.label)}</div>`).join('');
+}
+function highlightCmdk() { document.querySelectorAll('.cmdk-item').forEach((el,i)=>el.classList.toggle('sel', i===cmdkSel)); }
+function cmdkKey(e) {
+  if (e.key === 'ArrowDown') { e.preventDefault(); cmdkSel = Math.min(cmdkItems.length-1, cmdkSel+1); highlightCmdk(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); cmdkSel = Math.max(0, cmdkSel-1); highlightCmdk(); }
+  else if (e.key === 'Enter') { e.preventDefault(); cmdkItems[cmdkSel]?.action(); }
+  else if (e.key === 'Escape') closeCmdk();
+}
+document.addEventListener('keydown', e => {
+  if ((e.metaKey||e.ctrlKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); openCmdk(); }
+  if (e.key === 'Escape' && document.getElementById('previewOverlay')?.classList.contains('show')) closePreview();
+});
+
+// ════ UTILS ════
+function copyText(id) {
+  const el = document.getElementById(id);
+  if (el) navigator.clipboard.writeText(el.value||el.textContent||'');
+  toast('Kopiert');
+}
+function exportLeads() {
+  const p = new URLSearchParams();
+  const s=v('fs'),b=v('fb'),pr=v('fp'),st=v('fst');
+  if (s) p.set('stadt',s); if (b) p.set('branche',b);
+  if (pr) p.set('prioritaet',pr); if (st) p.set('status',st);
+  if (document.getElementById('fa')?.checked) p.set('includeArchived','1');
+  window.location.href='/api/export?'+p;
+}
+function getFirstMsg(id) {
+  for (const t of ['chatbot','telefon','website']) { const el=document.getElementById('m'+id+t); if (el?.value) return el.value; }
+  return '';
+}
+function firstSocial(l) { return l.instagram_url||l.facebook_url||l.tiktok_url||l.linkedin_url||l.youtube_url||''; }
+function fallbackCPs(l) {
+  const now = l.updated_at||l.created_at||'-';
+  return [['email',l.email,l.website,90],['whatsapp',l.whatsapp,l.website,85],
+    ['kontaktformular',l.kontaktformular_url,l.website,75],['telefon',l.telefon,l.source_url,80],
+    ['website',l.website,l.source_url,90],['instagram',l.instagram_url,l.website,80],
+    ['facebook',l.facebook_url,l.website,80],['tiktok',l.tiktok_url,l.website,80],
+    ['linkedin',l.linkedin_url,l.website,80],['youtube',l.youtube_url,l.website,80],
+  ].filter(([,value])=>value).map(([type,value,source_url,confidence])=>({type,value,source_url,confidence,verified_at:now}));
+}
+function rList(lbl, items) {
+  const safe = Array.isArray(items)&&items.length ? items : ['Keine spezifische Begründung'];
+  return `<div><div style="font-size:10px;color:var(--txt3);margin-bottom:2px">${lbl}</div><ul>${safe.map(i=>`<li>${esc(i)}</li>`).join('')}</ul></div>`;
+}
+function pct(n, d) { return Math.round((n||0)/Math.max(1,d)*100)+'%'; }
+function safeJson(val) { try { return val?JSON.parse(val):null; } catch { return null; } }
+function sc2(n) { return n>=70?'sh':n>=45?'sm':'sl'; }
+function v(id) { return document.getElementById(id)?.value??''; }
+function set(id, val) { const el=document.getElementById(id); if (el) el.textContent=val; }
+function eur(n) { return new Intl.NumberFormat('de-DE',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(n); }
+function esc(s) { return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'):''; }
+function fmtDate(iso) {
+  if (!iso||iso==='-') return '-';
+  try { return new Date(iso).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}); }
+  catch { return iso; }
+}
+function fmtShort(iso) {
+  try {
+    const d = new Date(iso), now = new Date();
+    if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+    return d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'});
+  } catch { return ''; }
+}
+function countUp(id, target, isEur) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const dur = 600, start = performance.now(), from = 0;
+  function step(t) {
+    const p = Math.min(1, (t-start)/dur);
+    const eased = 1-Math.pow(1-p,3);
+    const val = Math.round(from + (target-from)*eased);
+    el.textContent = isEur ? eur(val) : val;
+    if (p < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+async function fetchJSON(url) { const r=await fetch(url); return r.json(); }
+async function post(url, body) { return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); }
+function toast(msg, isErr) {
+  const el=document.getElementById('toast');
+  document.getElementById('toast-msg').textContent=msg;
+  el.className = isErr ? 'show err' : 'show';
+  clearTimeout(el._t); el._t=setTimeout(()=>el.className='',2800);
+}
+
+// ════ INIT ════
+reload();
+setInterval(loadReport, 30000);
+setInterval(loadImapStatus, 60000);
+// Live-Tracking: Auto-Versand-Seite alle 10s aktualisieren
+setInterval(() => { if (currentPage === 'autosend') loadAutoSend(); }, 10000);
+// Analyse alle 30s live aktualisieren
+setInterval(() => { if (currentPage === 'analytics') loadAnalytics(); }, 30000);
+</script>
+</body>
+</html>

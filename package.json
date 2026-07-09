@@ -1,0 +1,37 @@
+{
+  "name": "tawano-leadgen",
+  "version": "1.0.0",
+  "description": "Tawano Lead Generation System — scrape, analyze, score, personalize",
+  "scripts": {
+    "dev": "npm run build && node dist/server.js",
+    "leadgen": "npm run build && node dist/cli.js",
+    "leadgen:report": "npm run build && node dist/cli.js report",
+    "leadgen:export": "npm run build && node dist/cli.js export",
+    "leadgen:list": "npm run build && node dist/cli.js list",
+    "leadgen:presets": "npm run build && node dist/cli.js presets",
+    "leadgen:cleanup": "node scripts/cleanup-bad-contacts.cjs",
+    "test": "npm run build && node tests/run-tests.cjs",
+    "build": "tsc",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@fastify/cors": "^8.5.0",
+    "@fastify/formbody": "^7.4.0",
+    "@fastify/static": "^6.12.0",
+    "@types/nodemailer": "^8.0.0",
+    "better-sqlite3": "^12.9.0",
+    "dotenv": "^16.4.7",
+    "fastify": "^4.28.1",
+    "imapflow": "^1.4.3",
+    "nodemailer": "^8.0.7",
+    "openai": "^6.10.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20.14.0",
+    "@types/uuid": "^9.0.7",
+    "typescript": "^5.4.5"
+  }
+}
