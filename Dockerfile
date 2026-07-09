@@ -14,6 +14,6 @@ COPY . .
 RUN npm run build
 
 ENV NODE_ENV=production
-EXPOSE 4000
+EXPOSE 8080
 
 CMD ["node", "dist/server.js"]
