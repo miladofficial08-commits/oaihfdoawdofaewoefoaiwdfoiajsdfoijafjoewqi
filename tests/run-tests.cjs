@@ -272,6 +272,26 @@ const tests = [
     assert.equal(cfg.pass, 'secret');
     assert.equal(cfg.from, 'info@tawano.de');
   }],
+  ['email open tracking separates real opens from technical pixel requests', () => {
+    const tracking = require('../dist/email/tracking');
+    assert.equal(tracking.classifyOpenEvent({
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0) GoogleImageProxy',
+      secondsSinceSent: 180,
+    }), 'open_machine');
+    assert.equal(tracking.classifyOpenEvent({
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126 Safari/537.36',
+      secondsSinceSent: 5,
+    }), 'open_unverified');
+    assert.equal(tracking.classifyOpenEvent({
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126 Safari/537.36',
+      secondsSinceSent: 90,
+    }), 'open');
+    assert.equal(tracking.isReliableOpen({
+      event_type: 'open',
+      user_agent: 'Mozilla/5.0 GoogleImageProxy',
+      secondsSinceSent: 90,
+    }), false);
+  }],
   ['brevo api helpers expose key status and build tracked payload', () => {
     const mailer = require('../dist/email/mailer');
     assert.deepEqual(mailer.getBrevoStatus({}), { ok: false, configured: false, error: 'BREVO_API_KEY fehlt' });

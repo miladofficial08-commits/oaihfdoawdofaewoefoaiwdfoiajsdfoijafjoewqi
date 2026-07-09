@@ -33,6 +33,7 @@ import { getDb } from '../db/schema';
 import { fetchInboxEmails, getImapStatus, markEmailSeen } from '../email/inbox';
 import { getEmailTemplate, updateEmailTemplate, renderTemplate, listEmailTemplates, createEmailTemplate, deleteEmailTemplate } from '../email/template';
 import { startAutoSender, recordSentEmail, sentTodayCount, GLOBAL_DAILY_CAP, ALLOWED_DAILY_LIMITS, SendJob } from '../email/auto-sender';
+import { classifyOpenEvent, isOpenLikeEvent, isReliableOpen, secondsBetween } from '../email/tracking';
 
 const BERLIN_TZ = 'Europe/Berlin';
 
@@ -645,12 +646,16 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
 
   function logEmailEvent(sentEmailId: string, eventType: string, req: { headers: Record<string, unknown>; ip?: string }, url?: string) {
     // Nur Events für existierende Mails loggen (kein Müll von Scannern)
-    const exists = getDb().prepare('SELECT 1 FROM sent_emails WHERE id = ?').get(sentEmailId);
-    if (!exists) return false;
+    const sent = getDb().prepare('SELECT sent_at FROM sent_emails WHERE id = ?').get(sentEmailId) as { sent_at?: string } | undefined;
+    if (!sent) return false;
+    const userAgent = String(req.headers['user-agent'] || '').slice(0, 300);
+    const storedEventType = eventType === 'open'
+      ? classifyOpenEvent({ userAgent, secondsSinceSent: secondsBetween(sent.sent_at, new Date().toISOString()) })
+      : eventType;
     getDb().prepare(
       `INSERT INTO email_events (id, sent_email_id, event_type, url, user_agent, ip)
        VALUES (?, ?, ?, ?, ?, ?)`
-    ).run(uuid(), sentEmailId, eventType, url ?? null, String(req.headers['user-agent'] || '').slice(0, 300), req.ip ?? null);
+    ).run(uuid(), sentEmailId, storedEventType, url ?? null, userAgent, req.ip ?? null);
     return true;
   }
 
@@ -825,9 +830,6 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
        FROM sent_emails`
     ).get() as { sent: number; ok: number; failed: number };
 
-    const openedUnique = (db.prepare(
-      `SELECT COUNT(DISTINCT sent_email_id) as n FROM email_events WHERE event_type = 'open'`
-    ).get() as { n: number }).n;
     const clickedUnique = (db.prepare(
       `SELECT COUNT(DISTINCT sent_email_id) as n FROM email_events WHERE event_type = 'click'`
     ).get() as { n: number }).n;
@@ -835,12 +837,23 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
       `SELECT COUNT(DISTINCT sent_email_id) as n FROM email_events WHERE event_type = 'bounce'`
     ).get() as { n: number }).n;
 
+    const trackedOpenEvents = db.prepare(
+      `SELECT e.sent_email_id, e.event_type, e.user_agent, e.ip, e.created_at, s.sent_at
+       FROM email_events e
+       JOIN sent_emails s ON s.id = e.sent_email_id
+       WHERE e.event_type IN ('open', 'open_machine', 'open_unverified')`
+    ).all() as Array<{ sent_email_id: string; event_type: string; user_agent?: string | null; ip?: string | null; created_at: string; sent_at: string }>;
+    const reliableOpenEvents = trackedOpenEvents.filter(event => isReliableOpen({
+      event_type: event.event_type,
+      user_agent: event.user_agent,
+      secondsSinceSent: secondsBetween(event.sent_at, event.created_at),
+    }));
+    const technicalOpenEvents = trackedOpenEvents.filter(event => !reliableOpenEvents.includes(event));
+    const openedUnique = new Set(reliableOpenEvents.map(event => event.sent_email_id)).size;
+
     // Öffnungen nach Uhrzeit (lokale Zeit, 0–23)
-    const openEventTimes = db.prepare(
-      `SELECT created_at FROM email_events WHERE event_type = 'open'`
-    ).all() as Array<{ created_at: string }>;
     const opensByHour = Array.from({ length: 24 }, () => 0);
-    for (const event of openEventTimes) {
+    for (const event of reliableOpenEvents) {
       const parts = berlinParts(event.created_at);
       if (parts && Number.isFinite(parts.hour)) opensByHour[parts.hour]++;
     }
@@ -849,10 +862,12 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     const sentEventTimes = db.prepare(
       `SELECT sent_at FROM sent_emails WHERE success = 1`
     ).all() as Array<{ sent_at: string }>;
-    const openUniqueByDay = db.prepare(
-      `SELECT sent_email_id, MIN(created_at) as created_at
-       FROM email_events WHERE event_type = 'open' GROUP BY sent_email_id`
-    ).all() as Array<{ sent_email_id: string; created_at: string }>;
+    const firstReliableOpenByEmail = new Map<string, string>();
+    for (const event of reliableOpenEvents) {
+      const previous = firstReliableOpenByEmail.get(event.sent_email_id);
+      if (!previous || event.created_at < previous) firstReliableOpenByEmail.set(event.sent_email_id, event.created_at);
+    }
+    const openUniqueByDay = Array.from(firstReliableOpenByEmail, ([sent_email_id, created_at]) => ({ sent_email_id, created_at }));
     const days: Array<{ day: string; sent: number; opened: number }> = [];
     for (let i = 13; i >= 0; i--) {
       const d = new Date(); d.setDate(d.getDate() - i);
@@ -865,24 +880,42 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     // Einzelne Mails mit Tracking-Zusammenfassung
     const emailRows = db.prepare(
       `SELECT s.id, s.to_email, s.to_name, s.subject, s.success, s.error, s.sent_at, s.job_id,
-              (SELECT COUNT(DISTINCT COALESCE(NULLIF(e.user_agent, ''), 'unknown') || '|' || COALESCE(NULLIF(e.ip, ''), 'unknown'))
-                 FROM email_events e WHERE e.sent_email_id = s.id AND e.event_type = 'open') as opens,
-              (SELECT COUNT(*) FROM email_events e WHERE e.sent_email_id = s.id AND e.event_type = 'open') as raw_opens,
-              (SELECT MIN(created_at) FROM email_events e WHERE e.sent_email_id = s.id AND e.event_type = 'open') as first_open,
-              (SELECT MAX(created_at) FROM email_events e WHERE e.sent_email_id = s.id AND e.event_type = 'open') as last_open,
               (SELECT COUNT(DISTINCT COALESCE(NULLIF(e.url, ''), 'unknown') || '|' || COALESCE(NULLIF(e.user_agent, ''), 'unknown') || '|' || COALESCE(NULLIF(e.ip, ''), 'unknown'))
                  FROM email_events e WHERE e.sent_email_id = s.id AND e.event_type = 'click') as clicks,
               (SELECT COUNT(*) FROM email_events e WHERE e.sent_email_id = s.id AND e.event_type = 'click') as raw_clicks,
-              (SELECT COUNT(*) FROM email_events e WHERE e.sent_email_id = s.id AND e.event_type = 'bounce') as bounces,
-              (SELECT COUNT(DISTINCT user_agent) FROM email_events e WHERE e.sent_email_id = s.id AND e.event_type = 'open') as devices
+              (SELECT COUNT(*) FROM email_events e WHERE e.sent_email_id = s.id AND e.event_type = 'bounce') as bounces
        FROM sent_emails s ORDER BY s.sent_at DESC LIMIT 150`
     ).all() as any[];
-    const emails = emailRows.map(row => ({
-      ...row,
-      sent_at_local: berlinLabel(row.sent_at),
-      first_open_local: berlinLabel(row.first_open),
-      last_open_local: berlinLabel(row.last_open),
-    }));
+    const eventsByMail = new Map<string, typeof trackedOpenEvents>();
+    for (const event of trackedOpenEvents) {
+      const events = eventsByMail.get(event.sent_email_id) || [];
+      events.push(event);
+      eventsByMail.set(event.sent_email_id, events);
+    }
+    const emails = emailRows.map(row => {
+      const openEvents = (eventsByMail.get(row.id) || []).filter(event => isOpenLikeEvent(event.event_type));
+      const reliableEvents = openEvents.filter(event => isReliableOpen({
+        event_type: event.event_type,
+        user_agent: event.user_agent,
+        secondsSinceSent: secondsBetween(row.sent_at, event.created_at),
+      }));
+      const technicalEvents = openEvents.filter(event => !reliableEvents.includes(event));
+      const firstOpen = reliableEvents.map(event => event.created_at).sort()[0] || null;
+      const lastOpen = reliableEvents.map(event => event.created_at).sort().slice(-1)[0] || null;
+      return {
+        ...row,
+        opens: new Set(reliableEvents.map(event => `${event.user_agent || 'unknown'}|${event.ip || 'unknown'}`)).size,
+        raw_opens: openEvents.length,
+        technical_opens: technicalEvents.length,
+        first_open: firstOpen,
+        last_open: lastOpen,
+        devices: new Set(reliableEvents.map(event => event.user_agent || 'unknown')).size,
+        open_status: reliableEvents.length > 0 ? 'opened' : technicalEvents.length > 0 ? 'technical_only' : 'not_opened',
+        sent_at_local: berlinLabel(row.sent_at),
+        first_open_local: berlinLabel(firstOpen),
+        last_open_local: berlinLabel(lastOpen),
+      };
+    });
 
     const webTotal = (db.prepare(`SELECT COUNT(*) as n FROM web_visits`).get() as { n: number }).n;
     const webVisitors = (db.prepare(`SELECT COUNT(DISTINCT visitor_id) as n FROM web_visits`).get() as { n: number }).n;
@@ -909,7 +942,7 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     const base = getTrackingBaseUrl();
     const isPublic = Boolean(base) && !/localhost|127\.0\.0\.1|192\.168\.|^$/.test(base);
     return {
-      totals: { ...totals, opened: openedUnique, clicked: clickedUnique, bounced },
+      totals: { ...totals, opened: openedUnique, technical_opened: technicalOpenEvents.length, clicked: clickedUnique, bounced },
       open_rate: totals.ok > 0 ? Math.round(openedUnique / totals.ok * 100) : 0,
       click_rate: totals.ok > 0 ? Math.round(clickedUnique / totals.ok * 100) : 0,
       opens_by_hour: opensByHour,
@@ -933,9 +966,21 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
   });
 
   app.get<{ Params: { id: string } }>('/api/analytics/email/:id/events', async (req) => {
+    const sent = getDb().prepare(`SELECT sent_at FROM sent_emails WHERE id = ?`).get(req.params.id) as { sent_at?: string } | undefined;
     return getDb().prepare(
       `SELECT event_type, url, user_agent, created_at FROM email_events WHERE sent_email_id = ? ORDER BY created_at ASC`
-    ).all(req.params.id).map((event: any) => ({ ...event, created_at_local: berlinLabel(event.created_at) }));
+    ).all(req.params.id).map((event: any) => {
+      const secondsSinceSent = secondsBetween(sent?.sent_at, event.created_at);
+      const effective_type = event.event_type === 'open'
+        ? classifyOpenEvent({ userAgent: event.user_agent, secondsSinceSent })
+        : event.event_type;
+      return {
+        ...event,
+        effective_type,
+        seconds_since_sent: secondsSinceSent,
+        created_at_local: berlinLabel(event.created_at),
+      };
+    });
   });
 
   // Posteingang nach Zustellfehlern (Bounces) durchsuchen und zuordnen

@@ -490,7 +490,7 @@
   .an-events { background: #090c12; border-radius: 8px; padding: 10px 14px; margin: 4px 0 8px; display: grid; gap: 6px; }
   .an-ev { display: flex; gap: 10px; font-size: 11px; align-items: baseline; }
   .an-ev .t { color: var(--txt3); font-variant-numeric: tabular-nums; flex-shrink: 0; }
-  .an-ev .ic-open { color: var(--g); } .an-ev .ic-click { color: var(--b); } .an-ev .ic-bounce { color: var(--r); }
+  .an-ev .ic-open { color: var(--g); } .an-ev .ic-open_machine, .an-ev .ic-open_unverified { color: var(--txt4); } .an-ev .ic-click { color: var(--b); } .an-ev .ic-bounce { color: var(--r); }
   .sms-recent { display: grid; gap: 8px; padding: 14px 18px; max-height: 300px; overflow-y: auto; }
   .sms-item { background: #090c12; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
   .sms-item .top { display: flex; justify-content: space-between; font-size: 11px; }
@@ -2213,7 +2213,7 @@ async function loadAnalytics() {
   // KPIs
   const t = an.totals;
   set('an-sent', t.ok||0); set('an-failed', t.failed||0);
-  set('an-openrate', an.open_rate + '%'); set('an-opened', t.opened||0);
+  set('an-openrate', an.open_rate + '%'); set('an-opened', (t.opened||0) + (t.technical_opened ? ' echt / ' + t.technical_opened + ' technisch' : ''));
   set('an-clickrate', an.click_rate + '%'); set('an-clicked', t.clicked||0);
   set('an-bounces', t.bounced||0);
   const sc = reportCache.status_counts || {};
@@ -2246,13 +2246,16 @@ async function loadAnalytics() {
   set('an-mail-cnt', anMailsCache.length + ' E-Mails (neueste zuerst)');
   document.getElementById('an-mails').innerHTML = anMailsCache.map(m => {
     const status = m.bounces > 0 ? '<span class="an-bounce">↩ Bounce</span>'
+      : m.clicks > 0 ? '<span class="an-open">🔗 Geklickt</span>'
+      : m.opens > 0 ? '<span class="an-open">👁 Echt geöffnet</span>'
+      : m.technical_opens > 0 ? '<span class="an-zero">Technischer Abruf</span>'
       : m.success ? '<span class="an-open">✓ Zugestellt</span>' : '<span class="an-bounce">✗ Fehler</span>';
     return `<tr class="mail-row" onclick="toggleMailEvents('${m.id}', this)">
       <td><b style="color:var(--txt)">${esc(m.to_name||'')}</b><br><span style="font-size:10px;color:var(--txt3)">${esc(m.to_email)}</span></td>
       <td>${esc((m.subject||'').slice(0,50))}</td>
       <td style="white-space:nowrap">${esc(m.sent_at_local || fmtDate(m.sent_at))}</td>
       <td>${status}${m.job_id?' <span style="color:#8ab4ff;font-size:9px">⚡</span>':''}</td>
-      <td class="${m.opens>0?'an-open':'an-zero'}" title="${m.raw_opens&&m.raw_opens!==m.opens?m.raw_opens+' technische Pixel-Ladevorgaenge':''}">${m.opens>0?'👁 '+m.opens+'×':'—'}</td>
+      <td class="${m.opens>0?'an-open':'an-zero'}" title="${m.technical_opens?m.technical_opens+' technische Pixel-Abrufe, nicht als Öffnung gezählt':''}">${m.opens>0?'👁 '+m.opens+'×':(m.technical_opens>0?'technisch':'—')}</td>
       <td style="white-space:nowrap" class="${m.last_open?'':'an-zero'}">${m.last_open?esc(m.last_open_local || fmtDate(m.last_open)):'—'}</td>
       <td class="${m.clicks>0?'an-open':'an-zero'}">${m.clicks>0?'🔗 '+m.clicks:'—'}</td>
       <td class="${m.devices>1?'an-open':'an-zero'}" title="Mehrere Geräte kann auf Weiterleitung hindeuten">${m.devices||0}</td>
@@ -2321,12 +2324,12 @@ async function toggleMailEvents(id, rowEl) {
   if (!evRow) return;
   if (evRow.style.display !== 'none') { evRow.style.display = 'none'; return; }
   const events = await fetchJSON('/api/analytics/email/'+id+'/events').catch(()=>[]);
-  const icons = { open:'👁', click:'🔗', bounce:'↩' };
-  const labels = { open:'Geöffnet', click:'Link geklickt', bounce:'Zustellfehler (Bounce)' };
+  const icons = { open:'👁', open_machine:'·', open_unverified:'·', click:'🔗', bounce:'↩' };
+  const labels = { open:'Echt geöffnet', open_machine:'Technischer Mailclient-Abruf', open_unverified:'Zu früher Pixel-Abruf', click:'Link geklickt', bounce:'Zustellfehler (Bounce)' };
   evRow.querySelector('td').innerHTML = events.length
     ? `<div class="an-events">${events.map(e => `
         <div class="an-ev"><span class="t">${esc(e.created_at_local || fmtDate(e.created_at))}</span>
-          <span class="ic-${e.event_type}">${icons[e.event_type]||'·'} ${labels[e.event_type]||e.event_type}</span>
+          <span class="ic-${e.effective_type||e.event_type}">${icons[e.effective_type||e.event_type]||'·'} ${labels[e.effective_type||e.event_type]||e.event_type}</span>
           ${e.url?`<span style="color:var(--txt3);overflow:hidden;text-overflow:ellipsis">→ ${esc(e.url.slice(0,80))}</span>`:''}
           ${e.user_agent&&e.event_type!=='bounce'?`<span style="color:var(--txt4);font-size:9px">${esc(deviceName(e.user_agent))}</span>`:''}
           ${e.event_type==='bounce'&&e.user_agent?`<span style="color:var(--txt4);font-size:10px">${esc(e.user_agent.slice(0,90))}</span>`:''}
