@@ -93,6 +93,7 @@ const tests = [
   ['database path can target Railway persistent volume', () => {
     const { resolveDbPath } = require('../dist/db/schema');
     assert.equal(resolveDbPath({ SQLITE_DB_PATH: '/data/prod.db' }), path.resolve('/data/prod.db'));
+    assert.equal(resolveDbPath({ RAILWAY_VOLUME_MOUNT_PATH: '/app/data', DATA_DIR: '/data' }), path.resolve('/app/data/leads.db'));
     assert.equal(resolveDbPath({ DATA_DIR: '/data' }), path.resolve('/data/leads.db'));
   }],
   ['identity helpers normalize duplicate keys without inventing data', () => {

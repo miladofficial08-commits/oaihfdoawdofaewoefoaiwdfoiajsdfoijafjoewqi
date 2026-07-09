@@ -4,11 +4,13 @@ import fs from 'fs';
 import { buildIdentity } from '../utils/identity';
 import { Lead } from '../types';
 
-export function resolveDbPath(env: { SQLITE_DB_PATH?: string; DATA_DIR?: string } = process.env): string {
+export function resolveDbPath(
+  env: { SQLITE_DB_PATH?: string; RAILWAY_VOLUME_MOUNT_PATH?: string; DATA_DIR?: string } = process.env
+): string {
   if (env.SQLITE_DB_PATH?.trim()) {
     return path.resolve(env.SQLITE_DB_PATH.trim());
   }
-  const dataDir = env.DATA_DIR?.trim() || path.join(process.cwd(), 'data');
+  const dataDir = env.RAILWAY_VOLUME_MOUNT_PATH?.trim() || env.DATA_DIR?.trim() || path.join(process.cwd(), 'data');
   return path.resolve(dataDir, 'leads.db');
 }
 
