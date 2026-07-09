@@ -15,8 +15,10 @@ export interface SmtpStatus {
   ok: boolean;
   configured: boolean;
   host?: string;
+  port?: number;
   from?: string;
   error?: string;
+  attempts?: Array<{ host: string; port: number; secure: boolean; ok: boolean; error?: string }>;
 }
 
 export interface SendResult {
@@ -26,22 +28,78 @@ export interface SendResult {
   error?: string;
 }
 
-function createTransport() {
-  const cfg = getSharedSmtpConfig();
-  if (!cfg) {
-    throw new Error('SMTP nicht konfiguriert. SMTP_HOST/USER/PASS oder IMAP_HOST/USER/PASS in .env setzen.');
+type SmtpConfig = NonNullable<ReturnType<typeof getSharedSmtpConfig>>;
+
+let workingConfigCache: { cfg: SmtpConfig; until: number } | null = null;
+
+function smtpCandidates(cfg: SmtpConfig): SmtpConfig[] {
+  const seen = new Set<string>();
+  const add = (candidate: SmtpConfig, list: SmtpConfig[]) => {
+    const key = `${candidate.host}:${candidate.port}:${candidate.secure}:${candidate.requireTLS}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      list.push(candidate);
+    }
+  };
+  const list: SmtpConfig[] = [];
+  add(cfg, list);
+
+  const hosts = new Set([cfg.host]);
+  if (/^smtps\./i.test(cfg.host)) hosts.add(cfg.host.replace(/^smtps\./i, 'smtp.'));
+  if (/^imap\./i.test(cfg.host)) hosts.add(cfg.host.replace(/^imap\./i, 'smtp.'));
+  for (const host of hosts) {
+    add({ ...cfg, host, port: 587, secure: false, requireTLS: true }, list);
+    add({ ...cfg, host, port: 465, secure: true, requireTLS: false }, list);
   }
+  return list;
+}
+
+function createTransportFor(cfg: SmtpConfig) {
   return nodemailer.createTransport({
     host: cfg.host,
     port: cfg.port,
     secure: cfg.secure,
     requireTLS: cfg.requireTLS,
     auth: { user: cfg.user, pass: cfg.pass },
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
+    connectionTimeout: 8000,
+    greetingTimeout: 8000,
+    socketTimeout: 12000,
     tls: { rejectUnauthorized: false },
   });
+}
+
+async function resolveWorkingConfig(baseCfg: SmtpConfig): Promise<{ cfg: SmtpConfig; attempts: SmtpStatus['attempts'] }> {
+  if (workingConfigCache && workingConfigCache.until > Date.now()) {
+    return { cfg: workingConfigCache.cfg, attempts: [{ host: workingConfigCache.cfg.host, port: workingConfigCache.cfg.port, secure: workingConfigCache.cfg.secure, ok: true }] };
+  }
+  const attempts: SmtpStatus['attempts'] = [];
+  let lastError = 'SMTP Verbindung fehlgeschlagen';
+  for (const cfg of smtpCandidates(baseCfg)) {
+    const transport = createTransportFor(cfg);
+    try {
+      await transport.verify();
+      workingConfigCache = { cfg, until: Date.now() + 10 * 60 * 1000 };
+      attempts.push({ host: cfg.host, port: cfg.port, secure: cfg.secure, ok: true });
+      return { cfg, attempts };
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+      attempts.push({ host: cfg.host, port: cfg.port, secure: cfg.secure, ok: false, error: lastError });
+    } finally {
+      transport.close();
+    }
+  }
+  const error = new Error(lastError);
+  (error as any).attempts = attempts;
+  throw error;
+}
+
+async function createTransport() {
+  const cfg = getSharedSmtpConfig();
+  if (!cfg) {
+    throw new Error('SMTP nicht konfiguriert. SMTP_HOST/USER/PASS oder IMAP_HOST/USER/PASS in .env setzen.');
+  }
+  const resolved = await resolveWorkingConfig(cfg);
+  return { transport: createTransportFor(resolved.cfg), cfg: resolved.cfg };
 }
 
 export async function getSmtpStatus(): Promise<SmtpStatus> {
@@ -50,26 +108,25 @@ export async function getSmtpStatus(): Promise<SmtpStatus> {
     return { ok: false, configured: false, error: 'SMTP_HOST/USER/PASS oder IMAP_HOST/USER/PASS fehlen in .env' };
   }
   try {
-    const transport = createTransport();
-    await transport.verify();
-    return { ok: true, configured: true, host: cfg.host, from: cfg.from };
+    const resolved = await resolveWorkingConfig(cfg);
+    return { ok: true, configured: true, host: resolved.cfg.host, port: resolved.cfg.port, from: resolved.cfg.from, attempts: resolved.attempts };
   } catch (err) {
+    const attempts = (err as any)?.attempts as SmtpStatus['attempts'] | undefined;
     return {
       ok: false,
       configured: true,
       host: cfg.host,
+      port: cfg.port,
       from: cfg.from,
       error: err instanceof Error ? err.message : String(err),
+      attempts,
     };
   }
 }
 
 export async function sendLeadEmail(payload: EmailPayload): Promise<SendResult> {
-  const cfg = getSharedSmtpConfig();
-  if (!cfg) throw new Error('SMTP nicht konfiguriert.');
-  const transport = createTransport();
-
   try {
+    const { transport, cfg } = await createTransport();
     const htmlBody = buildHtml(payload.body, payload.trackingId);
 
     const info = await transport.sendMail({
@@ -111,10 +168,8 @@ export async function sendLeadEmail(payload: EmailPayload): Promise<SendResult> 
 }
 
 export async function sendBulkEmail(payload: { to: string; subject: string; body: string; trackingId?: string }): Promise<SendResult> {
-  const transport = createTransport();
-  const cfg = getSharedSmtpConfig();
-  if (!cfg) throw new Error('SMTP nicht konfiguriert.');
   try {
+    const { transport, cfg } = await createTransport();
     const htmlBody = buildHtml(payload.body, payload.trackingId);
     const info = await transport.sendMail({
       from: cfg.from,
