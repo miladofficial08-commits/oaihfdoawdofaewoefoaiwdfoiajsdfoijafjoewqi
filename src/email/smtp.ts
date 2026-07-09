@@ -25,15 +25,17 @@ export function getSmtpConfig(env: NodeJS.ProcessEnv = process.env): SmtpConfig 
   const pass = env.SMTP_PASS || env.IMAP_PASS;
   const from = env.SMTP_FROM || user;
   if (!host || !user || !pass || !from) return undefined;
-  return {
-    host,
-    port: Number(env.SMTP_PORT ?? 587),
-    secure: env.SMTP_SECURE === 'true',
-    requireTLS: env.SMTP_REQUIRE_TLS !== 'false',
-    user,
-    pass,
-    from,
-  };
+
+  const port = Number(env.SMTP_PORT ?? 587);
+  // secure = implizite TLS ab Verbindungsbeginn, gilt nur fuer Port 465.
+  // Bei Brevo (587) bleibt secure=false und STARTTLS wird ueber requireTLS erzwungen.
+  // Explizites SMTP_SECURE/SMTP_SECURE_SSL uebersteuert; sonst aus dem Port ableiten.
+  const secureEnv = env.SMTP_SECURE ?? env.SMTP_SECURE_SSL;
+  const secure = secureEnv != null ? secureEnv === 'true' : port === 465;
+  // Bei STARTTLS-Ports (587/25) TLS erzwingen, ausser explizit abgeschaltet.
+  const requireTLS = env.SMTP_REQUIRE_TLS != null ? env.SMTP_REQUIRE_TLS !== 'false' : !secure;
+
+  return { host, port, secure, requireTLS, user, pass, from };
 }
 
 export function getEmailStatus(env: NodeJS.ProcessEnv = process.env) {

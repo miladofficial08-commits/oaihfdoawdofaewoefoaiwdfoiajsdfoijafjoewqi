@@ -118,7 +118,7 @@ export async function getSmtpStatus(): Promise<SmtpStatus> {
       host: cfg.host,
       port: cfg.port,
       from: cfg.from,
-      error: err instanceof Error ? err.message : String(err),
+      error: classifySmtpError(err),
       attempts,
     };
   }
@@ -156,7 +156,8 @@ export async function sendLeadEmail(payload: EmailPayload): Promise<SendResult> 
 
     return { success: true, messageId: info.messageId, to: payload.to };
   } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
+    const error = classifySmtpError(err);
+    console.error(`[smtp] Versand an ${payload.to} fehlgeschlagen: ${error}`);
     recordOutreachEvent({
       lead_id: payload.leadId,
       event_type: 'status_changed',
@@ -181,7 +182,9 @@ export async function sendBulkEmail(payload: { to: string; subject: string; body
     });
     return { success: true, messageId: info.messageId, to: payload.to };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err), to: payload.to };
+    const error = classifySmtpError(err);
+    console.error(`[smtp] Bulk-Versand an ${payload.to} fehlgeschlagen: ${error}`);
+    return { success: false, error, to: payload.to };
   }
 }
 
@@ -220,4 +223,53 @@ ${pixel}
 
 function escHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/** Uebersetzt technische SMTP-Fehler in klare, handlungsleitende Meldungen (Brevo-spezifisch). */
+export function classifySmtpError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  const code = String((err as any)?.code ?? (err as any)?.responseCode ?? '');
+  const low = raw.toLowerCase();
+  if (low.includes('nicht konfiguriert') || (low.includes('smtp') && low.includes('fehlen'))) return raw;
+  if (code === 'ETIMEDOUT' || low.includes('timeout') || low.includes('timed out')) {
+    return `Verbindungs-Timeout zum SMTP-Server. Host/Port pruefen (Brevo: smtp-relay.brevo.com:587). [${raw}]`;
+  }
+  if (code === 'ECONNREFUSED' || low.includes('econnrefused')) {
+    return `SMTP-Server verweigert die Verbindung. Host/Port pruefen. [${raw}]`;
+  }
+  if (low.includes('unauthorized ip') || low.includes('525') || low.includes('5.7.1') && low.includes('ip')) {
+    return `Brevo blockiert die Server-IP ("Unauthorized IP address"). Loesung: In Brevo unter "SMTP & API" → "Authorized IPs" die IP-Beschraenkung deaktivieren (oder die Railway-Server-IP freigeben). Railway-IPs sind dynamisch – deaktivieren ist am sichersten. [${raw}]`;
+  }
+  if (code === 'EAUTH' || code === '535' || low.includes('authentication') || low.includes('invalid login') || low.includes('535')) {
+    return `Authentifizierung fehlgeschlagen. Bei Brevo: SMTP_USER = Login (…@smtp-brevo.com), SMTP_PASS = SMTP-Key (nicht API-Key, nicht Konto-Passwort). [${raw}]`;
+  }
+  if (low.includes('not verified') || low.includes('unauthorized sender') || (low.includes('sender') && low.includes('verif'))) {
+    return `Absender nicht verifiziert. info@tawano.de in Brevo unter "Senders & IP" bestaetigen. [${raw}]`;
+  }
+  if (code === '550' || code === '554' || low.includes('rate limit') || low.includes('quota') || low.includes('too many')) {
+    return `Rate-Limit/Kontingent erreicht oder Nachricht abgelehnt. [${raw}]`;
+  }
+  return raw;
+}
+
+/** Sendet eine echte Test-Mail ueber den aktiven SMTP-Server (Verbindung + Auth + Versand live pruefen). */
+export async function sendTestEmail(to?: string): Promise<SendResult & { host?: string; port?: number }> {
+  const cfg0 = getSharedSmtpConfig();
+  if (!cfg0) return { success: false, error: 'SMTP nicht konfiguriert (SMTP_HOST/USER/PASS fehlen in den Variablen).' };
+  const target = (to && to.trim()) || cfg0.user;
+  try {
+    const { transport, cfg } = await createTransport();
+    const info = await transport.sendMail({
+      from: cfg.from,
+      to: target,
+      subject: 'Tawano SMTP-Test ✓',
+      text: `SMTP-Test erfolgreich.\n\nServer: ${cfg.host}:${cfg.port}\nAbsender: ${cfg.from}\nZeit: ${new Date().toLocaleString('de-DE')}`,
+    });
+    console.log(`[smtp] Test-Mail gesendet ueber ${cfg.host}:${cfg.port} an ${target} (id ${info.messageId})`);
+    return { success: true, messageId: info.messageId, to: target, host: cfg.host, port: cfg.port };
+  } catch (err) {
+    const error = classifySmtpError(err);
+    console.error(`[smtp] Test fehlgeschlagen: ${error}`);
+    return { success: false, error, to: target };
+  }
 }

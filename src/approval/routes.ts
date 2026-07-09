@@ -25,7 +25,7 @@ import { personalizeLead, getAiProvider } from '../ai/personalizer';
 import { exportToCsv } from '../export/csv-export';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
-import { getSmtpStatus, sendLeadEmail, sendBulkEmail, getTrackingBaseUrl } from '../email/mailer';
+import { getSmtpStatus, sendLeadEmail, sendBulkEmail, getTrackingBaseUrl, sendTestEmail } from '../email/mailer';
 import { getSmsStats } from '../email/sms-stats';
 import { generateAdVariants } from '../ai/ad-generator';
 import { v4 as uuid } from 'uuid';
@@ -462,6 +462,13 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
 
   // ── E-Mail ────────────────────────────────────────────────────────────────
   app.get('/api/smtp-status', async () => getSmtpStatus());
+
+  // Live-Test: Verbindung + Auth + echter Testmail-Versand über den aktiven SMTP (Brevo).
+  app.post<{ Body: { to?: string } }>('/api/smtp-test', async (req, reply) => {
+    const result = await sendTestEmail(req.body?.to);
+    if (!result.success) return reply.status(502).send(result);
+    return result;
+  });
 
   app.post<{ Body: { id: string; to: string; subject: string; body: string } }>(
     '/api/send-email',

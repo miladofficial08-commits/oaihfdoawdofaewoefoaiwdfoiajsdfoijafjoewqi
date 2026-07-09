@@ -7,3 +7,4 @@ data/exports/
 *.db-shm
 *.db-wal
 *.log
+.railway-supabase-temp.json
