@@ -5,6 +5,7 @@ import { getSmtpConfig as getSharedSmtpConfig } from './smtp';
 export interface EmailPayload {
   leadId: string;
   to: string;
+  toName?: string;
   subject: string;
   body: string;
   /** ID des sent_emails-Eintrags — aktiviert Öffnungs-Pixel + Klick-Tracking in der HTML-Version */
@@ -26,6 +27,29 @@ export interface SendResult {
   messageId?: string;
   to?: string;
   error?: string;
+}
+
+export interface BrevoStatus {
+  ok: boolean;
+  configured: boolean;
+  error?: string;
+  apiKeySet?: boolean;
+}
+
+export interface BrevoEmailInput {
+  to: string;
+  toName?: string;
+  subject: string;
+  body: string;
+  trackingId?: string;
+}
+
+export interface BrevoEmailPayload {
+  sender: { name: string; email: string };
+  to: Array<{ email: string; name?: string }>;
+  subject: string;
+  htmlContent: string;
+  textContent: string;
 }
 
 type SmtpConfig = NonNullable<ReturnType<typeof getSharedSmtpConfig>>;
@@ -102,10 +126,60 @@ async function createTransport() {
   return { transport: createTransportFor(resolved.cfg), cfg: resolved.cfg };
 }
 
+export function getBrevoStatus(env: NodeJS.ProcessEnv = process.env): BrevoStatus {
+  const apiKeySet = Boolean(env.BREVO_API_KEY?.trim());
+  if (!apiKeySet) return { ok: false, configured: false, error: 'BREVO_API_KEY fehlt' };
+  return { ok: true, configured: true, apiKeySet: true };
+}
+
+export function buildBrevoEmailPayload(input: BrevoEmailInput, env: NodeJS.ProcessEnv = process.env): BrevoEmailPayload {
+  return {
+    sender: { name: 'Tawano', email: 'info@tawano.de' },
+    to: [{ email: input.to, ...(input.toName ? { name: input.toName } : {}) }],
+    subject: input.subject,
+    htmlContent: buildHtml(input.body, input.trackingId, env),
+    textContent: input.body,
+  };
+}
+
+function classifyBrevoApiError(status: number, body: string): string {
+  const trimmed = body.trim();
+  if (status === 401 || status === 403) return `Brevo API Auth fehlgeschlagen (${status}). BREVO_API_KEY pruefen.`;
+  if (status === 400 && /sender|from|verified|unauthorized/i.test(trimmed)) return `Brevo API lehnt den Absender ab. info@tawano.de pruefen. [${trimmed.slice(0, 200)}]`;
+  if (status === 429 || /quota|limit|rate/i.test(trimmed)) return `Brevo API Rate-Limit/Kontingent erreicht. [${trimmed.slice(0, 200)}]`;
+  return `Brevo API Fehler (${status}). [${trimmed.slice(0, 200)}]`;
+}
+
+async function sendViaBrevoApi(payload: BrevoEmailInput): Promise<SendResult> {
+  const apiKey = process.env.BREVO_API_KEY?.trim();
+  if (!apiKey) return { success: false, error: 'BREVO_API_KEY fehlt', to: payload.to };
+
+  try {
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(buildBrevoEmailPayload(payload)),
+    });
+    const body = await res.text();
+    if (!res.ok) return { success: false, error: classifyBrevoApiError(res.status, body), to: payload.to };
+    const data = body ? JSON.parse(body) as { messageId?: string } : {};
+    return { success: true, messageId: data.messageId, to: payload.to };
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    return { success: false, error: `Brevo API Versand fehlgeschlagen. [${error}]`, to: payload.to };
+  }
+}
+
 export async function getSmtpStatus(): Promise<SmtpStatus> {
+  if (process.env.BREVO_API_KEY?.trim()) {
+    return { ok: true, configured: true, host: 'api.brevo.com', port: 443, from: 'Tawano <info@tawano.de>' };
+  }
   const cfg = getSharedSmtpConfig();
   if (!cfg) {
-    return { ok: false, configured: false, error: 'SMTP_HOST/USER/PASS oder IMAP_HOST/USER/PASS fehlen in .env' };
+    return { ok: false, configured: false, error: 'BREVO_API_KEY fehlt' };
   }
   try {
     const resolved = await resolveWorkingConfig(cfg);
@@ -126,17 +200,26 @@ export async function getSmtpStatus(): Promise<SmtpStatus> {
 
 export async function sendLeadEmail(payload: EmailPayload): Promise<SendResult> {
   try {
-    const { transport, cfg } = await createTransport();
-    const htmlBody = buildHtml(payload.body, payload.trackingId);
+    let result: SendResult;
+    let server = 'Brevo API';
+    if (process.env.BREVO_API_KEY?.trim()) {
+      result = await sendViaBrevoApi(payload);
+    } else {
+      const { transport, cfg } = await createTransport();
+      const htmlBody = buildHtml(payload.body, payload.trackingId);
+      const info = await transport.sendMail({
+        from: cfg.from,
+        to: payload.to,
+        bcc: cfg.user,
+        subject: payload.subject,
+        text: payload.body,
+        html: htmlBody,
+      });
+      server = cfg.host;
+      result = { success: true, messageId: info.messageId, to: payload.to };
+    }
 
-    const info = await transport.sendMail({
-      from: cfg.from,
-      to: payload.to,
-      bcc: cfg.user,
-      subject: payload.subject,
-      text: payload.body,
-      html: htmlBody,
-    });
+    if (!result.success) throw new Error(result.error || 'E-Mail-Versand fehlgeschlagen');
 
     // Mark lead as contacted + log actual send event
     updateLeadStatus(payload.leadId, 'contacted', {
@@ -151,13 +234,13 @@ export async function sendLeadEmail(payload: EmailPayload): Promise<SendResult> 
       message: payload.body,
       status: 'contacted',
       user: 'dashboard',
-      note: `E-Mail versendet an ${payload.to} | Betreff: "${payload.subject}" | Server: ${cfg.host} | MessageID: ${info.messageId}`,
+      note: `E-Mail versendet an ${payload.to} | Betreff: "${payload.subject}" | Server: ${server} | MessageID: ${result.messageId}`,
     });
 
-    return { success: true, messageId: info.messageId, to: payload.to };
+    return result;
   } catch (err) {
-    const error = classifySmtpError(err);
-    console.error(`[smtp] Versand an ${payload.to} fehlgeschlagen: ${error}`);
+    const error = process.env.BREVO_API_KEY?.trim() ? (err instanceof Error ? err.message : String(err)) : classifySmtpError(err);
+    console.error(`[email] Versand an ${payload.to} fehlgeschlagen: ${error}`);
     recordOutreachEvent({
       lead_id: payload.leadId,
       event_type: 'status_changed',
@@ -168,8 +251,10 @@ export async function sendLeadEmail(payload: EmailPayload): Promise<SendResult> 
   }
 }
 
-export async function sendBulkEmail(payload: { to: string; subject: string; body: string; trackingId?: string }): Promise<SendResult> {
+export async function sendBulkEmail(payload: { to: string; toName?: string; subject: string; body: string; trackingId?: string }): Promise<SendResult> {
   try {
+    if (process.env.BREVO_API_KEY?.trim()) return await sendViaBrevoApi(payload);
+
     const { transport, cfg } = await createTransport();
     const htmlBody = buildHtml(payload.body, payload.trackingId);
     const info = await transport.sendMail({
@@ -190,12 +275,17 @@ export async function sendBulkEmail(payload: { to: string; subject: string; body
 
 /** Basis-URL unter der der Server aus dem Internet erreichbar ist — nötig für Öffnungs-/Klick-Tracking. */
 export function getTrackingBaseUrl(): string {
-  const base = (process.env.PUBLIC_BASE_URL || '').trim().replace(/\/$/, '');
+  const base = getTrackingBaseUrlFromEnv(process.env);
   return base;
 }
 
-function buildHtml(body: string, trackingId?: string): string {
-  const base = getTrackingBaseUrl();
+function getTrackingBaseUrlFromEnv(env: NodeJS.ProcessEnv): string {
+  const base = (env.PUBLIC_BASE_URL || '').trim().replace(/\/$/, '');
+  return base;
+}
+
+function buildHtml(body: string, trackingId?: string, env: NodeJS.ProcessEnv = process.env): string {
+  const base = getTrackingBaseUrlFromEnv(env);
   const track = Boolean(trackingId && base);
 
   const lines = body.split('\n').map(l => {
@@ -272,4 +362,25 @@ export async function sendTestEmail(to?: string): Promise<SendResult & { host?: 
     console.error(`[smtp] Test fehlgeschlagen: ${error}`);
     return { success: false, error, to: target };
   }
+}
+
+/** Sendet eine echte Test-Mail ueber die Brevo Transactional Email API. */
+export async function sendBrevoTestEmail(to?: string): Promise<SendResult & { apiKeySet: boolean; provider: string }> {
+  const apiKeySet = Boolean(process.env.BREVO_API_KEY?.trim());
+  if (!apiKeySet) {
+    console.error('[brevo] Test fehlgeschlagen: BREVO_API_KEY fehlt (BREVO_API_KEY_SET=false)');
+    return { success: false, error: 'BREVO_API_KEY fehlt', apiKeySet: false, provider: 'brevo-api' };
+  }
+  const target = (to && to.trim()) || 'info@tawano.de';
+  const result = await sendViaBrevoApi({
+    to: target,
+    subject: 'Tawano Brevo API-Test',
+    body: `Brevo API-Test erfolgreich.\n\nProvider: Brevo Transactional Email API\nZeit: ${new Date().toLocaleString('de-DE')}`,
+  });
+  if (result.success) {
+    console.log(`[brevo] Test-Mail gesendet an ${target} (BREVO_API_KEY_SET=true, id ${result.messageId || 'n/a'})`);
+  } else {
+    console.error(`[brevo] Test fehlgeschlagen: ${result.error} (BREVO_API_KEY_SET=true)`);
+  }
+  return { ...result, apiKeySet: true, provider: 'brevo-api' };
 }

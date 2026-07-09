@@ -150,7 +150,7 @@ async function processJob(job: SendJob): Promise<void> {
 
   const rendered = renderTemplate(tpl, { name: lead.name, branche: lead.branche, stadt: lead.stadt });
   const trackingId = uuid();
-  const result = await sendLeadEmail({ leadId: lead.id, to: lead.email!, subject: rendered.subject, body: rendered.body, trackingId });
+  const result = await sendLeadEmail({ leadId: lead.id, to: lead.email!, toName: lead.name, subject: rendered.subject, body: rendered.body, trackingId });
 
   recordSentEmail({
     id: trackingId,

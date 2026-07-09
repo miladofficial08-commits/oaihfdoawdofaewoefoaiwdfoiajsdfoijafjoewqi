@@ -25,7 +25,7 @@ import { personalizeLead, getAiProvider } from '../ai/personalizer';
 import { exportToCsv } from '../export/csv-export';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
-import { getSmtpStatus, sendLeadEmail, sendBulkEmail, getTrackingBaseUrl, sendTestEmail } from '../email/mailer';
+import { getSmtpStatus, sendLeadEmail, sendBulkEmail, getTrackingBaseUrl, sendTestEmail, sendBrevoTestEmail } from '../email/mailer';
 import { getSmsStats } from '../email/sms-stats';
 import { generateAdVariants } from '../ai/ad-generator';
 import { v4 as uuid } from 'uuid';
@@ -470,6 +470,12 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     return result;
   });
 
+  app.post<{ Body: { to?: string } }>('/api/brevo-test', async (req, reply) => {
+    const result = await sendBrevoTestEmail(req.body?.to);
+    if (!result.success) return reply.status(502).send(result);
+    return result;
+  });
+
   app.post<{ Body: { id: string; to: string; subject: string; body: string } }>(
     '/api/send-email',
     async (req, reply) => {
@@ -478,8 +484,8 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
         return reply.status(400).send({ error: 'id, to, subject und body sind Pflicht' });
       }
       const trackingId = uuid();
-      const result = await sendLeadEmail({ leadId: id, to, subject, body, trackingId });
       const lead = getAllLeads().find(l => l.id === id);
+      const result = await sendLeadEmail({ leadId: id, to, toName: lead?.name, subject, body, trackingId });
       recordSentEmail({ id: trackingId, lead_id: id, to_email: to, to_name: lead?.name, subject, body, success: result.success, error: result.error, message_id: result.messageId });
       if (!result.success) return reply.status(502).send(result);
       return result;
@@ -621,8 +627,8 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
         const trackingId = uuid();
         // Mit Lead-ID: Status wird auf "contacted" gesetzt + Event protokolliert
         const res = r.id
-          ? await sendLeadEmail({ leadId: r.id, to: r.email, subject: rendered.subject, body: rendered.body, trackingId })
-          : await sendBulkEmail({ to: r.email, subject: rendered.subject, body: rendered.body, trackingId });
+          ? await sendLeadEmail({ leadId: r.id, to: r.email, toName: r.name, subject: rendered.subject, body: rendered.body, trackingId })
+          : await sendBulkEmail({ to: r.email, toName: r.name, subject: rendered.subject, body: rendered.body, trackingId });
         recordSentEmail({ id: trackingId, lead_id: r.id ?? null, to_email: r.email, to_name: r.name, subject: rendered.subject, body: rendered.body, template_id: template.id, success: res.success, error: res.error, message_id: res.messageId });
         results.push({ name: r.name, email: r.email, success: res.success, error: res.error, messageId: res.messageId });
       }

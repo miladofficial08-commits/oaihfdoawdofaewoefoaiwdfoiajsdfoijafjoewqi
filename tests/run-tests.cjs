@@ -272,6 +272,31 @@ const tests = [
     assert.equal(cfg.pass, 'secret');
     assert.equal(cfg.from, 'info@tawano.de');
   }],
+  ['brevo api helpers expose key status and build tracked payload', () => {
+    const mailer = require('../dist/email/mailer');
+    assert.deepEqual(mailer.getBrevoStatus({}), { ok: false, configured: false, error: 'BREVO_API_KEY fehlt' });
+    assert.equal(mailer.getBrevoStatus({ BREVO_API_KEY: 'x' }).ok, true);
+
+    const payload = mailer.buildBrevoEmailPayload({
+      to: 'lead@example.com',
+      toName: 'Lead Name',
+      subject: 'Hallo',
+      body: 'Text https://example.com',
+      trackingId: 'track-1',
+    }, { BREVO_API_KEY: 'x', PUBLIC_BASE_URL: 'https://app.example.com' });
+
+    assert.deepEqual(payload.sender, { name: 'Tawano', email: 'info@tawano.de' });
+    assert.deepEqual(payload.to, [{ email: 'lead@example.com', name: 'Lead Name' }]);
+    assert.equal(payload.subject, 'Hallo');
+    assert.equal(payload.textContent, 'Text https://example.com');
+    assert.match(payload.htmlContent, /\/track\/click\/track-1/);
+    assert.match(payload.htmlContent, /\/track\/open\/track-1\.gif/);
+  }],
+  ['routes expose brevo test endpoint without removing smtp test', () => {
+    const routes = fs.readFileSync(path.join(__dirname, '..', 'src', 'approval', 'routes.ts'), 'utf8');
+    assert.match(routes, /\/api\/brevo-test/);
+    assert.match(routes, /\/api\/smtp-test/);
+  }],
   ['dashboard exposes explicit one-by-one smtp send button after approval', () => {
     const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'approval', 'views', 'dashboard.html'), 'utf8');
     assert.match(html, /E-Mail jetzt senden/);
