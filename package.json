@@ -2,6 +2,9 @@
   "name": "tawano-leadgen",
   "version": "1.0.0",
   "description": "Tawano Lead Generation System — scrape, analyze, score, personalize",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "npm run build && node dist/server.js",
     "leadgen": "npm run build && node dist/cli.js",
