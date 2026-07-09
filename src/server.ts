@@ -170,11 +170,13 @@ export async function buildServer() {
 
 export async function main() {
   const app = await buildServer();
+  const isProduction = process.env.NODE_ENV === 'production';
+  const port = Number(process.env.PORT) || (isProduction ? 8080 : 4000);
   await app.listen({
-    port: Number(process.env.PORT) || 4000,
+    port,
     host: '0.0.0.0',
   });
-  console.log(`Tawano Lead-Gen Dashboard: http://0.0.0.0:${Number(process.env.PORT) || 4000}`);
+  console.log(`Tawano Lead-Gen Dashboard: http://0.0.0.0:${port}`);
 }
 
 if (require.main === module) {
