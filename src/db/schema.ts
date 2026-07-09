@@ -250,6 +250,27 @@ function initSchema(db: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_email_events_sent ON email_events(sent_email_id);
     CREATE INDEX IF NOT EXISTS idx_email_events_type ON email_events(event_type);
+
+    CREATE TABLE IF NOT EXISTS web_visits (
+      id            TEXT PRIMARY KEY,
+      visitor_id    TEXT NOT NULL,
+      channel       TEXT NOT NULL DEFAULT 'web',
+      source        TEXT,
+      medium        TEXT,
+      campaign      TEXT,
+      sent_email_id TEXT,
+      lead_id       TEXT,
+      url           TEXT NOT NULL,
+      path          TEXT,
+      title         TEXT,
+      referrer      TEXT,
+      user_agent    TEXT,
+      ip            TEXT,
+      created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_web_visits_visitor ON web_visits(visitor_id);
+    CREATE INDEX IF NOT EXISTS idx_web_visits_channel ON web_visits(channel);
+    CREATE INDEX IF NOT EXISTS idx_web_visits_created ON web_visits(created_at);
   `);
   db.exec(`
     CREATE TABLE IF NOT EXISTS idea_campaigns (

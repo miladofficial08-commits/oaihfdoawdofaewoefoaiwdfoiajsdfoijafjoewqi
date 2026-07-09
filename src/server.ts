@@ -55,8 +55,10 @@ function cookieHeaderValue(value: string, secure: boolean, maxAgeSeconds: number
 function shouldBypassAuth(pathname: string): boolean {
   if (pathname === '/login') return true;
   if (pathname === '/health') return true;
+  if (pathname === '/track.js') return true;
   if (pathname.startsWith('/track/open/')) return true;
   if (pathname.startsWith('/track/click/')) return true;
+  if (pathname.startsWith('/track/sms/')) return true;
   if (pathname.startsWith('/unsubscribe/')) return true;
   if (pathname.startsWith('/webhook/')) return true;
   // Legacy tracking endpoints used by old emails.

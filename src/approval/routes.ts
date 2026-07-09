@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import path from 'path';
 import fs from 'fs';
+import { createHash } from 'crypto';
 import {
   getLeadsPendingApproval,
   updateLeadStatus,
@@ -32,6 +33,51 @@ import { getDb } from '../db/schema';
 import { fetchInboxEmails, getImapStatus, markEmailSeen } from '../email/inbox';
 import { getEmailTemplate, updateEmailTemplate, renderTemplate, listEmailTemplates, createEmailTemplate, deleteEmailTemplate } from '../email/template';
 import { startAutoSender, recordSentEmail, sentTodayCount, GLOBAL_DAILY_CAP, ALLOWED_DAILY_LIMITS, SendJob } from '../email/auto-sender';
+
+const BERLIN_TZ = 'Europe/Berlin';
+
+function parseDbTime(value: unknown): Date | null {
+  if (!value) return null;
+  const raw = String(value);
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(raw)
+    ? raw.replace(' ', 'T') + 'Z'
+    : raw;
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function berlinParts(value: unknown): { day: string; hour: number; label: string } | null {
+  const date = parseDbTime(value);
+  if (!date) return null;
+  const parts = new Intl.DateTimeFormat('de-DE', {
+    timeZone: BERLIN_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const get = (type: string) => parts.find(p => p.type === type)?.value || '';
+  return {
+    day: `${get('year')}-${get('month')}-${get('day')}`,
+    hour: Number(get('hour')),
+    label: `${get('day')}.${get('month')}.${get('year').slice(2)}, ${get('hour')}:${get('minute')}`,
+  };
+}
+
+function berlinLabel(value: unknown): string | null {
+  return berlinParts(value)?.label ?? null;
+}
+
+function requestSignature(req: { headers: Record<string, unknown>; ip?: string }): string {
+  return createHash('sha256')
+    .update(String(req.headers['user-agent'] || ''))
+    .update('|')
+    .update(req.ip || '')
+    .digest('hex')
+    .slice(0, 24);
+}
 
 export async function registerRoutes(app: FastifyInstance) {
   function sendDashboardHtml(reply: { type: (contentType: string) => { send: (body: string) => unknown } }) {
@@ -595,6 +641,54 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     return true;
   }
 
+  function urlPath(rawUrl: string | undefined): string | null {
+    if (!rawUrl) return null;
+    try { return new URL(rawUrl).pathname.slice(0, 240); } catch { return null; }
+  }
+
+  function inferWebChannel(source?: string | null, medium?: string | null, referrer?: string | null): string {
+    const s = `${source || ''} ${medium || ''}`.toLowerCase();
+    if (s.includes('email') || s.includes('mail')) return 'email';
+    if (s.includes('sms') || s.includes('whatsapp')) return 'sms';
+    if (!referrer) return 'direct';
+    return 'organic';
+  }
+
+  function logWebVisit(data: {
+    visitorId: string;
+    channel?: string;
+    source?: string | null;
+    medium?: string | null;
+    campaign?: string | null;
+    sentEmailId?: string | null;
+    leadId?: string | null;
+    url: string;
+    title?: string | null;
+    referrer?: string | null;
+    req: { headers: Record<string, unknown>; ip?: string };
+  }) {
+    const channel = (data.channel || inferWebChannel(data.source, data.medium, data.referrer)).slice(0, 40);
+    getDb().prepare(
+      `INSERT INTO web_visits (id, visitor_id, channel, source, medium, campaign, sent_email_id, lead_id, url, path, title, referrer, user_agent, ip)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      uuid(),
+      data.visitorId.slice(0, 120),
+      channel,
+      data.source?.slice(0, 120) ?? null,
+      data.medium?.slice(0, 80) ?? null,
+      data.campaign?.slice(0, 120) ?? null,
+      data.sentEmailId ?? null,
+      data.leadId ?? null,
+      data.url.slice(0, 900),
+      urlPath(data.url),
+      data.title?.slice(0, 180) ?? null,
+      data.referrer?.slice(0, 900) ?? null,
+      String(data.req.headers['user-agent'] || '').slice(0, 300),
+      data.req.ip ?? null
+    );
+  }
+
   app.get<{ Params: { id: string } }>('/t/o/:id', async (req, reply) => {
     const id = req.params.id.replace(/\.gif$/i, '');
     logEmailEvent(id, 'open', req as any);
@@ -620,6 +714,18 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     // Nur echte http(s)-Ziele — kein offener Redirect für beliebige Schemata
     if (!/^https?:\/\//i.test(target)) return reply.status(400).send('Ungültiges Ziel');
     logEmailEvent(req.params.id, 'click', req as any, target.slice(0, 500));
+    const sent = getDb().prepare('SELECT lead_id FROM sent_emails WHERE id = ?').get(req.params.id) as { lead_id?: string | null } | undefined;
+    logWebVisit({
+      visitorId: `email:${req.params.id}:${requestSignature(req as any)}`,
+      channel: 'email',
+      source: 'outreach_email',
+      medium: 'email',
+      sentEmailId: req.params.id,
+      leadId: sent?.lead_id ?? null,
+      url: target,
+      referrer: null,
+      req: req as any,
+    });
     reply.redirect(302, target);
   });
 
@@ -628,10 +734,76 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     // Nur echte http(s)-Ziele — kein offener Redirect für beliebige Schemata
     if (!/^https?:\/\//i.test(target)) return reply.status(400).send('Ungültiges Ziel');
     logEmailEvent(req.params.id, 'click', req as any, target.slice(0, 500));
+    const sent = getDb().prepare('SELECT lead_id FROM sent_emails WHERE id = ?').get(req.params.id) as { lead_id?: string | null } | undefined;
+    logWebVisit({
+      visitorId: `email:${req.params.id}:${requestSignature(req as any)}`,
+      channel: 'email',
+      source: 'outreach_email',
+      medium: 'email',
+      sentEmailId: req.params.id,
+      leadId: sent?.lead_id ?? null,
+      url: target,
+      referrer: null,
+      req: req as any,
+    });
     reply.redirect(302, target);
   });
 
   // ── Analyse ───────────────────────────────────────────────────────────────
+  app.get<{ Params: { id: string }; Querystring: { u?: string } }>('/track/sms/:id', async (req, reply) => {
+    const target = String(req.query.u || '').trim();
+    if (!/^https?:\/\//i.test(target)) return reply.status(400).send('Ungueltiges Ziel');
+    logWebVisit({
+      visitorId: `sms:${req.params.id}:${requestSignature(req as any)}`,
+      channel: 'sms',
+      source: 'voice_agent_sms',
+      medium: 'sms',
+      url: target,
+      referrer: null,
+      req: req as any,
+    });
+    reply.redirect(302, target);
+  });
+
+  app.get('/track.js', async (_req, reply) => {
+    const js = `(() => {
+  const endpoint = '${getTrackingBaseUrl() || ''}/webhook/visit';
+  if (!endpoint || !navigator.sendBeacon) return;
+  const key = 'tawano_visitor_id';
+  const id = localStorage.getItem(key) || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
+  localStorage.setItem(key, id);
+  const params = new URLSearchParams(location.search);
+  const body = JSON.stringify({
+    visitor_id: id,
+    url: location.href,
+    title: document.title,
+    referrer: document.referrer || '',
+    source: params.get('utm_source') || '',
+    medium: params.get('utm_medium') || '',
+    campaign: params.get('utm_campaign') || ''
+  });
+  navigator.sendBeacon(endpoint, new Blob([body], { type: 'application/json' }));
+})();`;
+    reply.type('application/javascript').header('Cache-Control', 'public, max-age=300').send(js);
+  });
+
+  app.post<{ Body: { visitor_id?: string; url?: string; title?: string; referrer?: string; source?: string; medium?: string; campaign?: string } }>('/webhook/visit', async (req, reply) => {
+    const body = req.body || {};
+    const url = String(body.url || '').trim();
+    if (!/^https?:\/\//i.test(url)) return reply.status(400).send({ ok: false, error: 'invalid_url' });
+    logWebVisit({
+      visitorId: String(body.visitor_id || `anon:${requestSignature(req as any)}`),
+      source: body.source || null,
+      medium: body.medium || null,
+      campaign: body.campaign || null,
+      url,
+      title: body.title || null,
+      referrer: body.referrer || null,
+      req: req as any,
+    });
+    return { ok: true };
+  });
+
   app.get('/api/analytics/email', async () => {
     const db = getDb();
     const totals = db.prepare(
@@ -651,28 +823,34 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     ).get() as { n: number }).n;
 
     // Öffnungen nach Uhrzeit (lokale Zeit, 0–23)
-    const byHourRows = db.prepare(
-      `SELECT CAST(strftime('%H', created_at, 'localtime') AS INTEGER) as h, COUNT(*) as n
-       FROM email_events WHERE event_type = 'open' GROUP BY h`
-    ).all() as Array<{ h: number; n: number }>;
-    const opensByHour = Array.from({ length: 24 }, (_, h) => byHourRows.find(r => r.h === h)?.n ?? 0);
+    const openEventTimes = db.prepare(
+      `SELECT created_at FROM email_events WHERE event_type = 'open'`
+    ).all() as Array<{ created_at: string }>;
+    const opensByHour = Array.from({ length: 24 }, () => 0);
+    for (const event of openEventTimes) {
+      const parts = berlinParts(event.created_at);
+      if (parts && Number.isFinite(parts.hour)) opensByHour[parts.hour]++;
+    }
 
     // Versand + Öffnungen pro Tag, letzte 14 Tage
+    const sentEventTimes = db.prepare(
+      `SELECT sent_at FROM sent_emails WHERE success = 1`
+    ).all() as Array<{ sent_at: string }>;
+    const openUniqueByDay = db.prepare(
+      `SELECT sent_email_id, MIN(created_at) as created_at
+       FROM email_events WHERE event_type = 'open' GROUP BY sent_email_id`
+    ).all() as Array<{ sent_email_id: string; created_at: string }>;
     const days: Array<{ day: string; sent: number; opened: number }> = [];
     for (let i = 13; i >= 0; i--) {
       const d = new Date(); d.setDate(d.getDate() - i);
-      const day = d.toISOString().slice(0, 10);
-      const sent = (db.prepare(
-        `SELECT COUNT(*) as n FROM sent_emails WHERE success = 1 AND date(sent_at, 'localtime') = ?`
-      ).get(day) as { n: number }).n;
-      const opened = (db.prepare(
-        `SELECT COUNT(DISTINCT sent_email_id) as n FROM email_events WHERE event_type = 'open' AND date(created_at, 'localtime') = ?`
-      ).get(day) as { n: number }).n;
+      const day = berlinParts(d.toISOString())?.day || d.toISOString().slice(0, 10);
+      const sent = sentEventTimes.filter(row => berlinParts(row.sent_at)?.day === day).length;
+      const opened = openUniqueByDay.filter(row => berlinParts(row.created_at)?.day === day).length;
       days.push({ day, sent, opened });
     }
 
     // Einzelne Mails mit Tracking-Zusammenfassung
-    const emails = db.prepare(
+    const emailRows = db.prepare(
       `SELECT s.id, s.to_email, s.to_name, s.subject, s.success, s.error, s.sent_at, s.job_id,
               (SELECT COUNT(DISTINCT COALESCE(NULLIF(e.user_agent, ''), 'unknown') || '|' || COALESCE(NULLIF(e.ip, ''), 'unknown'))
                  FROM email_events e WHERE e.sent_email_id = s.id AND e.event_type = 'open') as opens,
@@ -685,7 +863,35 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
               (SELECT COUNT(*) FROM email_events e WHERE e.sent_email_id = s.id AND e.event_type = 'bounce') as bounces,
               (SELECT COUNT(DISTINCT user_agent) FROM email_events e WHERE e.sent_email_id = s.id AND e.event_type = 'open') as devices
        FROM sent_emails s ORDER BY s.sent_at DESC LIMIT 150`
+    ).all() as any[];
+    const emails = emailRows.map(row => ({
+      ...row,
+      sent_at_local: berlinLabel(row.sent_at),
+      first_open_local: berlinLabel(row.first_open),
+      last_open_local: berlinLabel(row.last_open),
+    }));
+
+    const webTotal = (db.prepare(`SELECT COUNT(*) as n FROM web_visits`).get() as { n: number }).n;
+    const webVisitors = (db.prepare(`SELECT COUNT(DISTINCT visitor_id) as n FROM web_visits`).get() as { n: number }).n;
+    const webByChannel = db.prepare(
+      `SELECT channel, COUNT(*) as visits, COUNT(DISTINCT visitor_id) as visitors
+       FROM web_visits GROUP BY channel ORDER BY visits DESC`
     ).all();
+    const webTopPages = db.prepare(
+      `SELECT COALESCE(path, url) as path, COUNT(*) as visits, COUNT(DISTINCT visitor_id) as visitors
+       FROM web_visits GROUP BY COALESCE(path, url) ORDER BY visits DESC LIMIT 8`
+    ).all();
+    const hotVisitors = db.prepare(
+      `SELECT visitor_id, channel, MAX(created_at) as last_seen, COUNT(*) as visits,
+              COUNT(DISTINCT path) as pages,
+              SUM(CASE WHEN sent_email_id IS NOT NULL THEN 1 ELSE 0 END) as email_touches,
+              SUM(CASE WHEN channel = 'sms' THEN 1 ELSE 0 END) as sms_touches,
+              MAX(url) as last_url
+       FROM web_visits
+       GROUP BY visitor_id, channel
+       ORDER BY (COUNT(*) + COUNT(DISTINCT path) * 2 + SUM(CASE WHEN sent_email_id IS NOT NULL THEN 4 ELSE 0 END) + SUM(CASE WHEN channel = 'sms' THEN 4 ELSE 0 END)) DESC, MAX(created_at) DESC
+       LIMIT 12`
+    ).all() as any[];
 
     const base = getTrackingBaseUrl();
     const isPublic = Boolean(base) && !/localhost|127\.0\.0\.1|192\.168\.|^$/.test(base);
@@ -696,6 +902,19 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
       opens_by_hour: opensByHour,
       days,
       emails,
+      web: {
+        total: webTotal,
+        visitors: webVisitors,
+        by_channel: webByChannel,
+        top_pages: webTopPages,
+        hot_visitors: hotVisitors.map(v => ({
+          ...v,
+          last_seen_local: berlinLabel(v.last_seen),
+          intent_score: Math.min(100, Number(v.visits || 0) * 8 + Number(v.pages || 0) * 12 + Number(v.email_touches || 0) * 20 + Number(v.sms_touches || 0) * 20),
+        })),
+        track_script: base ? `<script async src="${base}/track.js"></script>` : null,
+        sms_link_format: base ? `${base}/track/sms/{sms_id}?u=${encodeURIComponent('https://deine-zielseite.de')}` : null,
+      },
       tracking: { base_url: base || null, public: isPublic },
     };
   });
@@ -703,7 +922,7 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
   app.get<{ Params: { id: string } }>('/api/analytics/email/:id/events', async (req) => {
     return getDb().prepare(
       `SELECT event_type, url, user_agent, created_at FROM email_events WHERE sent_email_id = ? ORDER BY created_at ASC`
-    ).all(req.params.id);
+    ).all(req.params.id).map((event: any) => ({ ...event, created_at_local: berlinLabel(event.created_at) }));
   });
 
   // Posteingang nach Zustellfehlern (Bounces) durchsuchen und zuordnen
