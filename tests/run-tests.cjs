@@ -260,6 +260,18 @@ const tests = [
     assert.throws(() => smtp.assertLeadCanBeEmailed({ status: 'approved', approved_nachricht: 'Hi', approved_kanal: 'email' }), /E-Mail-Adresse/);
     assert.doesNotThrow(() => smtp.assertLeadCanBeEmailed({ status: 'approved', email: 'x@y.de', approved_nachricht: 'Hi', approved_kanal: 'email' }));
   }],
+  ['smtp config can fall back to working imap mailbox settings', () => {
+    const { getSmtpConfig } = require('../dist/email/smtp');
+    const cfg = getSmtpConfig({
+      IMAP_HOST: 'imap.udag.de',
+      IMAP_USER: 'info@tawano.de',
+      IMAP_PASS: 'secret',
+    });
+    assert.equal(cfg.host, 'smtps.udag.de');
+    assert.equal(cfg.user, 'info@tawano.de');
+    assert.equal(cfg.pass, 'secret');
+    assert.equal(cfg.from, 'info@tawano.de');
+  }],
   ['dashboard exposes explicit one-by-one smtp send button after approval', () => {
     const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'approval', 'views', 'dashboard.html'), 'utf8');
     assert.match(html, /E-Mail jetzt senden/);

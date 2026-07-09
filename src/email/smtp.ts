@@ -11,11 +11,19 @@ export interface SmtpConfig {
   from: string;
 }
 
+function deriveSmtpHostFromImap(host: string | undefined): string | undefined {
+  const clean = host?.trim();
+  if (!clean) return undefined;
+  if (/^imap\./i.test(clean)) return clean.replace(/^imap\./i, 'smtps.');
+  if (/^mail\./i.test(clean)) return clean.replace(/^mail\./i, 'smtps.');
+  return clean;
+}
+
 export function getSmtpConfig(env: NodeJS.ProcessEnv = process.env): SmtpConfig | undefined {
-  const host = env.SMTP_HOST;
-  const user = env.SMTP_USER;
-  const pass = env.SMTP_PASS;
-  const from = env.SMTP_FROM;
+  const host = env.SMTP_HOST || deriveSmtpHostFromImap(env.IMAP_HOST);
+  const user = env.SMTP_USER || env.IMAP_USER;
+  const pass = env.SMTP_PASS || env.IMAP_PASS;
+  const from = env.SMTP_FROM || user;
   if (!host || !user || !pass || !from) return undefined;
   return {
     host,

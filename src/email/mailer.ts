@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import { recordOutreachEvent, updateLeadStatus } from '../db/leads-repo';
+import { getSmtpConfig as getSharedSmtpConfig } from './smtp';
 
 export interface EmailPayload {
   leadId: string;
@@ -25,22 +26,10 @@ export interface SendResult {
   error?: string;
 }
 
-function getSmtpConfig() {
-  return {
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT ?? 587),
-    secure: process.env.SMTP_SECURE === 'true',
-    requireTLS: process.env.SMTP_REQUIRE_TLS !== 'false',
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-    from: process.env.SMTP_FROM ?? process.env.SMTP_USER,
-  };
-}
-
 function createTransport() {
-  const cfg = getSmtpConfig();
-  if (!cfg.host || !cfg.user || !cfg.pass) {
-    throw new Error('SMTP nicht konfiguriert. SMTP_HOST, SMTP_USER und SMTP_PASS in .env setzen.');
+  const cfg = getSharedSmtpConfig();
+  if (!cfg) {
+    throw new Error('SMTP nicht konfiguriert. SMTP_HOST/USER/PASS oder IMAP_HOST/USER/PASS in .env setzen.');
   }
   return nodemailer.createTransport({
     host: cfg.host,
@@ -53,9 +42,9 @@ function createTransport() {
 }
 
 export async function getSmtpStatus(): Promise<SmtpStatus> {
-  const cfg = getSmtpConfig();
-  if (!cfg.host || !cfg.user || !cfg.pass) {
-    return { ok: false, configured: false, error: 'SMTP_HOST, SMTP_USER oder SMTP_PASS fehlen in .env' };
+  const cfg = getSharedSmtpConfig();
+  if (!cfg) {
+    return { ok: false, configured: false, error: 'SMTP_HOST/USER/PASS oder IMAP_HOST/USER/PASS fehlen in .env' };
   }
   try {
     const transport = createTransport();
@@ -73,7 +62,8 @@ export async function getSmtpStatus(): Promise<SmtpStatus> {
 }
 
 export async function sendLeadEmail(payload: EmailPayload): Promise<SendResult> {
-  const cfg = getSmtpConfig();
+  const cfg = getSharedSmtpConfig();
+  if (!cfg) throw new Error('SMTP nicht konfiguriert.');
   const transport = createTransport();
 
   try {
@@ -119,7 +109,8 @@ export async function sendLeadEmail(payload: EmailPayload): Promise<SendResult> 
 
 export async function sendBulkEmail(payload: { to: string; subject: string; body: string; trackingId?: string }): Promise<SendResult> {
   const transport = createTransport();
-  const cfg = getSmtpConfig();
+  const cfg = getSharedSmtpConfig();
+  if (!cfg) throw new Error('SMTP nicht konfiguriert.');
   try {
     const htmlBody = buildHtml(payload.body, payload.trackingId);
     const info = await transport.sendMail({
