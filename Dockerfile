@@ -14,6 +14,7 @@ COPY . .
 RUN npm run build
 
 ENV NODE_ENV=production
+ENV DATA_DIR=/data
 EXPOSE 8080
 
 CMD ["node", "dist/server.js"]

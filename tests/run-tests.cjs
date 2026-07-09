@@ -90,6 +90,11 @@ const tests = [
     assert.match(schema, /CREATE TABLE IF NOT EXISTS contact_points/);
     assert.match(schema, /CREATE TABLE IF NOT EXISTS outreach_events/);
   }],
+  ['database path can target Railway persistent volume', () => {
+    const { resolveDbPath } = require('../dist/db/schema');
+    assert.equal(resolveDbPath({ SQLITE_DB_PATH: '/data/prod.db' }), path.resolve('/data/prod.db'));
+    assert.equal(resolveDbPath({ DATA_DIR: '/data' }), path.resolve('/data/leads.db'));
+  }],
   ['identity helpers normalize duplicate keys without inventing data', () => {
     const identity = require('../dist/utils/identity');
     assert.equal(identity.extractDomain('https://www.example.de/kontakt'), 'example.de');

@@ -4,14 +4,21 @@ import fs from 'fs';
 import { buildIdentity } from '../utils/identity';
 import { Lead } from '../types';
 
-const DB_PATH = path.join(process.cwd(), 'data', 'leads.db');
+export function resolveDbPath(env: { SQLITE_DB_PATH?: string; DATA_DIR?: string } = process.env): string {
+  if (env.SQLITE_DB_PATH?.trim()) {
+    return path.resolve(env.SQLITE_DB_PATH.trim());
+  }
+  const dataDir = env.DATA_DIR?.trim() || path.join(process.cwd(), 'data');
+  return path.resolve(dataDir, 'leads.db');
+}
 
 let db: Database.Database;
 
 export function getDb(): Database.Database {
   if (!db) {
-    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-    db = new Database(DB_PATH);
+    const dbPath = resolveDbPath();
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+    db = new Database(dbPath);
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
     initSchema(db);
