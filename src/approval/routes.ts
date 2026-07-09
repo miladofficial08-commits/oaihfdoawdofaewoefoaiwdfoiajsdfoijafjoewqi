@@ -674,10 +674,14 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     // Einzelne Mails mit Tracking-Zusammenfassung
     const emails = db.prepare(
       `SELECT s.id, s.to_email, s.to_name, s.subject, s.success, s.error, s.sent_at, s.job_id,
-              (SELECT COUNT(*) FROM email_events e WHERE e.sent_email_id = s.id AND e.event_type = 'open') as opens,
+              (SELECT COUNT(DISTINCT COALESCE(NULLIF(e.user_agent, ''), 'unknown') || '|' || COALESCE(NULLIF(e.ip, ''), 'unknown'))
+                 FROM email_events e WHERE e.sent_email_id = s.id AND e.event_type = 'open') as opens,
+              (SELECT COUNT(*) FROM email_events e WHERE e.sent_email_id = s.id AND e.event_type = 'open') as raw_opens,
               (SELECT MIN(created_at) FROM email_events e WHERE e.sent_email_id = s.id AND e.event_type = 'open') as first_open,
               (SELECT MAX(created_at) FROM email_events e WHERE e.sent_email_id = s.id AND e.event_type = 'open') as last_open,
-              (SELECT COUNT(*) FROM email_events e WHERE e.sent_email_id = s.id AND e.event_type = 'click') as clicks,
+              (SELECT COUNT(DISTINCT COALESCE(NULLIF(e.url, ''), 'unknown') || '|' || COALESCE(NULLIF(e.user_agent, ''), 'unknown') || '|' || COALESCE(NULLIF(e.ip, ''), 'unknown'))
+                 FROM email_events e WHERE e.sent_email_id = s.id AND e.event_type = 'click') as clicks,
+              (SELECT COUNT(*) FROM email_events e WHERE e.sent_email_id = s.id AND e.event_type = 'click') as raw_clicks,
               (SELECT COUNT(*) FROM email_events e WHERE e.sent_email_id = s.id AND e.event_type = 'bounce') as bounces,
               (SELECT COUNT(DISTINCT user_agent) FROM email_events e WHERE e.sent_email_id = s.id AND e.event_type = 'open') as devices
        FROM sent_emails s ORDER BY s.sent_at DESC LIMIT 150`

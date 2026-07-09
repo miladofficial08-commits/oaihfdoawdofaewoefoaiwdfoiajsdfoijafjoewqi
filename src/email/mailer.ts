@@ -37,6 +37,9 @@ function createTransport() {
     secure: cfg.secure,
     requireTLS: cfg.requireTLS,
     auth: { user: cfg.user, pass: cfg.pass },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
     tls: { rejectUnauthorized: false },
   });
 }

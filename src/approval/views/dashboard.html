@@ -2221,7 +2221,7 @@ async function loadAnalytics() {
       <td>${esc((m.subject||'').slice(0,50))}</td>
       <td style="white-space:nowrap">${fmtDate(m.sent_at)}</td>
       <td>${status}${m.job_id?' <span style="color:#8ab4ff;font-size:9px">⚡</span>':''}</td>
-      <td class="${m.opens>0?'an-open':'an-zero'}">${m.opens>0?'👁 '+m.opens+'×':'—'}</td>
+      <td class="${m.opens>0?'an-open':'an-zero'}" title="${m.raw_opens&&m.raw_opens!==m.opens?m.raw_opens+' technische Pixel-Ladevorgaenge':''}">${m.opens>0?'👁 '+m.opens+'×':'—'}</td>
       <td style="white-space:nowrap" class="${m.last_open?'':'an-zero'}">${m.last_open?fmtDate(m.last_open):'—'}</td>
       <td class="${m.clicks>0?'an-open':'an-zero'}">${m.clicks>0?'🔗 '+m.clicks:'—'}</td>
       <td class="${m.devices>1?'an-open':'an-zero'}" title="Mehrere Geräte kann auf Weiterleitung hindeuten">${m.devices||0}</td>
