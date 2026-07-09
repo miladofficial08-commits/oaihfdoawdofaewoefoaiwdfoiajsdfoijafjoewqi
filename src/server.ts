@@ -170,8 +170,9 @@ export async function buildServer() {
 
 export async function main() {
   const app = await buildServer();
-  const isProduction = process.env.NODE_ENV === 'production';
-  const port = Number(process.env.PORT) || (isProduction ? 8080 : 4000);
+  const port = process.env.NODE_ENV === 'production'
+    ? 8080
+    : (Number(process.env.PORT) || 4000);
   await app.listen({
     port,
     host: '0.0.0.0',
