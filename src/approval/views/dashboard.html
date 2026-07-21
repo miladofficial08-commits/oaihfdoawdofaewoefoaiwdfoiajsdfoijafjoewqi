@@ -505,6 +505,15 @@
   .fl-bulkbar .fl-bulk-count { font-size: 12.5px; color: #cdd8ea; }
   .fl-bulkbar .fl-bulk-count b { color: #7fb0ff; font-size: 14px; }
   .fl-bulkbar select.an-filter { max-width: 260px; }
+  .inv-num { font-weight: 800; font-size: 15px; }
+  .inv-num.g { color: var(--g); }
+  .inv-num.o { color: #ffb37a; }
+  .inv-num.r { color: #ff7a7a; }
+  .dup-item { border: 1px solid var(--line2); border-radius: 9px; padding: 10px 12px; margin-bottom: 8px; background: var(--elev); }
+  .dup-item.problem { border-color: rgba(255,90,90,.35); background: rgba(255,90,90,.05); }
+  .dup-head { font-size: 12px; color: #cdd8ea; margin-bottom: 5px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .dup-send { font-size: 11px; color: var(--txt3); line-height: 1.6; }
+  #imp-file { font-size: 11px; color: var(--txt2); }
   .as-today b { color: var(--g); font-size: 15px; }
 
   /* ── VORLAGEN SEITE ── */
@@ -988,6 +997,71 @@
           <div class="field"><label>Follow-ups max. / Tag</label><input id="fu-cap" type="number" min="1" max="200" step="1" value="50" onchange="saveFollowupConfig()"></div>
         </div>
         <div class="as-legal" style="margin-top:10px">Zwei Stufen: <b>Bump</b> (kurze Nachfrage) und <b>Break-up</b> („letzter Versuch" – höchste Antwortrate). Es gelten dieselben Schutzlimits wie beim Auto-Versand (Sendefenster, globales Tageslimit 200).</div>
+      </div>
+    </div>
+
+    <!-- ─── LEAD-BESTAND (Mini-CRM) ─── -->
+    <div class="sender-panel" style="margin-bottom:14px">
+      <div class="sp-head" style="display:flex;align-items:flex-start;gap:14px">
+        <div style="flex:1">
+          <h3>📊 Lead-Bestand — wo haben wir noch Reserven?</h3>
+          <p>Pro Branche: wie viele Firmen noch <b>offen</b> (mit E-Mail, noch nie angeschrieben), wie viele bereits kontaktiert und wie viele ohne Website (= keine E-Mail findbar). So siehst du sofort, warum der Auto-Versand viel oder wenig verschickt.</p>
+        </div>
+        <button class="topbar-btn" onclick="loadInventory()">↻ Aktualisieren</button>
+      </div>
+      <div class="sp-body">
+        <div class="fl-summary" id="inv-summary"></div>
+        <div class="fl-table-wrap" style="margin-top:12px">
+          <table class="fl-table">
+            <thead><tr><th>Branche</th><th>Offen (anschreibbar)</th><th>Kontaktiert</th><th>Mit E-Mail</th><th>Ohne Website</th><th>Städte</th><th>Gesamt</th></tr></thead>
+            <tbody id="inv-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="as-grid" style="margin-bottom:14px">
+      <!-- ─── EIGENE LEADS IMPORTIEREN ─── -->
+      <div class="sender-panel">
+        <div class="sp-head">
+          <h3>⬆ Eigene Leads importieren</h3>
+          <p>Datei hochladen (CSV/TXT) <b>oder</b> Text einfügen. Erkannt werden Name, E-Mail, Telefon, Website und Stadt — egal ob Komma, Semikolon oder Tab getrennt. Bereits angeschriebene Adressen werden automatisch übersprungen.</p>
+        </div>
+        <div class="sp-body as-form">
+          <div class="field">
+            <label>Branche (Pflicht — bestimmt den Auto-Versand-Bereich)</label>
+            <input id="imp-branche" list="imp-branche-list" type="text" placeholder="z.B. SHK Sanitär Heizung">
+            <datalist id="imp-branche-list"></datalist>
+          </div>
+          <div class="field">
+            <label>Stadt <span style="text-transform:none;font-weight:500;color:var(--txt3)">(optional, falls in der Liste keine steht)</span></label>
+            <input id="imp-stadt" type="text" placeholder="z.B. Duesseldorf">
+          </div>
+          <div class="field">
+            <label>Datei wählen (CSV / TXT)</label>
+            <input id="imp-file" type="file" accept=".csv,.txt,text/csv,text/plain" onchange="loadImportFile(this)">
+          </div>
+          <div class="field">
+            <label>…oder Liste hier einfügen</label>
+            <textarea id="imp-text" rows="7" placeholder="Elektro Meier GmbH, info@elektro-meier.de, 0211 123456, Duesseldorf
+Sanitär Schmidt; kontakt@schmidt-shk.de; Koeln
+info@nur-eine-adresse.de"></textarea>
+          </div>
+          <button class="btn btn-solid" style="padding:12px;font-size:13px" onclick="doImportLeads()">⬆ Leads importieren</button>
+          <div id="imp-result" class="as-estimate" style="display:none"></div>
+        </div>
+      </div>
+
+      <!-- ─── DUPLIKAT-CHECK ─── -->
+      <div class="sender-panel">
+        <div class="sp-head">
+          <h3>🔍 Duplikat-Check aller gesendeten E-Mails</h3>
+          <p>Prüft jede erfolgreich versendete E-Mail. Unterscheidet <b>gewollte Follow-ups</b> von <b>echten Doppel-Erstkontakten</b> (= Fehler) und zeigt, aus welchem Kanal sie kamen.</p>
+        </div>
+        <div class="sp-body">
+          <button class="btn btn-solid" style="padding:11px" onclick="loadDuplicates()">🔍 Jetzt prüfen</button>
+          <div id="dup-result" style="margin-top:12px"></div>
+        </div>
       </div>
     </div>
 
@@ -1672,11 +1746,10 @@ async function loadLeads() {
   if (document.getElementById('fa')?.checked) p.set('includeArchived','1');
   const grid = document.getElementById('grid');
   grid.innerHTML = Array(4).fill('<div class="skel skel-card"></div>').join('');
+  // "Leads finden" zeigt nur FRISCHE Firmen: alles bereits Angeschriebene wird serverseitig
+  // per E-Mail-Adresse ausgeblendet (kanalübergreifend). Ausnahme: expliziter Status-Filter.
+  if (!st) p.set('excludeContacted','1');
   let leads = await fetchJSON('/api/leads?'+p);
-  // "Leads finden" zeigt nur noch NEUE/unkontaktierte Firmen. Kontaktierte wandern in
-  // "Angeschrieben". Ausnahme: der Nutzer filtert explizit nach einem Outreach-Status.
-  const OUTREACH = ['contacted','replied','demo_booked','proposal_sent','won','lost','no_interest'];
-  if (!st) leads = leads.filter(l => !OUTREACH.includes(l.status));
   leadsCache = leads;
   renderBrancheFilter();
   renderLeads(applyVerticalFilter(leads));
@@ -2684,10 +2757,92 @@ async function loadAutoSend() {
   updateEstimate();
   renderJobs();
   loadFollowup();
+  loadInventory();
   // Nav-Badge: laufende Jobs
   const running = jobs.filter(j => j.status === 'running').length;
   const nb = document.getElementById('nb-autosend');
   nb.textContent = running; nb.classList.toggle('zero', !running);
+}
+
+// ════ LEAD-BESTAND / IMPORT / DUPLIKATE ════
+async function loadInventory() {
+  const d = await fetchJSON('/api/lead-inventory').catch(()=>null);
+  if (!d) return;
+  const t = d.totals || {};
+  document.getElementById('inv-summary').innerHTML = [
+    ['Offen zum Anschreiben', t.offen||0, 'g', 'mit E-Mail, noch nie kontaktiert'],
+    ['Bereits kontaktiert', t.kontaktiert||0, '', 'nie wieder anschreiben'],
+    ['Mit E-Mail', t.mit_email||0, '', 'anschreibbar (inkl. kontaktiert)'],
+    ['Leads gesamt', t.gesamt||0, 'b', 'alle nicht archivierten'],
+  ].map(([l,v,cls,ti]) => `<div class="fl-kpi ${cls}" title="${ti}"><div class="fl-kpi-v">${v}</div><div class="fl-kpi-l">${l}</div></div>`).join('');
+
+  const rows = d.branchen||[];
+  document.getElementById('inv-tbody').innerHTML = rows.length ? rows.map(b => {
+    const ampel = b.offen >= 200 ? 'g' : b.offen >= 50 ? 'o' : 'r';
+    return `<tr>
+      <td><div class="fl-firm">${esc(b.branche)}</div></td>
+      <td><span class="inv-num ${ampel}">${b.offen}</span></td>
+      <td>${b.kontaktiert}</td>
+      <td>${b.mit_email}</td>
+      <td><span class="fl-muted" title="ohne Website ist keine E-Mail auffindbar">${b.ohne_website}</span></td>
+      <td><span class="fl-muted">${b.staedte}</span></td>
+      <td><span class="fl-muted">${b.gesamt}</span></td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="7" style="padding:20px;color:var(--txt4)">Noch keine Leads – scrape welche unter „Leads finden" oder importiere eigene.</td></tr>';
+
+  // Branchen-Vorschläge für den Import
+  const dl = document.getElementById('imp-branche-list');
+  if (dl) {
+    const vorhandene = rows.map(b=>b.branche);
+    const presets = (strategy.verticals||[]).map(v=>v.searchTerms[0]);
+    dl.innerHTML = [...new Set([...vorhandene, ...presets])].map(b=>`<option value="${esc(b)}">`).join('');
+  }
+}
+
+function loadImportFile(input) {
+  const f = input.files && input.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    document.getElementById('imp-text').value = String(reader.result||'');
+    toast(`Datei „${f.name}" geladen – jetzt auf Importieren klicken`);
+  };
+  reader.readAsText(f, 'utf-8');
+}
+
+async function doImportLeads() {
+  const branche = document.getElementById('imp-branche').value.trim();
+  const stadt = document.getElementById('imp-stadt').value.trim();
+  const text = document.getElementById('imp-text').value;
+  if (!branche) { toast('Bitte eine Branche angeben', true); return; }
+  if (!text.trim()) { toast('Keine Leads eingefügt oder Datei geladen', true); return; }
+  const box = document.getElementById('imp-result');
+  box.style.display='block'; box.innerHTML = '<span class="spin"></span> Importiere…';
+  const r = await post('/api/leads/import', { text, branche, stadt }).catch(()=>null);
+  const d = r ? await r.json().catch(()=>({})) : null;
+  if (!d || (r && !r.ok)) { box.innerHTML = `<b style="color:var(--r)">Fehler:</b> ${esc(d?.error||'Import fehlgeschlagen')}`; return; }
+  box.innerHTML = `<b>✓ Import fertig:</b> ${d.erkannt} Zeilen erkannt · <b style="color:var(--g)">${d.neu} neu</b> · ${d.aktualisiert} aktualisiert · ${d.uebersprungen} übersprungen (bereits angeschrieben)`
+    + (d.fehler?.length ? `<div style="margin-top:6px;color:var(--r);font-size:11px">${d.fehler.map(esc).join('<br>')}</div>` : '');
+  toast(`${d.neu} neue Leads importiert`);
+  loadInventory(); loadReport();
+}
+
+async function loadDuplicates() {
+  const box = document.getElementById('dup-result');
+  box.innerHTML = '<span class="spin"></span> Prüfe alle gesendeten E-Mails…';
+  const d = await fetchJSON('/api/sent-duplicates').catch(()=>null);
+  if (!d) { box.innerHTML = '<span style="color:var(--r)">Prüfung fehlgeschlagen</span>'; return; }
+  if (!d.duplicates.length) {
+    box.innerHTML = `<div class="as-estimate"><b>✓ Keine Duplikate.</b> ${d.geprueft} gesendete E-Mails geprüft – jede Firma hat genau eine Erstmail bekommen.</div>`;
+    return;
+  }
+  const head = `<div class="as-estimate" style="margin-bottom:10px">
+    ${d.geprueft} E-Mails geprüft · <b style="color:${d.problems?'var(--r)':'var(--g)'}">${d.problems} echte Doppel-Erstkontakte</b> · ${d.followups} gewollte Follow-ups</div>`;
+  box.innerHTML = head + d.duplicates.map(x => `
+    <div class="dup-item ${x.art}">
+      <div class="dup-head"><b>${esc(x.email)}</b> <span class="fl-tag ${x.art==='problem'?'stop':'seq'}">${x.art==='problem'?'⚠ Doppelter Erstkontakt':'✓ Follow-up (gewollt)'}</span> <span class="fl-muted">${x.count}×</span></div>
+      ${x.sends.map(s=>`<div class="dup-send">• ${esc(String(s.sent_at).slice(0,16))} — ${esc(s.quelle)}</div>`).join('')}
+    </div>`).join('');
 }
 
 let fuLoaded = false;

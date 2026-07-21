@@ -18,6 +18,7 @@ import {
   archiveLead,
   deleteLeadPermanently,
   recordOutreachEvent,
+  upsertLead,
 } from '../db/leads-repo';
 import { Lead } from '../types';
 import { nrwRegions, verticalPresets } from '../config/markets';
@@ -117,6 +118,75 @@ function requestSignature(req: { headers: Record<string, unknown>; ip?: string }
     .slice(0, 24);
 }
 
+/** Status, die bedeuten "wurde bereits angeschrieben" – gehören nicht mehr in "Leads finden". */
+const OUTREACH_STATUSES = ['contacted', 'replied', 'demo_booked', 'proposal_sent', 'won', 'lost', 'no_interest', 'do_not_contact'];
+
+/**
+ * Zentrale Sperrliste: alle E-Mail-Adressen, an die bereits erfolgreich gesendet wurde
+ * oder die aktuell für den Versand eingeplant sind. Einheitliche Quelle für
+ * "Leads finden", E-Mail-Center und Auto-Versand – damit kein Betrieb doppelt Post bekommt.
+ */
+function contactedEmailSet(): Set<string> {
+  const rows = getDb().prepare(
+    `SELECT LOWER(TRIM(to_email)) e FROM sent_emails      WHERE success = 1                          AND to_email IS NOT NULL AND to_email != ''
+     UNION
+     SELECT LOWER(TRIM(to_email)) e FROM scheduled_emails WHERE status IN ('scheduled','processing') AND to_email IS NOT NULL AND to_email != ''`
+  ).all() as Array<{ e: string }>;
+  return new Set(rows.map(r => r.e));
+}
+
+interface ImportRow { maps_place_id: string; name: string; email?: string; telefon?: string; website?: string; stadt?: string }
+
+/**
+ * Robuster Parser für eigene Lead-Listen: erkennt CSV (Komma/Semikolon/Tab) genauso wie
+ * freie Zeilen. Sucht in jeder Zeile E-Mail, Website und Telefon; der erste verbleibende
+ * Textblock ist der Firmenname. Kopfzeilen und Dubletten werden übersprungen.
+ */
+export function parseLeadImport(text: string, _branche: string, defaultStadt: string): ImportRow[] {
+  const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/;
+  const URL_RE = /(https?:\/\/[^\s,;"']+|www\.[^\s,;"']+)/i;
+  const PHONE_RE = /(\+?\d[\d\s/().-]{6,}\d)/;
+  const out: ImportRow[] = [];
+  const seen = new Set<string>();
+
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    // Kopfzeile einer CSV überspringen (enthält Spaltennamen, aber keine echte Adresse)
+    if (!EMAIL_RE.test(line) && /^(name|firma|unternehmen|company)\b/i.test(line)) continue;
+
+    const email = (line.match(EMAIL_RE) || [])[0]?.toLowerCase();
+    let rest = line;
+    if (email) rest = rest.replace(email, ' ');
+    // Website: erst mit Protokoll/www, sonst nackte Domain (erst NACH Entfernen der E-Mail suchen).
+    let website = (rest.match(URL_RE) || [])[0];
+    if (!website) website = (rest.match(/\b[\w-]{2,}\.(?:de|com|net|org|eu|info|biz|shop)\b/i) || [])[0];
+    if (website) rest = rest.replace(website, ' ');
+    const telefon = (rest.match(PHONE_RE) || [])[0]?.trim();
+    if (telefon) rest = rest.replace(telefon, ' ');
+
+    const parts = rest.split(/[;,\t]/).map(p => p.trim()).filter(Boolean);
+    const name = (parts[0] || (email ? email.split('@')[0] : '')).slice(0, 200);
+    if (!name && !email) continue;
+
+    // Stadt nur übernehmen, wenn ein weiteres Feld existiert und wie ein Ort aussieht.
+    const last = parts.length >= 2 ? parts[parts.length - 1] : '';
+    const stadt = last && last !== name && last.length <= 40 && !/\d/.test(last) ? last : undefined;
+
+    const key = email || `${name}|${stadt || defaultStadt}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    out.push({
+      maps_place_id: 'manual:' + createHash('sha1').update(key).digest('hex').slice(0, 24),
+      name, email, telefon,
+      website: website ? (/^https?:\/\//i.test(website) ? website : 'https://' + website) : undefined,
+      stadt,
+    });
+  }
+  return out;
+}
+
 export async function registerRoutes(app: FastifyInstance) {
   function sendDashboardHtml(reply: { type: (contentType: string) => { send: (body: string) => unknown } }) {
     const srcPath = path.join(process.cwd(), 'src', 'approval', 'views', 'dashboard.html');
@@ -135,9 +205,22 @@ export async function registerRoutes(app: FastifyInstance) {
 
   app.get('/api/pending', async () => enrichLeads(getLeadsPendingApproval()));
 
-  app.get<{ Querystring: { stadt?: string; branche?: string; prioritaet?: string; status?: string; includeArchived?: string } }>(
+  app.get<{ Querystring: { stadt?: string; branche?: string; prioritaet?: string; status?: string; includeArchived?: string; excludeContacted?: string } }>(
     '/api/leads',
-    async (req) => enrichLeads(getAllLeads(req.query))
+    async (req) => {
+      let leads = getAllLeads(req.query);
+      // "Nur frische Leads": alles ausblenden, was schon angeschrieben wurde – egal über
+      // welchen Kanal (Auto-Versand, E-Mail-Center, Follow-up) und egal ob als weiterer
+      // Lead-Datensatz mit derselben Adresse. Ein Betrieb wird nur EINMAL angeschrieben.
+      if (req.query.excludeContacted === '1') {
+        const blocked = contactedEmailSet();
+        leads = leads.filter(l =>
+          !OUTREACH_STATUSES.includes(l.status) &&
+          !(l.email && blocked.has(l.email.trim().toLowerCase()))
+        );
+      }
+      return enrichLeads(leads);
+    }
   );
 
   app.get('/api/report', async () => getDailyReport());
@@ -693,13 +776,7 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
 
       // Doppel-Mail-Schutz: dieselbe Praxis nie zweimal anschreiben. Adressen ausschließen, die
       // bereits erfolgreich versendet ODER aktuell eingeplant sind – plus Dubletten in dieser Anfrage.
-      const alreadyContacted = new Set(
-        (getDb().prepare(
-          `SELECT LOWER(TRIM(to_email)) e FROM sent_emails WHERE success = 1 AND to_email IS NOT NULL AND to_email != ''
-           UNION
-           SELECT LOWER(TRIM(to_email)) e FROM scheduled_emails WHERE status IN ('scheduled','processing') AND to_email IS NOT NULL AND to_email != ''`
-        ).all() as Array<{ e: string }>).map(r => r.e)
-      );
+      const alreadyContacted = contactedEmailSet();
       const seen = new Set<string>();
       const skipped: Array<{ name: string; email: string; error: string }> = [];
       const validRecipients = recipients.filter(r => {
@@ -1529,6 +1606,116 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
         results.push({ id, name: lead.name, success: res.success, error: res.error });
       }
       return { sent: results.filter(r => r.success).length, failed: results.filter(r => !r.success).length, results };
+    }
+  );
+
+  // ── Lead-Bestand (Mini-CRM): wo haben wir noch Reserven? ──────────────────
+  app.get('/api/lead-inventory', async () => {
+    const db = getDb();
+    const blocked = contactedEmailSet();
+    const rows = db.prepare(
+      `SELECT branche, stadt, email, website, status FROM leads WHERE status != 'archived'`
+    ).all() as Array<{ branche: string; stadt?: string; email?: string; website?: string; status: string }>;
+    const SENDABLE = ['new', 'checked', 'draft_ready', 'approved', 'manual_review'];
+    const map = new Map<string, any>();
+    for (const l of rows) {
+      const key = l.branche || '(ohne Branche)';
+      let b = map.get(key);
+      if (!b) { b = { branche: key, gesamt: 0, mit_email: 0, ohne_website: 0, kontaktiert: 0, offen: 0, _staedte: new Set<string>() }; map.set(key, b); }
+      b.gesamt++;
+      if (l.stadt) b._staedte.add(l.stadt);
+      if (l.email) b.mit_email++;
+      if (!l.website) b.ohne_website++;
+      const istKontaktiert = OUTREACH_STATUSES.includes(l.status) || (!!l.email && blocked.has(l.email.trim().toLowerCase()));
+      if (istKontaktiert) b.kontaktiert++;
+      else if (l.email && SENDABLE.includes(l.status)) b.offen++;
+    }
+    const branchen = [...map.values()]
+      .map(b => ({ branche: b.branche, gesamt: b.gesamt, mit_email: b.mit_email, ohne_website: b.ohne_website, kontaktiert: b.kontaktiert, offen: b.offen, staedte: b._staedte.size }))
+      .sort((a, b) => b.offen - a.offen || b.gesamt - a.gesamt);
+    const totals = branchen.reduce((a, b) => ({
+      gesamt: a.gesamt + b.gesamt, mit_email: a.mit_email + b.mit_email,
+      offen: a.offen + b.offen, kontaktiert: a.kontaktiert + b.kontaktiert,
+    }), { gesamt: 0, mit_email: 0, offen: 0, kontaktiert: 0 });
+    return { branchen, totals };
+  });
+
+  // ── Duplikat-Prüfung über ALLE gesendeten E-Mails ─────────────────────────
+  // Unterscheidet gewollte Follow-ups von echten Doppel-Erstkontakten (= Fehler).
+  app.get('/api/sent-duplicates', async () => {
+    const db = getDb();
+    const dups = db.prepare(
+      `SELECT LOWER(TRIM(to_email)) email, COUNT(*) n FROM sent_emails
+       WHERE success = 1 AND to_email IS NOT NULL AND to_email != ''
+       GROUP BY email HAVING n > 1 ORDER BY n DESC LIMIT 200`
+    ).all() as Array<{ email: string; n: number }>;
+    const detail = db.prepare(
+      `SELECT to_name, campaign, job_id, scheduled_id, sent_at FROM sent_emails
+       WHERE success = 1 AND LOWER(TRIM(to_email)) = ? ORDER BY sent_at ASC`
+    );
+    const quelleVon = (s: any): string => {
+      const c = String(s.campaign || '');
+      if (c === 'followup-manual') return 'Follow-up (manuell)';
+      if (c.startsWith('followup')) return 'Follow-up (automatisch)';
+      if (s.job_id) return 'Auto-Versand';
+      if (s.scheduled_id) return 'Geplanter Versand';
+      return 'Manuell / E-Mail-Center';
+    };
+    const duplicates = dups.map(d => {
+      const sends = (detail.all(d.email) as any[]).map(s => ({
+        to_name: s.to_name, sent_at: s.sent_at, quelle: quelleVon(s), campaign: s.campaign,
+      }));
+      const erstkontakte = sends.filter(s => !String(s.campaign || '').startsWith('followup')).length;
+      return {
+        email: d.email, count: d.n, erstkontakte,
+        // >1 Erstkontakt = echter Doppelversand. Sonst: gewolltes Follow-up.
+        art: erstkontakte > 1 ? 'problem' : 'followup',
+        sends,
+      };
+    });
+    return {
+      duplicates,
+      problems: duplicates.filter(d => d.art === 'problem').length,
+      followups: duplicates.filter(d => d.art === 'followup').length,
+      geprueft: (db.prepare(`SELECT COUNT(*) n FROM sent_emails WHERE success = 1`).get() as { n: number }).n,
+    };
+  });
+
+  // ── Eigene Leads importieren (Datei-Inhalt oder Text) ─────────────────────
+  app.post<{ Body: { text: string; branche: string; stadt?: string } }>(
+    '/api/leads/import',
+    async (req, reply) => {
+      const text = String(req.body?.text || '');
+      const branche = String(req.body?.branche || '').trim();
+      const defaultStadt = String(req.body?.stadt || '').trim();
+      if (!text.trim()) return reply.status(400).send({ error: 'Kein Inhalt zum Importieren' });
+      if (!branche) return reply.status(400).send({ error: 'Bitte eine Branche angeben' });
+
+      const parsed = parseLeadImport(text, branche, defaultStadt);
+      if (!parsed.length) return reply.status(400).send({ error: 'Keine verwertbaren Zeilen gefunden (mindestens Name oder E-Mail nötig)' });
+
+      const blocked = contactedEmailSet();
+      let neu = 0, aktualisiert = 0, uebersprungen = 0;
+      const fehler: string[] = [];
+      for (const row of parsed) {
+        try {
+          if (row.email && blocked.has(row.email.toLowerCase())) { uebersprungen++; continue; }
+          const res = upsertLead({
+            maps_place_id: row.maps_place_id,
+            name: row.name, branche, stadt: row.stadt || defaultStadt || 'Unbekannt',
+            email: row.email, telefon: row.telefon, website: row.website,
+            status: row.email ? 'checked' : 'manual_review',
+            prioritaet: 'B',
+            hat_website: row.website ? 1 : 0,
+            bester_kanal: row.email ? 'email' : (row.telefon ? 'telefon' : 'manuell'),
+            kontakt_hinweis: 'Manuell importiert',
+          } as Parameters<typeof upsertLead>[0]);
+          if (res.inserted) neu++; else aktualisiert++;
+        } catch (err) {
+          fehler.push(`${row.name}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+      return { erkannt: parsed.length, neu, aktualisiert, uebersprungen, fehler: fehler.slice(0, 10) };
     }
   );
 
