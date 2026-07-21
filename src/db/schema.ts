@@ -212,7 +212,7 @@ function initSchema(db: Database.Database) {
       min_gap_s     INTEGER NOT NULL DEFAULT 60,
       max_gap_s     INTEGER NOT NULL DEFAULT 180,
       window_start  INTEGER NOT NULL DEFAULT 8,
-      window_end    INTEGER NOT NULL DEFAULT 20,
+      window_end    INTEGER NOT NULL DEFAULT 24,
       sent_count    INTEGER NOT NULL DEFAULT 0,
       failed_count  INTEGER NOT NULL DEFAULT 0,
       status        TEXT NOT NULL DEFAULT 'running',
@@ -299,7 +299,59 @@ function initSchema(db: Database.Database) {
       logged_at     TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (campaign_id) REFERENCES idea_campaigns(id) ON DELETE CASCADE
     );
+
+    -- Geplante (zeitversetzte) E-Mails. Der scheduled-sender Worker verarbeitet sie serverseitig.
+    -- status: scheduled -> processing -> sent | failed | canceled
+    CREATE TABLE IF NOT EXISTS scheduled_emails (
+      id            TEXT PRIMARY KEY,
+      lead_id       TEXT,
+      to_email      TEXT NOT NULL,
+      to_name       TEXT,
+      template_id   TEXT,
+      subject       TEXT NOT NULL,
+      body          TEXT NOT NULL,
+      campaign      TEXT,
+      scheduled_at  TEXT NOT NULL,
+      status        TEXT NOT NULL DEFAULT 'scheduled',
+      attempts      INTEGER NOT NULL DEFAULT 0,
+      sent_email_id TEXT,
+      error         TEXT,
+      created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      sent_at       TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_scheduled_emails_due ON scheduled_emails(status, scheduled_at);
   `);
+  // Follow-up-Sequenz: Zustand pro Lead + globale Konfiguration.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS followup_config (
+      id             INTEGER PRIMARY KEY CHECK (id = 1),
+      enabled        INTEGER NOT NULL DEFAULT 0,
+      gap1_days      REAL    NOT NULL DEFAULT 3,
+      gap2_days      REAL    NOT NULL DEFAULT 4,
+      daily_cap      INTEGER NOT NULL DEFAULT 50,
+      window_start   INTEGER NOT NULL DEFAULT 8,
+      window_end     INTEGER NOT NULL DEFAULT 20,
+      min_gap_s      INTEGER NOT NULL DEFAULT 45,
+      updated_at     TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+    INSERT OR IGNORE INTO followup_config (id) VALUES (1);
+  `);
+  ensureColumns(db, 'leads', {
+    followup_stage: 'INTEGER DEFAULT 0',
+    followup_last_at: 'TEXT',
+    followup_stopped: 'INTEGER DEFAULT 0',
+    followup_stopped_reason: 'TEXT',
+  });
+
+  // Nachrüst-Spalten für bestehende Installationen (kein Datenverlust).
+  ensureColumns(db, 'email_templates', {
+    category: 'TEXT',
+  });
+  ensureColumns(db, 'sent_emails', {
+    scheduled_id: 'TEXT',
+    campaign: 'TEXT',
+  });
   migrateStatuses(db);
   backfillLeadIdentity(db);
   backfillContactPoints(db);

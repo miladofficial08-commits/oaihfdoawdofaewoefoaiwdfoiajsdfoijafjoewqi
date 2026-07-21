@@ -292,6 +292,23 @@ const tests = [
       secondsSinceSent: 90,
     }), false);
   }],
+  ['email click tracking excludes scanner/bot clicks and deduplicates repeats', () => {
+    const tracking = require('../dist/email/tracking');
+    const chrome = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126 Safari/537.36';
+    // Echter Browser-Klick vs. Mailscanner
+    assert.equal(tracking.classifyClickEvent(chrome), 'click');
+    assert.equal(tracking.classifyClickEvent('Mimecast'), 'click_machine');
+    assert.equal(tracking.classifyClickEvent(''), 'click_machine');
+    // Alt-Daten: als 'click' gespeicherter Bot gilt NICHT als echter Klick
+    assert.equal(tracking.isRealClick({ event_type: 'click', user_agent: 'Proofpoint' }), false);
+    assert.equal(tracking.isRealClick({ event_type: 'click', user_agent: chrome }), true);
+    assert.equal(tracking.isRealClick({ event_type: 'click_machine', user_agent: chrome }), false);
+    // 3 schnelle Wiederholungen desselben Nutzers auf denselben Link = 1 Klick
+    const base = Date.parse('2026-07-10T10:00:00Z');
+    const iso = (ms) => new Date(ms).toISOString().replace('T', ' ').slice(0, 19);
+    const evs = [0, 2000, 5000].map(off => ({ url: 'https://tawano.de/x', signature: chrome + '|1.1.1.1', created_at: iso(base + off) }));
+    assert.equal(tracking.countDistinctClicks(evs), 1);
+  }],
   ['brevo api helpers expose key status and build tracked payload', () => {
     const mailer = require('../dist/email/mailer');
     assert.deepEqual(mailer.getBrevoStatus({}), { ok: false, configured: false, error: 'BREVO_API_KEY fehlt' });
@@ -311,6 +328,28 @@ const tests = [
     assert.equal(payload.textContent, 'Text https://example.com');
     assert.match(payload.htmlContent, /\/track\/click\/track-1/);
     assert.match(payload.htmlContent, /\/track\/open\/track-1\.gif/);
+  }],
+  ['email html renders markdown links with tracking and safe link text', () => {
+    const mailer = require('../dist/email/mailer');
+    const payload = mailer.buildBrevoEmailPayload({
+      to: 'lead@example.com',
+      subject: 'Hallo',
+      body: 'Termin: [Hier 15 Minuten einplanen](https://tawano.de/voice-agents/demo-buchen)\nHTML: <a href="https://tawano.de/voice-agents/demo-buchen">Demo buchen</a>\nKontakt: [info@tawano.de](mailto:info@tawano.de)',
+      trackingId: 'track-md',
+    }, { BREVO_API_KEY: 'x', PUBLIC_BASE_URL: 'https://app.example.com' });
+
+    assert.match(payload.htmlContent, />Hier 15 Minuten einplanen<\/a>/);
+    assert.match(payload.htmlContent, />Demo buchen<\/a>/);
+    assert.match(payload.htmlContent, /\/track\/click\/track-md\?u=https%3A%2F%2Ftawano\.de%2Fvoice-agents%2Fdemo-buchen/);
+    assert.match(payload.htmlContent, /href="mailto:info@tawano\.de"/);
+    assert.doesNotMatch(payload.htmlContent, /\[Hier 15 Minuten einplanen\]/);
+    assert.doesNotMatch(payload.htmlContent, /&lt;a href=/);
+  }],
+  ['dashboard template preview renders markdown links instead of literal syntax', () => {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'approval', 'views', 'dashboard.html'), 'utf8');
+    assert.match(html, /function renderPreviewBodyHtml/);
+    assert.match(html, /pb\.innerHTML = renderPreviewBodyHtml\(r\.body\)/);
+    assert.doesNotMatch(html, /tpl-prev-body'\); if \(pb\) pb\.textContent = r\.body/);
   }],
   ['routes expose brevo test endpoint without removing smtp test', () => {
     const routes = fs.readFileSync(path.join(__dirname, '..', 'src', 'approval', 'routes.ts'), 'utf8');

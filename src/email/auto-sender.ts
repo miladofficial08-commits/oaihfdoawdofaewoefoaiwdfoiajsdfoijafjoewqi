@@ -9,7 +9,8 @@ import { v4 as uuid } from 'uuid';
 // Neue Mail-Konten ohne Aufwärmphase sollten <150/Tag bleiben; hartes Limit global.
 export const GLOBAL_DAILY_CAP = 200;
 export const ALLOWED_DAILY_LIMITS = [30, 50, 100, 150, 200];
-const TICK_MS = 20_000;
+// Worker-Takt: alle 10s prüfen, damit auch kurze Pausen (min. 15s) sauber greifen.
+const TICK_MS = 10_000;
 
 export interface SendJob {
   id: string;
@@ -36,6 +37,8 @@ export function recordSentEmail(entry: {
   id?: string;
   job_id?: string | null;
   lead_id?: string | null;
+  scheduled_id?: string | null;
+  campaign?: string | null;
   to_email: string;
   to_name?: string | null;
   subject?: string | null;
@@ -46,12 +49,14 @@ export function recordSentEmail(entry: {
   message_id?: string | null;
 }) {
   getDb().prepare(
-    `INSERT INTO sent_emails (id, job_id, lead_id, to_email, to_name, subject, body, template_id, success, error, message_id)
-     VALUES (@id, @job_id, @lead_id, @to_email, @to_name, @subject, @body, @template_id, @success, @error, @message_id)`
+    `INSERT INTO sent_emails (id, job_id, lead_id, scheduled_id, campaign, to_email, to_name, subject, body, template_id, success, error, message_id)
+     VALUES (@id, @job_id, @lead_id, @scheduled_id, @campaign, @to_email, @to_name, @subject, @body, @template_id, @success, @error, @message_id)`
   ).run({
     id: entry.id ?? uuid(),
     job_id: entry.job_id ?? null,
     lead_id: entry.lead_id ?? null,
+    scheduled_id: entry.scheduled_id ?? null,
+    campaign: entry.campaign ?? null,
     to_email: entry.to_email,
     to_name: entry.to_name ?? null,
     subject: entry.subject ?? null,
@@ -81,21 +86,45 @@ function brancheTermsForJob(job: SendJob): string[] {
   return [];
 }
 
+// Ausschluss-Klausel gegen Doppel-Mails an dieselbe Praxis.
+// Greift GLOBAL über ALLE Jobs, Bulk- und Plan-Versand hinweg – und per E-Mail-Adresse
+// (nicht per lead_id), damit dieselbe Praxis auch dann nur einmal angeschrieben wird,
+// wenn sie als mehrere Lead-Zeilen existiert.
+const ALREADY_CONTACTED_SQL = `LOWER(TRIM(email)) NOT IN (
+    SELECT LOWER(TRIM(to_email)) FROM sent_emails      WHERE success = 1                          AND to_email IS NOT NULL AND to_email != ''
+    UNION
+    SELECT LOWER(TRIM(to_email)) FROM scheduled_emails WHERE status IN ('scheduled','processing') AND to_email IS NOT NULL AND to_email != ''
+  )`;
+
+function brancheClause(terms: string[], params: Record<string, unknown>): string {
+  if (!terms.length) return '';
+  const parts = terms.map((_, i) => `LOWER(branche) LIKE @t${i}`);
+  terms.forEach((t, i) => { params['t' + i] = '%' + t.toLowerCase() + '%'; });
+  return ` AND (${parts.join(' OR ')})`;
+}
+
 function pickNextLead(job: SendJob): Lead | undefined {
   const db = getDb();
   const terms = brancheTermsForJob(job);
   // Nur unkontaktierte, sichere Status; nie DNC/archiviert; Lead braucht E-Mail.
   const statusOk = `status IN ('new','checked','draft_ready','approved','manual_review')`;
-  let sql = `SELECT * FROM leads WHERE email IS NOT NULL AND email != '' AND ${statusOk}
-             AND id NOT IN (SELECT COALESCE(lead_id,'') FROM sent_emails WHERE job_id = @jobId)`;
-  const params: Record<string, unknown> = { jobId: job.id };
-  if (terms.length) {
-    const parts = terms.map((_, i) => `LOWER(branche) LIKE @t${i}`);
-    sql += ` AND (${parts.join(' OR ')})`;
-    terms.forEach((t, i) => { params['t' + i] = '%' + t.toLowerCase() + '%'; });
-  }
-  sql += ` ORDER BY CASE prioritaet WHEN 'A' THEN 0 WHEN 'B' THEN 1 ELSE 2 END, score_gesamt DESC LIMIT 1`;
+  const params: Record<string, unknown> = {};
+  const sql = `SELECT * FROM leads
+               WHERE email IS NOT NULL AND email != '' AND ${statusOk} AND ${ALREADY_CONTACTED_SQL}`
+    + brancheClause(terms, params)
+    + ` ORDER BY CASE prioritaet WHEN 'A' THEN 0 WHEN 'B' THEN 1 ELSE 2 END, score_gesamt DESC LIMIT 1`;
   return db.prepare(sql).get(params) as Lead | undefined;
+}
+
+/** Wie viele versandfähige, noch nicht kontaktierte Leads gibt es? Für aussagekräftige Hinweise, wenn ein Job leerläuft. */
+function availableLeadCounts(job: SendJob): { branche: number; total: number } {
+  const db = getDb();
+  const statusOk = `status IN ('new','checked','draft_ready','approved','manual_review')`;
+  const base = `SELECT COUNT(*) as n FROM leads WHERE email IS NOT NULL AND email != '' AND ${statusOk} AND ${ALREADY_CONTACTED_SQL}`;
+  const total = (db.prepare(base).get() as { n: number }).n;
+  const params: Record<string, unknown> = {};
+  const branche = (db.prepare(base + brancheClause(brancheTermsForJob(job), params)).get(params) as { n: number }).n;
+  return { branche, total };
 }
 
 function setJob(id: string, fields: Record<string, unknown>) {
@@ -104,7 +133,8 @@ function setJob(id: string, fields: Record<string, unknown>) {
 }
 
 function randGap(job: SendJob): number {
-  const min = Math.max(30, job.min_gap_s);
+  // Harter Sicherheits-Floor: nie unter 15s (Schutz vor SMTP-Sperrung/Spam-Einstufung).
+  const min = Math.max(15, job.min_gap_s);
   const max = Math.max(min + 10, job.max_gap_s);
   return min + Math.floor(Math.random() * (max - min));
 }
@@ -136,7 +166,13 @@ async function processJob(job: SendJob): Promise<void> {
 
   const lead = pickNextLead(job);
   if (!lead) {
-    setJob(job.id, { note: 'Keine passenden Leads mehr – scrape neue Leads, Job läuft weiter' });
+    // Aussagekräftiger Hinweis: erklärt, warum gerade nicht (mehr) versendet wird.
+    const { branche, total } = availableLeadCounts(job);
+    const hasVertical = Boolean(job.vertical_id) || Boolean(job.branche_terms);
+    const note = hasVertical && total > branche
+      ? `Keine neuen Leads in dieser Branche (0 offen). ${total} weitere versandfähige Leads in anderen Branchen – für mehr Reichweite einen Job „Alle Branchen“ starten oder neue Leads scrapen.`
+      : `Alle ${total} versandfähigen Leads sind kontaktiert – neue Leads scrapen, dann läuft der Job weiter.`;
+    setJob(job.id, { note });
     return;
   }
 

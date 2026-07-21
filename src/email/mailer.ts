@@ -290,14 +290,9 @@ function buildHtml(body: string, trackingId?: string, env: NodeJS.ProcessEnv = p
 
   const lines = body.split('\n').map(l => {
     if (l.trim() === '') return '<br>';
-    let html = escHtml(l);
+    const html = renderInlineLinks(l, { track, base, trackingId });
     // URLs klickbar machen; mit Tracking-ID über unseren Klick-Redirect leiten.
     // Erkennt auch www.-Links ohne Protokoll (kommen in Vorlagen häufig vor).
-    html = html.replace(/(https?:\/\/[^\s<>"]+|www\.[^\s<>"]+)/g, (url) => {
-      const full = url.startsWith('http') ? url : 'https://' + url;
-      const href = track ? `${base}/track/click/${trackingId}?u=${encodeURIComponent(full)}` : full;
-      return `<a href="${href}" style="color:#1a73e8">${url}</a>`;
-    });
     return `<p style="margin:0 0 10px">${html}</p>`;
   }).join('');
 
@@ -311,8 +306,50 @@ ${pixel}
 </div>`;
 }
 
+function renderInlineLinks(line: string, opts: { track: boolean; base: string; trackingId?: string }): string {
+  const linkSyntax = /\[([^\]\n]+)\]\((https?:\/\/[^\s)<>"]+|mailto:[^\s)<>"]+)\)|<a\s+href=["'](https?:\/\/[^"'\s<>]+|mailto:[^"'\s<>]+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let out = '';
+  let last = 0;
+  for (const match of line.matchAll(linkSyntax)) {
+    const index = match.index ?? 0;
+    out += linkPlainUrls(escHtml(line.slice(last, index)), opts);
+    out += anchorHtml(match[2] || match[3], escHtml(stripHtml(match[1] || match[4] || '')), opts);
+    last = index + match[0].length;
+  }
+  out += linkPlainUrls(escHtml(line.slice(last)), opts);
+  return out;
+}
+
+function linkPlainUrls(html: string, opts: { track: boolean; base: string; trackingId?: string }): string {
+  return html.replace(/(https?:\/\/[^\s<>"]+|www\.[^\s<>"]+)/g, (url) => {
+    const { core, trailing } = splitTrailingPunctuation(url);
+    return anchorHtml(core, core, opts) + trailing;
+  });
+}
+
+function anchorHtml(rawHref: string, labelHtml: string, opts: { track: boolean; base: string; trackingId?: string }): string {
+  const full = rawHref.startsWith('www.') ? 'https://' + rawHref : rawHref;
+  const href = opts.track && opts.trackingId && /^https?:\/\//i.test(full)
+    ? `${opts.base}/track/click/${opts.trackingId}?u=${encodeURIComponent(full)}`
+    : full;
+  return `<a href="${escAttr(href)}" style="color:#1a73e8">${labelHtml}</a>`;
+}
+
+function splitTrailingPunctuation(url: string): { core: string; trailing: string } {
+  const match = url.match(/^(.+?)([.,;:!?)]*)$/);
+  return match ? { core: match[1], trailing: match[2] } : { core: url, trailing: '' };
+}
+
+function stripHtml(s: string): string {
+  return s.replace(/<[^>]*>/g, '');
+}
+
 function escHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function escAttr(s: string): string {
+  return escHtml(s).replace(/"/g, '&quot;');
 }
 
 /** Uebersetzt technische SMTP-Fehler in klare, handlungsleitende Meldungen (Brevo-spezifisch). */

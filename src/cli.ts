@@ -37,6 +37,39 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     return;
   }
 
+  if (command === 'run-batch') {
+    const branche = readString(args, 'branche');
+    const regionId = readString(args, 'region');
+    const staedteArg = readString(args, 'staedte');
+    if (!branche || (!regionId && !staedteArg)) {
+      console.log('Nutzung: npm run leadgen -- run-batch --branche "Kaelte Klima" --region rhein-ruhr --max 50');
+      console.log('   oder: npm run leadgen -- run-batch --branche "Kaelte Klima" --staedte "Duesseldorf,Koeln,Essen" --max 50');
+      process.exitCode = 1;
+      return;
+    }
+    const cities = staedteArg
+      ? staedteArg.split(',').map(s => s.trim()).filter(Boolean)
+      : (nrwRegions.find(r => r.id === regionId)?.cities ?? []);
+    if (!cities.length) { console.log(`Keine Staedte gefunden für Region "${regionId}".`); process.exitCode = 1; return; }
+
+    const max = readNumber(args, 'max') ?? readNumber(args, 'maxResults') ?? 50;
+    const skipAi = Boolean(args['no-ai']) || Boolean(args.skipAi) || true;
+    let total = 0, inserted = 0, errors = 0;
+    console.log(`\nBatch-Scrape "${branche}" über ${cities.length} Städte (max ${max}/Stadt)…`);
+    for (const stadt of cities) {
+      try {
+        const r = await runPipeline({ branche, stadt, maxResults: max }, { maxResults: max, skipAi });
+        total += r.total; inserted += r.inserted;
+        console.log(`  ${stadt}: ${r.total} Leads (${r.inserted} neu)`);
+      } catch (err) {
+        errors++;
+        console.log(`  ${stadt}: FEHLER – ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    console.log(`\nBatch fertig: ${total} Leads gesamt | ${inserted} neu | ${errors} Städte mit Fehler`);
+    return;
+  }
+
   if (command === 'report') {
     console.table(getDailyReport());
     return;

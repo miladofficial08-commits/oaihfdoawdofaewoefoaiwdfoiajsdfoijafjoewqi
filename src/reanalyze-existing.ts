@@ -52,6 +52,7 @@ export async function reanalyzeExistingLeads(): Promise<ReanalyzeResult> {
       website_evidence = @website_evidence,
       website_quality_flags = @website_quality_flags,
       analyze_error = @analyze_error,
+      status = @status,
       score_chatbot = @score_chatbot,
       score_telefon = @score_telefon,
       score_website = @score_website,
@@ -136,6 +137,7 @@ function buildUpdatedLead(lead: Lead, analysis: WebsiteAnalysis): Lead {
   return {
     ...scoreInput,
     ...identity,
+    status: upgradeStatusAfterReanalyze(lead.status, scoreInput),
     updated_at: new Date().toISOString(),
     score_chatbot: score.chatbot,
     score_telefon: score.telefon,
@@ -152,6 +154,16 @@ function buildUpdatedLead(lead: Lead, analysis: WebsiteAnalysis): Lead {
     bester_kanal: contact.bester_kanal,
     kontakt_hinweis: contact.kontakt_hinweis,
   } as Lead;
+}
+
+// Befreit ausschliesslich zuvor blockierte Leads (missing_data), wenn die erneute
+// Analyse jetzt einen Kontaktweg findet. Alle anderen Status bleiben unangetastet –
+// so wird nichts umgestossen, was schon weiter im Funnel ist (contacted/approved/archived …).
+function upgradeStatusAfterReanalyze(oldStatus: Lead['status'], lead: Partial<Lead>): Lead['status'] {
+  if (oldStatus !== 'missing_data') return oldStatus;
+  if (lead.email || lead.whatsapp || lead.kontaktformular_url) return 'checked';
+  if (lead.telefon) return 'manual_review';
+  return oldStatus;
 }
 
 function summarizeLead(lead: Lead) {

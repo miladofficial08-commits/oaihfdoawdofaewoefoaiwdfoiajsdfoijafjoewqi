@@ -100,6 +100,11 @@ export interface Lead {
   manual_call_done?: number;
   notiz?: string;
 
+  followup_stage?: number;
+  followup_last_at?: string;
+  followup_stopped?: number;
+  followup_stopped_reason?: string;
+
   scrape_error?: string;
   analyze_error?: string;
 }
@@ -118,7 +123,7 @@ export interface ContactPoint {
 export interface OutreachEvent {
   id: string;
   lead_id: string;
-  event_type: 'draft_created' | 'message_edited' | 'approved' | 'sent_marked' | 'manual_contact' | 'manual_call' | 'status_changed' | 'archived' | 'email_sent';
+  event_type: 'draft_created' | 'message_edited' | 'approved' | 'sent_marked' | 'manual_contact' | 'manual_call' | 'status_changed' | 'archived' | 'email_sent' | 'followup_sent';
   channel?: string;
   message?: string;
   status?: LeadStatus;

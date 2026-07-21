@@ -4,6 +4,17 @@ import { v4 as uuid } from 'uuid';
 import { getVerticalByLabel } from '../config/markets';
 import { buildIdentity } from '../utils/identity';
 
+// Status, die eine menschliche- oder Outreach-Entscheidung darstellen und von einem
+// erneuten Scrape nicht überschrieben werden dürfen (Kontakt-/Verkaufshistorie schützen).
+const PROTECTED_STATUSES: ReadonlySet<string> = new Set([
+  'approved', 'contacted', 'replied', 'demo_booked', 'proposal_sent',
+  'won', 'lost', 'no_interest', 'do_not_contact', 'archived',
+]);
+
+export function isProtectedStatus(status?: string | null): boolean {
+  return !!status && PROTECTED_STATUSES.has(status);
+}
+
 export function upsertLead(
   data: Partial<Lead> & { maps_place_id: string; name: string; branche: string; stadt: string }
 ): { inserted: boolean; lead: Lead } {
@@ -14,6 +25,21 @@ export function upsertLead(
 
   if (existing) {
     const updated = { ...existing, ...enriched, updated_at: new Date().toISOString() };
+    // Ein erneuter Scrape darf eine Outreach-/Human-Entscheidung NIEMALS zurücksetzen.
+    // Sonst würde eine bereits kontaktierte Praxis wieder als "checked" gelten und die
+    // Kontakt-/Follow-up-Historie verlorengehen. Status + Outreach-Felder daher schützen.
+    if (isProtectedStatus(existing.status)) {
+      updated.status = existing.status;
+      updated.gesendet_at = existing.gesendet_at;
+      updated.contacted_at = existing.contacted_at;
+      updated.approved_at = existing.approved_at;
+      updated.approved_kanal = existing.approved_kanal;
+      updated.approved_nachricht = existing.approved_nachricht;
+      updated.followup_stage = existing.followup_stage;
+      updated.followup_last_at = existing.followup_last_at;
+      updated.followup_stopped = existing.followup_stopped;
+      updated.followup_stopped_reason = existing.followup_stopped_reason;
+    }
     const cols = Object.keys(updated)
       .filter(k => k !== 'id' && k !== 'created_at')
       .map(k => `${k} = @${k}`)

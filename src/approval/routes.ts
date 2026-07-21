@@ -17,25 +17,62 @@ import {
   getDailyReport,
   archiveLead,
   deleteLeadPermanently,
+  recordOutreachEvent,
 } from '../db/leads-repo';
 import { Lead } from '../types';
 import { nrwRegions, verticalPresets } from '../config/markets';
 import { runPipeline } from '../pipeline';
+import { reanalyzeExistingLeads } from '../reanalyze-existing';
 import { personalizeLead, getAiProvider } from '../ai/personalizer';
 import { exportToCsv } from '../export/csv-export';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { getSmtpStatus, sendLeadEmail, sendBulkEmail, getTrackingBaseUrl, sendTestEmail, sendBrevoTestEmail } from '../email/mailer';
-import { getSmsStats } from '../email/sms-stats';
+import { getSmsAnalytics } from '../email/sms-stats';
 import { generateAdVariants } from '../ai/ad-generator';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../db/schema';
 import { fetchInboxEmails, getImapStatus, markEmailSeen } from '../email/inbox';
-import { getEmailTemplate, updateEmailTemplate, renderTemplate, listEmailTemplates, createEmailTemplate, deleteEmailTemplate } from '../email/template';
+import { getEmailTemplate, updateEmailTemplate, renderTemplate, listEmailTemplates, createEmailTemplate, deleteEmailTemplate, getTemplateById, seedFollowupTemplates } from '../email/template';
 import { startAutoSender, recordSentEmail, sentTodayCount, GLOBAL_DAILY_CAP, ALLOWED_DAILY_LIMITS, SendJob } from '../email/auto-sender';
-import { classifyOpenEvent, isOpenLikeEvent, isReliableOpen, secondsBetween } from '../email/tracking';
+import { startFollowupSender, getFollowupConfig, setFollowupConfig, followupStats } from '../email/followup-sender';
+import { classifyOpenEvent, isOpenLikeEvent, isReliableOpen, secondsBetween, countDistinctOpens, OPEN_DEDUP_WINDOW_SECONDS, classifyClickEvent, isRealClick, isClickLikeEvent, countDistinctClicks } from '../email/tracking';
+import { classifyEmailDelivery } from '../email/email-status';
+import { startScheduledSender } from '../email/scheduled-sender';
 
 const BERLIN_TZ = 'Europe/Berlin';
+
+/** Wandelt eine Berlin-Wanduhrzeit (datetime-local "YYYY-MM-DDTHH:mm") in einen UTC-ISO-Zeitpunkt um. */
+function berlinLocalToUtcIso(localStr: string): string | null {
+  const m = String(localStr).match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+  if (!m) return null;
+  const [, Y, Mo, D, H, Mi] = m.map(Number);
+  const guess = Date.UTC(Y, Mo - 1, D, H, Mi);
+  const offsetAt = (utcMs: number): number => {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: BERLIN_TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+    }).formatToParts(new Date(utcMs));
+    const g = (t: string) => Number(parts.find(p => p.type === t)?.value || '0');
+    const asUtc = Date.UTC(g('year'), g('month') - 1, g('day'), g('hour'), g('minute'), g('second'));
+    return (asUtc - utcMs) / 60000; // Minuten östlich von UTC
+  };
+  let utc = guess - offsetAt(guess) * 60000;
+  utc = guess - offsetAt(utc) * 60000; // eine Verfeinerung für DST-Ränder
+  const d = new Date(utc);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+/** Nimmt einen vom Client gelieferten Planungszeitpunkt entgegen (Berlin-Wanduhr ODER ISO mit Zone). */
+function resolveScheduleIso(value: string): string | null {
+  const s = String(value || '').trim();
+  if (!s) return null;
+  if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(s)) {
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  return berlinLocalToUtcIso(s);
+}
 
 function parseDbTime(value: unknown): Date | null {
   if (!value) return null;
@@ -128,18 +165,39 @@ export async function registerRoutes(app: FastifyInstance) {
     ],
   }));
 
-  app.post<{ Body: { branche: string; stadt: string; bezirk?: string; max?: number; skipAi?: boolean } }>(
+  app.post<{ Body: { branche: string; stadt?: string; staedte?: string[]; bezirk?: string; max?: number; skipAi?: boolean } }>(
     '/api/run',
     async (req, reply) => {
-      const { branche, stadt, bezirk, max = 25, skipAi = true } = req.body;
-      if (!branche || !stadt) return reply.status(400).send({ error: 'branche und stadt sind Pflicht' });
-      const result = await runPipeline({ branche, stadt, stadtbezirk: bezirk, maxResults: max }, {
-        maxResults: max,
-        skipAi,
-      });
-      return result;
+      const { branche, stadt, staedte, bezirk, skipAi = true } = req.body;
+      const max = Math.max(1, Math.min(200, Number(req.body.max) || 25));
+      // Ziel-Staedte: explizite Liste (Multi-Stadt) oder eine einzelne Stadt.
+      const cities = (Array.isArray(staedte) && staedte.length ? staedte : (stadt ? [stadt] : []))
+        .map(s => String(s).trim()).filter(Boolean);
+      if (!branche || !cities.length) return reply.status(400).send({ error: 'branche und mindestens eine Stadt sind Pflicht' });
+
+      // Aggregiert ueber alle Staedte; einzelne Stadt-Fehler brechen den Lauf nicht ab.
+      const agg = { total: 0, inserted: 0, updated: 0, aiProcessed: 0, errors: 0, duration: 0 };
+      const perCity: Array<{ stadt: string; total: number; inserted: number; error?: string }> = [];
+      for (const city of cities) {
+        try {
+          const r = await runPipeline({ branche, stadt: city, stadtbezirk: cities.length === 1 ? bezirk : undefined, maxResults: max }, { maxResults: max, skipAi });
+          agg.total += r.total; agg.inserted += r.inserted; agg.updated += r.updated;
+          agg.aiProcessed += r.aiProcessed; agg.errors += r.errors; agg.duration += r.duration;
+          perCity.push({ stadt: city, total: r.total, inserted: r.inserted });
+        } catch (err) {
+          agg.errors++;
+          perCity.push({ stadt: city, total: 0, inserted: 0, error: err instanceof Error ? err.message : String(err) });
+        }
+      }
+      return { ...agg, cities: cities.length, perCity };
     }
   );
+
+  // Backfill: bestehende Leads erneut analysieren – holt fehlende E-Mails aus Impressum/Kontakt nach.
+  app.post('/api/reanalyze', async () => {
+    const result = await reanalyzeExistingLeads();
+    return result;
+  });
 
   app.post<{ Body: { id: string; kanal: string; nachricht: string } }>(
     '/api/approve',
@@ -520,16 +578,17 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
 
   app.get('/api/email-templates', async () => listEmailTemplates());
 
-  app.post<{ Body: { name?: string; subject?: string; body?: string } }>(
+  app.post<{ Body: { name?: string; subject?: string; body?: string; category?: string } }>(
     '/api/email-templates',
     async (req) => createEmailTemplate({
       name: req.body.name || 'Neue Vorlage',
       subject: req.body.subject || 'Betreff für {name}',
       body: req.body.body || 'Guten Tag {name}-Team,\n\n…\n\nMit freundlichen Grüßen\nTawano',
+      category: req.body.category || null,
     })
   );
 
-  app.put<{ Params: { id: string }; Body: { name?: string; subject?: string; body?: string } }>(
+  app.put<{ Params: { id: string }; Body: { name?: string; subject?: string; body?: string; category?: string } }>(
     '/api/email-templates/:id',
     async (req) => updateEmailTemplate(req.params.id, req.body)
   );
@@ -559,18 +618,25 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     allowed_daily_limits: ALLOWED_DAILY_LIMITS,
   }));
 
-  app.post<{ Body: { name?: string; verticalId?: string; totalTarget: number; dailyLimit?: number; templateIds?: string[]; windowStart?: number; windowEnd?: number } }>(
+  app.post<{ Body: { name?: string; verticalId?: string; totalTarget: number; dailyLimit?: number; templateIds?: string[]; windowStart?: number; windowEnd?: number; gapSeconds?: number; startAt?: string } }>(
     '/api/send-jobs',
     async (req, reply) => {
-      const { name, verticalId, totalTarget, dailyLimit = 100, templateIds = ['default'], windowStart = 8, windowEnd = 20 } = req.body;
+      const { name, verticalId, totalTarget, dailyLimit = 100, templateIds = ['default'], windowStart = 8, windowEnd = 24, gapSeconds, startAt } = req.body;
       if (!totalTarget || totalTarget < 1) return reply.status(400).send({ error: 'Anzahl E-Mails fehlt' });
       if (totalTarget > 5000) return reply.status(400).send({ error: 'Maximal 5000 E-Mails pro Job' });
       const safeDaily = ALLOWED_DAILY_LIMITS.includes(dailyLimit) ? dailyLimit : 100;
+      // Pause zwischen Mails: min. 15 Sek (Schutz), max. 10 Min. Der Max-Wert bekommt leichte
+      // Streuung (×1,5), damit der Versand nicht robotisch-gleichmäßig wirkt (Spam-Schutz).
+      const gap = Math.max(15, Math.min(600, Math.round(Number(gapSeconds) || 30)));
+      const minGap = gap;
+      const maxGap = Math.max(gap + 10, Math.round(gap * 1.5));
+      // Startzeit: leer = sofort (datetime('now')). Sonst als lokale Zeit vom Client übernehmen.
+      const startProvided = typeof startAt === 'string' && startAt.trim() !== '' && !Number.isNaN(new Date(startAt).getTime());
       const vertical = verticalPresets.find(v => v.id === verticalId);
       const id = uuid();
       getDb().prepare(
-        `INSERT INTO send_jobs (id, name, vertical_id, branche_terms, template_ids, total_target, daily_limit, window_start, window_end, status, next_send_at)
-         VALUES (@id, @name, @vertical_id, @branche_terms, @template_ids, @total_target, @daily_limit, @window_start, @window_end, 'running', datetime('now'))`
+        `INSERT INTO send_jobs (id, name, vertical_id, branche_terms, template_ids, total_target, daily_limit, min_gap_s, max_gap_s, window_start, window_end, status, next_send_at)
+         VALUES (@id, @name, @vertical_id, @branche_terms, @template_ids, @total_target, @daily_limit, @min_gap_s, @max_gap_s, @window_start, @window_end, 'running', ${startProvided ? '@next_send_at' : "datetime('now')"})`
       ).run({
         id,
         name: name || (vertical ? vertical.label : 'Alle Branchen') + ' – ' + totalTarget + ' E-Mails',
@@ -579,8 +645,11 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
         template_ids: JSON.stringify(templateIds.length ? templateIds : ['default']),
         total_target: totalTarget,
         daily_limit: safeDaily,
+        min_gap_s: minGap,
+        max_gap_s: maxGap,
         window_start: Math.max(0, Math.min(23, windowStart)),
         window_end: Math.max(1, Math.min(24, windowEnd)),
+        ...(startProvided ? { next_send_at: new Date(startAt as string).toISOString() } : {}),
       });
       return { id, ok: true };
     }
@@ -614,32 +683,128 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
       : db.prepare('SELECT * FROM sent_emails ORDER BY sent_at DESC LIMIT ?').all(limit);
   });
 
-  // ── Bulk Send ─────────────────────────────────────────────────────────────
-  app.post<{ Body: { recipients: Array<{ id?: string; name: string; email: string; branche?: string; stadt?: string }> } }>(
+  // ── Bulk Send (sofort ODER geplant) + Vorlagen-Auswahl ────────────────────
+  app.post<{ Body: { recipients: Array<{ id?: string; name: string; email: string; branche?: string; stadt?: string }>; templateId?: string; scheduleAt?: string; campaign?: string } }>(
     '/api/bulk-send',
     async (req, reply) => {
-      const { recipients } = req.body;
+      const { recipients, templateId, scheduleAt, campaign } = req.body;
       if (!recipients?.length) return reply.status(400).send({ error: 'Empfänger fehlen' });
-      const template = getEmailTemplate();
+      const template = (templateId && getTemplateById(templateId)) || getEmailTemplate();
+
+      // Doppel-Mail-Schutz: dieselbe Praxis nie zweimal anschreiben. Adressen ausschließen, die
+      // bereits erfolgreich versendet ODER aktuell eingeplant sind – plus Dubletten in dieser Anfrage.
+      const alreadyContacted = new Set(
+        (getDb().prepare(
+          `SELECT LOWER(TRIM(to_email)) e FROM sent_emails WHERE success = 1 AND to_email IS NOT NULL AND to_email != ''
+           UNION
+           SELECT LOWER(TRIM(to_email)) e FROM scheduled_emails WHERE status IN ('scheduled','processing') AND to_email IS NOT NULL AND to_email != ''`
+        ).all() as Array<{ e: string }>).map(r => r.e)
+      );
+      const seen = new Set<string>();
+      const skipped: Array<{ name: string; email: string; error: string }> = [];
+      const validRecipients = recipients.filter(r => {
+        if (!r.email) return false;
+        const key = r.email.trim().toLowerCase();
+        if (alreadyContacted.has(key)) { skipped.push({ name: r.name, email: r.email, error: 'Bereits kontaktiert – übersprungen (kein Doppel-Versand)' }); return false; }
+        if (seen.has(key)) { skipped.push({ name: r.name, email: r.email, error: 'Doppelter Empfänger in der Liste – übersprungen' }); return false; }
+        seen.add(key);
+        return true;
+      });
+
+      // Zeitversetzter Versand: geplante Einträge anlegen, der scheduled-sender Worker verschickt sie.
+      if (scheduleAt) {
+        const iso = resolveScheduleIso(scheduleAt);
+        if (!iso) return reply.status(400).send({ error: 'Ungültige Versandzeit' });
+        if (new Date(iso).getTime() < Date.now() - 60_000) return reply.status(400).send({ error: 'Versandzeit liegt in der Vergangenheit' });
+        if (!validRecipients.length) return reply.status(400).send({ error: skipped.length ? 'Alle Empfänger wurden bereits kontaktiert' : 'Keine gültigen Empfänger' });
+        const insert = getDb().prepare(
+          `INSERT INTO scheduled_emails (id, lead_id, to_email, to_name, template_id, subject, body, campaign, scheduled_at, status)
+           VALUES (@id, @lead_id, @to_email, @to_name, @template_id, @subject, @body, @campaign, @scheduled_at, 'scheduled')`
+        );
+        let scheduled = 0;
+        for (const r of validRecipients) {
+          const rendered = renderTemplate(template, r);
+          insert.run({
+            id: uuid(), lead_id: r.id ?? null, to_email: r.email, to_name: r.name ?? null,
+            template_id: template.id, subject: rendered.subject, body: rendered.body,
+            campaign: campaign ?? null, scheduled_at: iso,
+          });
+          scheduled++;
+        }
+        return { scheduled, skipped: skipped.length, skipped_details: skipped, scheduled_at: iso };
+      }
+
+      // Sofort-Versand.
       const results = [];
-      for (const r of recipients) {
-        if (!r.email) { results.push({ name: r.name, email: '', success: false, error: 'Keine E-Mail' }); continue; }
+      for (const r of validRecipients) {
         const rendered = renderTemplate(template, r);
         const trackingId = uuid();
         // Mit Lead-ID: Status wird auf "contacted" gesetzt + Event protokolliert
         const res = r.id
           ? await sendLeadEmail({ leadId: r.id, to: r.email, toName: r.name, subject: rendered.subject, body: rendered.body, trackingId })
           : await sendBulkEmail({ to: r.email, toName: r.name, subject: rendered.subject, body: rendered.body, trackingId });
-        recordSentEmail({ id: trackingId, lead_id: r.id ?? null, to_email: r.email, to_name: r.name, subject: rendered.subject, body: rendered.body, template_id: template.id, success: res.success, error: res.error, message_id: res.messageId });
+        recordSentEmail({ id: trackingId, lead_id: r.id ?? null, campaign: campaign ?? null, to_email: r.email, to_name: r.name, subject: rendered.subject, body: rendered.body, template_id: template.id, success: res.success, error: res.error, message_id: res.messageId });
         results.push({ name: r.name, email: r.email, success: res.success, error: res.error, messageId: res.messageId });
       }
       return {
         sent: results.filter(r => r.success).length,
         failed: results.filter(r => !r.success).length,
-        results,
+        skipped: skipped.length,
+        results: [...results, ...skipped.map(s => ({ ...s, success: false }))],
       };
     }
   );
+
+  // ── Geplante E-Mails verwalten ────────────────────────────────────────────
+  app.get('/api/scheduled-emails', async () => {
+    const rows = getDb().prepare(
+      `SELECT * FROM scheduled_emails ORDER BY
+         CASE status WHEN 'scheduled' THEN 0 WHEN 'processing' THEN 1 ELSE 2 END,
+         scheduled_at ASC`
+    ).all() as any[];
+    return rows.map(r => ({
+      ...r,
+      scheduled_at_local: berlinLabel(r.scheduled_at),
+      sent_at_local: berlinLabel(r.sent_at),
+    }));
+  });
+
+  app.patch<{ Params: { id: string }; Body: { subject?: string; body?: string; to_email?: string; to_name?: string; scheduleAt?: string } }>(
+    '/api/scheduled-emails/:id',
+    async (req, reply) => {
+      const db = getDb();
+      const row = db.prepare(`SELECT * FROM scheduled_emails WHERE id = ?`).get(req.params.id) as any;
+      if (!row) return reply.status(404).send({ error: 'Nicht gefunden' });
+      if (row.status !== 'scheduled') return reply.status(400).send({ error: 'Nur geplante E-Mails können bearbeitet werden' });
+      const fields: Record<string, unknown> = {};
+      if (typeof req.body.subject === 'string') fields.subject = req.body.subject;
+      if (typeof req.body.body === 'string') fields.body = req.body.body;
+      if (typeof req.body.to_email === 'string' && req.body.to_email.trim()) fields.to_email = req.body.to_email.trim();
+      if (typeof req.body.to_name === 'string') fields.to_name = req.body.to_name;
+      if (req.body.scheduleAt) {
+        const iso = resolveScheduleIso(req.body.scheduleAt);
+        if (!iso) return reply.status(400).send({ error: 'Ungültige Versandzeit' });
+        if (new Date(iso).getTime() < Date.now() - 60_000) return reply.status(400).send({ error: 'Versandzeit liegt in der Vergangenheit' });
+        fields.scheduled_at = iso;
+      }
+      if (!Object.keys(fields).length) return { ok: true, unchanged: true };
+      fields.updated_at = new Date().toISOString();
+      const sets = Object.keys(fields).map(k => `${k} = @${k}`).join(', ');
+      db.prepare(`UPDATE scheduled_emails SET ${sets} WHERE id = @id`).run({ ...fields, id: req.params.id });
+      return { ok: true };
+    }
+  );
+
+  app.delete<{ Params: { id: string } }>('/api/scheduled-emails/:id', async (req, reply) => {
+    const db = getDb();
+    const row = db.prepare(`SELECT status FROM scheduled_emails WHERE id = ?`).get(req.params.id) as { status?: string } | undefined;
+    if (!row) return reply.status(404).send({ error: 'Nicht gefunden' });
+    if (row.status === 'scheduled' || row.status === 'failed') {
+      db.prepare(`UPDATE scheduled_emails SET status = 'canceled', updated_at = @now WHERE id = @id`).run({ id: req.params.id, now: new Date().toISOString() });
+      return { ok: true, canceled: true };
+    }
+    return reply.status(400).send({ error: 'Versand läuft bereits oder ist abgeschlossen' });
+  });
 
   // ── Tracking (Öffnungs-Pixel + Klick-Redirect) ────────────────────────────
   const TRANSPARENT_GIF = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
@@ -651,7 +816,9 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     const userAgent = String(req.headers['user-agent'] || '').slice(0, 300);
     const storedEventType = eventType === 'open'
       ? classifyOpenEvent({ userAgent, secondsSinceSent: secondsBetween(sent.sent_at, new Date().toISOString()) })
-      : eventType;
+      : eventType === 'click'
+        ? classifyClickEvent(userAgent)
+        : eventType;
     getDb().prepare(
       `INSERT INTO email_events (id, sent_email_id, event_type, url, user_agent, ip)
        VALUES (?, ?, ?, ?, ?, ?)`
@@ -822,100 +989,238 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     return { ok: true };
   });
 
-  app.get('/api/analytics/email', async () => {
+  app.get<{ Querystring: Record<string, string> }>('/api/analytics/email', async (req) => {
     const db = getDb();
-    const totals = db.prepare(
-      `SELECT COUNT(*) as sent, SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as ok,
-              SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) as failed
-       FROM sent_emails`
-    ).get() as { sent: number; ok: number; failed: number };
+    const q = req.query || {};
+    const fromIso = q.from ? (resolveScheduleIso(q.from) || null) : null;
+    const toIso = q.to ? (resolveScheduleIso(q.to) || null) : null;
+    const fTemplate = (q.template || '').trim();
+    const fCampaign = (q.campaign || '').trim();
+    const fSearch = (q.search || '').trim().toLowerCase();
+    const fStatus = (q.status || '').trim();       // EmailStatusCode
+    const fOpen = (q.open || '').trim();            // opened | not_opened | auto
+    const fClick = (q.click || '').trim();          // clicked | not_clicked
+    const inRange = (ts: unknown): boolean => {
+      const d = parseDbTime(ts)?.getTime();
+      if (d == null) return false;
+      if (fromIso && d < new Date(fromIso).getTime()) return false;
+      if (toIso && d > new Date(toIso).getTime()) return false;
+      return true;
+    };
+    const sig = (e: { user_agent?: string | null; ip?: string | null }) => `${e.user_agent || 'unknown'}|${e.ip || 'unknown'}`;
 
-    const clickedUnique = (db.prepare(
-      `SELECT COUNT(DISTINCT sent_email_id) as n FROM email_events WHERE event_type = 'click'`
-    ).get() as { n: number }).n;
-    const bounced = (db.prepare(
-      `SELECT COUNT(DISTINCT sent_email_id) as n FROM email_events WHERE event_type = 'bounce'`
-    ).get() as { n: number }).n;
+    // ── Basis-Set aus sent_emails laden (SQL-Filter für Zeit/Vorlage/Kampagne/Suche) ──
+    const where: string[] = [];
+    const params: Record<string, unknown> = {};
+    if (fromIso) { where.push(`s.sent_at >= @from`); params.from = fromIso.replace('T', ' ').replace('Z', ''); }
+    if (toIso) { where.push(`s.sent_at <= @to`); params.to = toIso.replace('T', ' ').replace('Z', ''); }
+    if (fTemplate) { where.push(`s.template_id = @tpl`); params.tpl = fTemplate; }
+    if (fCampaign) { where.push(fCampaign === '__none__' ? `s.campaign IS NULL` : `s.campaign = @camp`); if (fCampaign !== '__none__') params.camp = fCampaign; }
+    // Datumsvergleich robust über parseDbTime unten nochmal; SQL-Grobfilter reicht als Vorauswahl.
+    const rows = db.prepare(
+      `SELECT s.id, s.to_email, s.to_name, s.subject, s.success, s.error, s.sent_at, s.job_id, s.scheduled_id, s.campaign, s.template_id
+       FROM sent_emails s ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+       ORDER BY s.sent_at DESC LIMIT 2000`
+    ).all(params) as any[];
+    const baseRows = rows.filter(r =>
+      (!fromIso && !toIso ? true : inRange(r.sent_at)) &&
+      (!fSearch || `${r.to_name || ''} ${r.to_email || ''} ${r.subject || ''}`.toLowerCase().includes(fSearch))
+    );
+    const idSet = new Set(baseRows.map(r => r.id));
 
-    const trackedOpenEvents = db.prepare(
-      `SELECT e.sent_email_id, e.event_type, e.user_agent, e.ip, e.created_at, s.sent_at
-       FROM email_events e
-       JOIN sent_emails s ON s.id = e.sent_email_id
-       WHERE e.event_type IN ('open', 'open_machine', 'open_unverified')`
-    ).all() as Array<{ sent_email_id: string; event_type: string; user_agent?: string | null; ip?: string | null; created_at: string; sent_at: string }>;
-    const reliableOpenEvents = trackedOpenEvents.filter(event => isReliableOpen({
-      event_type: event.event_type,
-      user_agent: event.user_agent,
-      secondsSinceSent: secondsBetween(event.sent_at, event.created_at),
-    }));
-    const technicalOpenEvents = trackedOpenEvents.filter(event => !reliableOpenEvents.includes(event));
-    const openedUnique = new Set(reliableOpenEvents.map(event => event.sent_email_id)).size;
+    // ── Events für dieses Set laden ──
+    const allEvents = idSet.size
+      ? (db.prepare(
+          `SELECT e.sent_email_id, e.event_type, e.url, e.user_agent, e.ip, e.created_at
+           FROM email_events e WHERE e.sent_email_id IN (${[...idSet].map(() => '?').join(',')})`
+        ).all(...idSet) as Array<{ sent_email_id: string; event_type: string; url?: string | null; user_agent?: string | null; ip?: string | null; created_at: string }>)
+      : [];
+    const evByMail = new Map<string, typeof allEvents>();
+    for (const e of allEvents) {
+      const arr = evByMail.get(e.sent_email_id) || [];
+      arr.push(e); evByMail.set(e.sent_email_id, arr);
+    }
 
-    // Öffnungen nach Uhrzeit (lokale Zeit, 0–23)
+    const tplNameMap = new Map<string, string>(
+      (db.prepare(`SELECT id, name FROM email_templates`).all() as Array<{ id: string; name: string }>).map(t => [t.id, t.name])
+    );
+
+    // ── Pro Mail auswerten ──
+    type MailOut = any;
+    const emailsAll: MailOut[] = baseRows.map(row => {
+      const evs = evByMail.get(row.id) || [];
+      const openLike = evs.filter(e => isOpenLikeEvent(e.event_type));
+      const reliable = openLike.filter(e => isReliableOpen({ event_type: e.event_type, user_agent: e.user_agent, secondsSinceSent: secondsBetween(row.sent_at, e.created_at) }));
+      const technical = openLike.filter(e => !reliable.includes(e));
+      // Nur echte Klicks zählen: Maschinen-/Scanner-Klicks (auch als 'click' gespeicherte Alt-Daten)
+      // werden ausgeschlossen, damit Mailscanner die Statistik nicht aufblähen.
+      const clickEvents = evs.filter(e => isRealClick({ event_type: e.event_type, user_agent: e.user_agent }));
+      const machineClickEvents = evs.filter(e => isClickLikeEvent(e.event_type) && !isRealClick({ event_type: 'click', user_agent: e.user_agent }));
+      const bounceEvents = evs.filter(e => e.event_type === 'bounce');
+      const opensDistinct = countDistinctOpens(reliable.map(e => ({ signature: sig(e), created_at: e.created_at })));
+      const clicksDistinct = countDistinctClicks(clickEvents.map(e => ({ url: e.url, signature: sig(e), created_at: e.created_at })));
+      const uniqueOpen = reliable.length > 0;
+      const uniqueClick = clickEvents.length > 0;
+      const firstOpen = reliable.map(e => e.created_at).sort()[0] || null;
+      const lastOpen = reliable.map(e => e.created_at).sort().slice(-1)[0] || null;
+      // Pro Link entdoppelt zählen (gleiches Gerät + kurzes Zeitfenster = ein Klick).
+      const clicksByUrl = new Map<string, typeof clickEvents>();
+      for (const e of clickEvents) {
+        const u = e.url || '(unbekannt)';
+        const arr = clicksByUrl.get(u) || []; arr.push(e); clicksByUrl.set(u, arr);
+      }
+      const clickedLinks = [...clicksByUrl.entries()].map(([url, urlEvents]) => {
+        const last = urlEvents.map(e => e.created_at).sort().slice(-1)[0];
+        return {
+          url,
+          clicks: countDistinctClicks(urlEvents.map(e => ({ url, signature: sig(e), created_at: e.created_at }))),
+          last,
+          last_local: berlinLabel(last),
+        };
+      });
+      const status = classifyEmailDelivery({
+        success: row.success, error: row.error,
+        hasBounce: bounceEvents.length > 0, bounceText: bounceEvents.map(b => b.user_agent).join(' '),
+        opened: uniqueOpen, clicked: uniqueClick,
+      });
+      return {
+        id: row.id, to_email: row.to_email, to_name: row.to_name, subject: row.subject,
+        success: row.success, error: row.error, sent_at: row.sent_at, job_id: row.job_id,
+        scheduled_id: row.scheduled_id, campaign: row.campaign,
+        template_id: row.template_id, template_name: tplNameMap.get(row.template_id) || (row.template_id || '—'),
+        opens: opensDistinct, unique_open: uniqueOpen, raw_opens: openLike.length, technical_opens: technical.length,
+        clicks: clicksDistinct, raw_clicks: clickEvents.length, machine_clicks: machineClickEvents.length, unique_click: uniqueClick,
+        bounces: bounceEvents.length,
+        first_open: firstOpen, last_open: lastOpen,
+        first_open_local: berlinLabel(firstOpen), last_open_local: berlinLabel(lastOpen),
+        devices: new Set(reliable.map(e => e.user_agent || 'unknown')).size,
+        clicked_links: clickedLinks,
+        status_code: status.code, status_label: status.label, status_tone: status.tone,
+        status_explanation: status.explanation, status_recommendation: status.recommendation,
+        open_status: uniqueOpen ? 'opened' : technical.length > 0 ? 'auto' : 'not_opened',
+        sent_at_local: berlinLabel(row.sent_at),
+      };
+    });
+
+    // ── KPIs über das Basis-Set (vor Tabellen-Feinfilter) ──
+    const attempted = emailsAll.length;
+    const failedSend = emailsAll.filter(m => m.success === 0).length;
+    const bouncedN = emailsAll.filter(m => m.bounces > 0).length;
+    const delivered = emailsAll.filter(m => m.success === 1 && m.bounces === 0).length;
+    const openedUnique = emailsAll.filter(m => m.unique_open).length;
+    const opensTotal = emailsAll.reduce((s, m) => s + m.opens, 0);
+    const clickedUnique = emailsAll.filter(m => m.unique_click).length;
+    const clicksTotal = emailsAll.reduce((s, m) => s + m.clicks, 0);
+    const okCount = emailsAll.filter(m => m.success === 1).length;
+
+    // ── Tabellen-Feinfilter (Status/Öffnung/Klick) ──
+    const emails = emailsAll.filter(m => {
+      if (fStatus && m.status_code !== fStatus) return false;
+      if (fOpen === 'opened' && !m.unique_open) return false;
+      if (fOpen === 'not_opened' && m.unique_open) return false;
+      if (fOpen === 'auto' && !(m.open_status === 'auto')) return false;
+      if (fClick === 'clicked' && !m.unique_click) return false;
+      if (fClick === 'not_clicked' && m.unique_click) return false;
+      return true;
+    });
+
+    // ── Vorperioden-Vergleich (gleich lange Periode davor) ──
+    let prev: any = null;
+    if (fromIso && toIso) {
+      const span = new Date(toIso).getTime() - new Date(fromIso).getTime();
+      const pFrom = new Date(new Date(fromIso).getTime() - span);
+      const pTo = new Date(fromIso);
+      const pRows = db.prepare(
+        `SELECT id, success FROM sent_emails WHERE sent_at >= @f AND sent_at < @t`
+      ).all({ f: pFrom.toISOString().replace('T', ' ').replace('Z', ''), t: pTo.toISOString().replace('T', ' ').replace('Z', '') }) as any[];
+      const pIds = new Set(pRows.map(r => r.id));
+      // Echte Klicks (Scanner/Bots raus, auch bei Alt-Daten) statt rohem event_type='click'.
+      const pClickEvents = pIds.size ? (db.prepare(`SELECT sent_email_id, user_agent FROM email_events WHERE event_type='click' AND sent_email_id IN (${[...pIds].map(() => '?').join(',')})`).all(...pIds) as Array<{ sent_email_id: string; user_agent?: string | null }>) : [];
+      const pClicks = new Set(pClickEvents.filter(e => isRealClick({ event_type: 'click', user_agent: e.user_agent })).map(e => e.sent_email_id)).size;
+      prev = { attempted: pRows.length, delivered: pRows.filter(r => r.success === 1).length, clicked: pClicks };
+    }
+
+    // ── Charts: Versand/Öffnungen pro Tag über die gewählte Periode (max 30 Tage) ──
+    const rangeDays = fromIso && toIso
+      ? Math.min(30, Math.max(1, Math.round((new Date(toIso).getTime() - new Date(fromIso).getTime()) / 86400000) + 1))
+      : 14;
+    const dayKeyMap = new Map<string, { sent: number; opened: number }>();
+    for (const m of emailsAll) {
+      const day = berlinParts(m.sent_at)?.day; if (!day) continue;
+      const d = dayKeyMap.get(day) || { sent: 0, opened: 0 };
+      d.sent++; if (m.unique_open) d.opened++;
+      dayKeyMap.set(day, d);
+    }
+    const days: Array<{ day: string; sent: number; opened: number }> = [];
+    const anchor = toIso ? new Date(toIso) : new Date();
+    for (let i = rangeDays - 1; i >= 0; i--) {
+      const d = new Date(anchor); d.setDate(d.getDate() - i);
+      const day = berlinParts(d.toISOString())?.day || d.toISOString().slice(0, 10);
+      const hit = dayKeyMap.get(day) || { sent: 0, opened: 0 };
+      days.push({ day, sent: hit.sent, opened: hit.opened });
+    }
     const opensByHour = Array.from({ length: 24 }, () => 0);
-    for (const event of reliableOpenEvents) {
-      const parts = berlinParts(event.created_at);
+    for (const m of emailsAll) {
+      if (!m.first_open) continue;
+      const parts = berlinParts(m.first_open);
       if (parts && Number.isFinite(parts.hour)) opensByHour[parts.hour]++;
     }
 
-    // Versand + Öffnungen pro Tag, letzte 14 Tage
-    const sentEventTimes = db.prepare(
-      `SELECT sent_at FROM sent_emails WHERE success = 1`
-    ).all() as Array<{ sent_at: string }>;
-    const firstReliableOpenByEmail = new Map<string, string>();
-    for (const event of reliableOpenEvents) {
-      const previous = firstReliableOpenByEmail.get(event.sent_email_id);
-      if (!previous || event.created_at < previous) firstReliableOpenByEmail.set(event.sent_email_id, event.created_at);
+    // ── Top-Vorlagen ──
+    const tplAgg = new Map<string, { id: string; name: string; sent: number; opened: number; clicked: number }>();
+    for (const m of emailsAll) {
+      const id = m.template_id || '—';
+      const a = tplAgg.get(id) || { id, name: m.template_name, sent: 0, opened: 0, clicked: 0 };
+      a.sent++; if (m.unique_open) a.opened++; if (m.unique_click) a.clicked++;
+      tplAgg.set(id, a);
     }
-    const openUniqueByDay = Array.from(firstReliableOpenByEmail, ([sent_email_id, created_at]) => ({ sent_email_id, created_at }));
-    const days: Array<{ day: string; sent: number; opened: number }> = [];
-    for (let i = 13; i >= 0; i--) {
-      const d = new Date(); d.setDate(d.getDate() - i);
-      const day = berlinParts(d.toISOString())?.day || d.toISOString().slice(0, 10);
-      const sent = sentEventTimes.filter(row => berlinParts(row.sent_at)?.day === day).length;
-      const opened = openUniqueByDay.filter(row => berlinParts(row.created_at)?.day === day).length;
-      days.push({ day, sent, opened });
-    }
+    const topTemplates = [...tplAgg.values()].sort((a, b) => b.sent - a.sent).slice(0, 8);
 
-    // Einzelne Mails mit Tracking-Zusammenfassung
-    const emailRows = db.prepare(
-      `SELECT s.id, s.to_email, s.to_name, s.subject, s.success, s.error, s.sent_at, s.job_id,
-              (SELECT COUNT(DISTINCT COALESCE(NULLIF(e.url, ''), 'unknown') || '|' || COALESCE(NULLIF(e.user_agent, ''), 'unknown') || '|' || COALESCE(NULLIF(e.ip, ''), 'unknown'))
-                 FROM email_events e WHERE e.sent_email_id = s.id AND e.event_type = 'click') as clicks,
-              (SELECT COUNT(*) FROM email_events e WHERE e.sent_email_id = s.id AND e.event_type = 'click') as raw_clicks,
-              (SELECT COUNT(*) FROM email_events e WHERE e.sent_email_id = s.id AND e.event_type = 'bounce') as bounces
-       FROM sent_emails s ORDER BY s.sent_at DESC LIMIT 150`
-    ).all() as any[];
-    const eventsByMail = new Map<string, typeof trackedOpenEvents>();
-    for (const event of trackedOpenEvents) {
-      const events = eventsByMail.get(event.sent_email_id) || [];
-      events.push(event);
-      eventsByMail.set(event.sent_email_id, events);
+    // ── Top-Kampagnen ──
+    const campAgg = new Map<string, { campaign: string; sent: number; opened: number; clicked: number }>();
+    for (const m of emailsAll) {
+      if (!m.campaign) continue;
+      const a = campAgg.get(m.campaign) || { campaign: m.campaign, sent: 0, opened: 0, clicked: 0 };
+      a.sent++; if (m.unique_open) a.opened++; if (m.unique_click) a.clicked++;
+      campAgg.set(m.campaign, a);
     }
-    const emails = emailRows.map(row => {
-      const openEvents = (eventsByMail.get(row.id) || []).filter(event => isOpenLikeEvent(event.event_type));
-      const reliableEvents = openEvents.filter(event => isReliableOpen({
-        event_type: event.event_type,
-        user_agent: event.user_agent,
-        secondsSinceSent: secondsBetween(row.sent_at, event.created_at),
-      }));
-      const technicalEvents = openEvents.filter(event => !reliableEvents.includes(event));
-      const firstOpen = reliableEvents.map(event => event.created_at).sort()[0] || null;
-      const lastOpen = reliableEvents.map(event => event.created_at).sort().slice(-1)[0] || null;
-      return {
-        ...row,
-        opens: new Set(reliableEvents.map(event => `${event.user_agent || 'unknown'}|${event.ip || 'unknown'}`)).size,
-        raw_opens: openEvents.length,
-        technical_opens: technicalEvents.length,
-        first_open: firstOpen,
-        last_open: lastOpen,
-        devices: new Set(reliableEvents.map(event => event.user_agent || 'unknown')).size,
-        open_status: reliableEvents.length > 0 ? 'opened' : technicalEvents.length > 0 ? 'technical_only' : 'not_opened',
-        sent_at_local: berlinLabel(row.sent_at),
-        first_open_local: berlinLabel(firstOpen),
-        last_open_local: berlinLabel(lastOpen),
-      };
-    });
+    const topCampaigns = [...campAgg.values()].sort((a, b) => b.clicked - a.clicked || b.sent - a.sent).slice(0, 8);
+
+    // ── Top-Links + Empfänger mit Klicks ──
+    const linkAgg = new Map<string, { url: string; clicks: number; recipients: Set<string> }>();
+    for (const m of emailsAll) {
+      for (const l of m.clicked_links) {
+        const a = linkAgg.get(l.url) || { url: l.url, clicks: 0, recipients: new Set<string>() };
+        a.clicks += l.clicks; a.recipients.add(m.to_email);
+        linkAgg.set(l.url, a);
+      }
+    }
+    const topLinks = [...linkAgg.values()].map(a => ({ url: a.url, clicks: a.clicks, recipients: a.recipients.size })).sort((a, b) => b.clicks - a.clicks).slice(0, 10);
+    const recipientsClicked = emailsAll.filter(m => m.unique_click)
+      .map(m => ({ to_name: m.to_name, to_email: m.to_email, clicks: m.clicks, last: m.clicked_links.map((l: any) => l.last).sort().slice(-1)[0] || null, subject: m.subject }))
+      .map(r => ({ ...r, last_local: berlinLabel(r.last) }))
+      .sort((a, b) => b.clicks - a.clicks).slice(0, 25);
+
+    // ── Geplante E-Mails (KPI + optionale Tabellenzeilen) ──
+    const scheduledRows = db.prepare(
+      `SELECT id, to_email, to_name, subject, template_id, campaign, scheduled_at, status, error FROM scheduled_emails
+       WHERE status IN ('scheduled','processing') ORDER BY scheduled_at ASC LIMIT 200`
+    ).all() as any[];
+    const scheduledCount = scheduledRows.length;
+    const scheduled = scheduledRows.map(r => ({
+      ...r, scheduled_at_local: berlinLabel(r.scheduled_at),
+      template_name: tplNameMap.get(r.template_id) || (r.template_id || '—'),
+    }));
+
+    // ── Filter-Optionen für die UI ──
+    const templateOptions = [...tplNameMap.entries()].map(([id, name]) => ({ id, name }));
+    const campaignOptions = (db.prepare(`SELECT DISTINCT campaign FROM sent_emails WHERE campaign IS NOT NULL AND campaign != '' ORDER BY campaign`).all() as Array<{ campaign: string }>).map(c => c.campaign);
+
+    const totals = {
+      sent: attempted, ok: okCount, failed: failedSend, delivered, bounced: bouncedN,
+      opened: openedUnique, opens_total: opensTotal, technical_opened: emailsAll.reduce((s, m) => s + m.technical_opens, 0),
+      clicked: clickedUnique, clicks_total: clicksTotal, unsubscribed: 0, scheduled: scheduledCount,
+    };
 
     const webTotal = (db.prepare(`SELECT COUNT(*) as n FROM web_visits`).get() as { n: number }).n;
     const webVisitors = (db.prepare(`SELECT COUNT(DISTINCT visitor_id) as n FROM web_visits`).get() as { n: number }).n;
@@ -941,10 +1246,27 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
 
     const base = getTrackingBaseUrl();
     const isPublic = Boolean(base) && !/localhost|127\.0\.0\.1|192\.168\.|^$/.test(base);
+    const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
     return {
-      totals: { ...totals, opened: openedUnique, technical_opened: technicalOpenEvents.length, clicked: clickedUnique, bounced },
-      open_rate: totals.ok > 0 ? Math.round(openedUnique / totals.ok * 100) : 0,
-      click_rate: totals.ok > 0 ? Math.round(clickedUnique / totals.ok * 100) : 0,
+      totals,
+      rates: {
+        delivery_rate: pct(delivered, attempted),
+        open_rate: pct(openedUnique, delivered || okCount),
+        click_rate: pct(clickedUnique, delivered || okCount),
+        click_to_open_rate: pct(clickedUnique, openedUnique),
+        bounce_rate: pct(bouncedN, attempted),
+        fail_rate: pct(failedSend, attempted),
+      },
+      // Rückwärtskompatible Felder:
+      open_rate: pct(openedUnique, delivered || okCount),
+      click_rate: pct(clickedUnique, delivered || okCount),
+      previous: prev,
+      filters: { templates: templateOptions, campaigns: campaignOptions },
+      top_templates: topTemplates,
+      top_campaigns: topCampaigns,
+      top_links: topLinks,
+      recipients_clicked: recipientsClicked,
+      scheduled,
       opens_by_hour: opensByHour,
       days,
       emails,
@@ -966,21 +1288,56 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
   });
 
   app.get<{ Params: { id: string } }>('/api/analytics/email/:id/events', async (req) => {
-    const sent = getDb().prepare(`SELECT sent_at FROM sent_emails WHERE id = ?`).get(req.params.id) as { sent_at?: string } | undefined;
-    return getDb().prepare(
+    const db = getDb();
+    const sent = db.prepare(
+      `SELECT s.*, sch.scheduled_at, sch.status as sched_status FROM sent_emails s
+       LEFT JOIN scheduled_emails sch ON sch.sent_email_id = s.id WHERE s.id = ?`
+    ).get(req.params.id) as any;
+    const rawEvents = db.prepare(
       `SELECT event_type, url, user_agent, created_at FROM email_events WHERE sent_email_id = ? ORDER BY created_at ASC`
-    ).all(req.params.id).map((event: any) => {
+    ).all(req.params.id) as any[];
+
+    const LABELS: Record<string, string> = {
+      open: 'Öffnung registriert',
+      open_machine: 'Automatischer Abruf (kein Nachweis einer echten Öffnung)',
+      open_unverified: 'Sehr früher Abruf – Öffnung nicht gesichert',
+      click: 'Link angeklickt',
+      click_machine: 'Automatischer Link-Scan (Mailscanner, kein echter Klick)',
+      bounce: 'Zustellfehler (Bounce)',
+    };
+    const events = rawEvents.map((event) => {
       const secondsSinceSent = secondsBetween(sent?.sent_at, event.created_at);
       const effective_type = event.event_type === 'open'
         ? classifyOpenEvent({ userAgent: event.user_agent, secondsSinceSent })
-        : event.event_type;
+        : event.event_type === 'click'
+          ? classifyClickEvent(event.user_agent)
+          : event.event_type;
       return {
         ...event,
         effective_type,
+        label: LABELS[effective_type] || event.event_type,
         seconds_since_sent: secondsSinceSent,
         created_at_local: berlinLabel(event.created_at),
       };
     });
+
+    // Kompakte, verständliche Ereignis-Timeline (Meilensteine).
+    const hasBounce = rawEvents.some(e => e.event_type === 'bounce');
+    const hasOpen = events.some(e => e.effective_type === 'open');
+    const firstClick = rawEvents.find(e => isRealClick({ event_type: e.event_type, user_agent: e.user_agent }));
+    const firstOpen = events.find(e => e.effective_type === 'open');
+    const timeline: Array<{ key: string; label: string; at: string | null; at_local: string | null; done: boolean; tone: string }> = [];
+    if (sent?.scheduled_at) timeline.push({ key: 'scheduled', label: 'Versand geplant', at: sent.scheduled_at, at_local: berlinLabel(sent.scheduled_at), done: true, tone: 'info' });
+    timeline.push({ key: 'handed', label: 'An Versanddienst übergeben', at: sent?.sent_at || null, at_local: berlinLabel(sent?.sent_at), done: sent?.success === 1, tone: sent?.success === 1 ? 'ok' : 'bad' });
+    if (hasBounce) {
+      timeline.push({ key: 'bounce', label: 'Zustellung fehlgeschlagen', at: rawEvents.find(e => e.event_type === 'bounce')!.created_at, at_local: berlinLabel(rawEvents.find(e => e.event_type === 'bounce')!.created_at), done: true, tone: 'bad' });
+    } else {
+      timeline.push({ key: 'delivered', label: hasOpen || firstClick ? 'Zugestellt (belegt durch Interaktion)' : 'Zustellung angenommen', at: firstOpen?.created_at || firstClick?.created_at || null, at_local: berlinLabel(firstOpen?.created_at || firstClick?.created_at), done: sent?.success === 1, tone: sent?.success === 1 ? 'good' : 'info' });
+    }
+    timeline.push({ key: 'open', label: 'Öffnung registriert', at: firstOpen?.created_at || null, at_local: berlinLabel(firstOpen?.created_at), done: hasOpen, tone: hasOpen ? 'good' : 'muted' });
+    timeline.push({ key: 'click', label: firstClick ? `Link angeklickt${firstClick.url ? ' → ' + String(firstClick.url).slice(0, 80) : ''}` : 'Link angeklickt', at: firstClick?.created_at || null, at_local: berlinLabel(firstClick?.created_at), done: Boolean(firstClick), tone: firstClick ? 'good' : 'muted' });
+
+    return { events, timeline };
   });
 
   // Posteingang nach Zustellfehlern (Bounces) durchsuchen und zuordnen
@@ -1018,10 +1375,170 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     return { scanned: mails.length, found: dsn.length, matched };
   });
 
-  app.get('/api/analytics/sms', async () => getSmsStats());
+  app.get('/api/analytics/sms', async () => getSmsAnalytics());
 
-  // Auto-Versand Worker starten
+  // ── Follow-up-Sequenz (Nachfass-Mails) ────────────────────────────────────
+  app.get('/api/followup/stats', async () => followupStats());
+
+  app.patch<{ Body: Partial<{ enabled: boolean; gap1_days: number; gap2_days: number; daily_cap: number; window_start: number; window_end: number; min_gap_s: number }> }>(
+    '/api/followup/config',
+    async (req) => {
+      setFollowupConfig(req.body || {});
+      return followupStats();
+    }
+  );
+
+  app.get('/api/followup/config', async () => getFollowupConfig());
+
+  // Kontaktierte Firmen + Engagement-Signale (Klick/Besuch/Antwort) + Follow-up-Zustand.
+  // Öffnungen bewusst nur als schwacher Indikator, nicht als Vertrauensmetrik.
+  app.get('/api/followup/leads', async () => {
+    const db = getDb();
+    const cfg = getFollowupConfig();
+    const MAX_STAGES = 2;
+    const OUT = ['contacted', 'replied', 'demo_booked', 'proposal_sent', 'won', 'lost', 'no_interest'];
+    const leads = db.prepare(
+      `SELECT id, name, branche, stadt, email, status, followup_stage, followup_stopped, followup_stopped_reason,
+              followup_last_at, gesendet_at, contacted_at, updated_at
+       FROM leads WHERE status IN (${OUT.map(() => '?').join(',')})`
+    ).all(...OUT) as any[];
+    if (!leads.length) return { leads: [], summary: { contacted: 0, hot: 0, clicked: 0, visited: 0, replied: 0, in_sequence: 0, stopped: 0 }, config: cfg };
+
+    const ids = leads.map(l => l.id);
+    const ph = ids.map(() => '?').join(',');
+    const events = db.prepare(
+      `SELECT se.lead_id, ev.event_type, ev.url, ev.user_agent, ev.ip, ev.created_at, se.sent_at
+       FROM email_events ev JOIN sent_emails se ON se.id = ev.sent_email_id
+       WHERE se.lead_id IN (${ph})`
+    ).all(...ids) as Array<{ lead_id: string; event_type: string; url: string | null; user_agent: string | null; ip: string | null; created_at: string; sent_at: string }>;
+    const visits = db.prepare(
+      `SELECT lead_id, COUNT(*) n, MAX(created_at) last FROM web_visits WHERE lead_id IN (${ph}) GROUP BY lead_id`
+    ).all(...ids) as Array<{ lead_id: string; n: number; last: string }>;
+
+    const evByLead = new Map<string, typeof events>();
+    for (const e of events) { const a = evByLead.get(e.lead_id) || []; a.push(e); evByLead.set(e.lead_id, a); }
+    const visitByLead = new Map(visits.map(v => [v.lead_id, v]));
+    const sig = (e: { user_agent?: string | null; ip?: string | null }) => `${e.user_agent || 'unknown'}|${e.ip || 'unknown'}`;
+
+    const rows = leads.map(l => {
+      const evs = evByLead.get(l.id) || [];
+      const realClicks = evs.filter(e => isRealClick({ event_type: e.event_type, user_agent: e.user_agent }));
+      const reliableOpens = evs.filter(e => isReliableOpen({ event_type: e.event_type, user_agent: e.user_agent, secondsSinceSent: secondsBetween(e.sent_at, e.created_at) }));
+      const bounced = evs.some(e => e.event_type === 'bounce');
+      const v = visitByLead.get(l.id);
+      const stage = l.followup_stage || 0;
+      const replied = ['replied', 'demo_booked', 'proposal_sent', 'won'].includes(l.status);
+      const clicks = countDistinctClicks(realClicks.map(e => ({ url: e.url, signature: sig(e), created_at: e.created_at })));
+      const opens = countDistinctOpens(reliableOpens.map(e => ({ signature: sig(e), created_at: e.created_at })));
+      const visitCount = v ? v.n : 0;
+      const clicked = clicks > 0;
+      const visited = visitCount > 0;
+
+      let nextDue: string | null = null;
+      if (!l.followup_stopped && stage < MAX_STAGES && l.status === 'contacted') {
+        const gap = stage === 0 ? cfg.gap1_days : cfg.gap2_days;
+        const last = l.followup_last_at || l.gesendet_at || l.contacted_at;
+        if (last) nextDue = new Date(new Date(String(last).replace(' ', 'T')).getTime() + gap * 86_400_000).toISOString();
+      }
+      return {
+        id: l.id, name: l.name, branche: l.branche, stadt: l.stadt, email: l.email, status: l.status,
+        followup_stage: stage, followup_stopped: l.followup_stopped ? 1 : 0, followup_stopped_reason: l.followup_stopped_reason,
+        contacted_at: l.gesendet_at || l.contacted_at, last_touch: l.followup_last_at || l.gesendet_at || l.contacted_at,
+        clicked, clicks, visited, visits: visitCount, visited_last: v ? v.last : null, replied, bounced,
+        opens_reliable: opens,
+        hot: clicked || visited || replied,
+        next_due_at: nextDue,
+        followup_done: stage >= MAX_STAGES,
+      };
+    });
+
+    // Sortierung: heiße Leads (Klick/Besuch/Antwort) zuerst, dann bald fällige Follow-ups, dann zuletzt berührt.
+    rows.sort((a, b) =>
+      (b.hot ? 1 : 0) - (a.hot ? 1 : 0) ||
+      (b.clicks - a.clicks) ||
+      ((a.next_due_at ? new Date(a.next_due_at).getTime() : Infinity) - (b.next_due_at ? new Date(b.next_due_at).getTime() : Infinity)) ||
+      (new Date(String(b.last_touch || 0)).getTime() - new Date(String(a.last_touch || 0)).getTime())
+    );
+
+    const summary = {
+      contacted: rows.length,
+      hot: rows.filter(r => r.hot).length,
+      clicked: rows.filter(r => r.clicked).length,
+      visited: rows.filter(r => r.visited).length,
+      replied: rows.filter(r => r.replied).length,
+      bounced: rows.filter(r => r.bounced).length,
+      in_sequence: rows.filter(r => r.status === 'contacted' && !r.followup_stopped && r.followup_stage < MAX_STAGES).length,
+      stopped: rows.filter(r => r.followup_stopped).length,
+    };
+    return { leads: rows, summary, config: cfg };
+  });
+
+  app.post<{ Body: { leadId: string; reason?: string } }>('/api/followup/stop', async (req, reply) => {
+    if (!req.body?.leadId) return reply.status(400).send({ error: 'leadId fehlt' });
+    getDb().prepare(`UPDATE leads SET followup_stopped = 1, followup_stopped_reason = @reason, updated_at = @now WHERE id = @id`)
+      .run({ id: req.body.leadId, reason: (req.body.reason || 'Manuell gestoppt').slice(0, 200), now: new Date().toISOString() });
+    return { ok: true };
+  });
+
+  app.post<{ Body: { leadId: string } }>('/api/followup/resume', async (req, reply) => {
+    if (!req.body?.leadId) return reply.status(400).send({ error: 'leadId fehlt' });
+    getDb().prepare(`UPDATE leads SET followup_stopped = 0, followup_stopped_reason = NULL, updated_at = @now WHERE id = @id`)
+      .run({ id: req.body.leadId, now: new Date().toISOString() });
+    return { ok: true };
+  });
+
+  // Manuelles Follow-up: der Nutzer wählt selbst Firmen + Vorlage und löst den Versand aus.
+  // Bewusst OHNE den "bereits kontaktiert"-Schutz (das erneute Anschreiben ist hier gewollt),
+  // aber mit hartem globalem Tageslimit als Konto-Schutz.
+  app.post<{ Body: { leadIds: string[]; templateId?: string } }>(
+    '/api/followup/send-manual',
+    async (req, reply) => {
+      const leadIds = Array.isArray(req.body?.leadIds) ? req.body.leadIds.filter(Boolean) : [];
+      if (!leadIds.length) return reply.status(400).send({ error: 'Keine Firmen ausgewählt' });
+      const tpl = (req.body?.templateId && getTemplateById(req.body.templateId)) || getEmailTemplate();
+      const db = getDb();
+      const results: Array<{ id: string; name?: string; success: boolean; error?: string }> = [];
+      for (const id of leadIds) {
+        const lead = db.prepare('SELECT id, name, branche, stadt, email, followup_stage FROM leads WHERE id = ?').get(id) as
+          { id: string; name: string; branche?: string; stadt?: string; email?: string; followup_stage?: number } | undefined;
+        if (!lead) { results.push({ id, success: false, error: 'Lead nicht gefunden' }); continue; }
+        if (!lead.email) { results.push({ id, name: lead.name, success: false, error: 'Keine E-Mail' }); continue; }
+        if (sentTodayCount() >= GLOBAL_DAILY_CAP) { results.push({ id, name: lead.name, success: false, error: `Globales Tageslimit (${GLOBAL_DAILY_CAP}) erreicht` }); continue; }
+        const rendered = renderTemplate(tpl, { name: lead.name, branche: lead.branche, stadt: lead.stadt });
+        const trackingId = uuid();
+        let res;
+        try {
+          res = await sendBulkEmail({ to: lead.email, toName: lead.name, subject: rendered.subject, body: rendered.body, trackingId });
+        } catch (err) {
+          res = { success: false, error: err instanceof Error ? err.message : String(err) };
+        }
+        recordSentEmail({
+          id: trackingId, lead_id: lead.id, campaign: 'followup-manual', to_email: lead.email, to_name: lead.name,
+          subject: rendered.subject, body: rendered.body, template_id: tpl.id,
+          success: res.success, error: res.error, message_id: (res as { messageId?: string }).messageId,
+        });
+        if (res.success) {
+          const now = new Date().toISOString();
+          db.prepare(`UPDATE leads SET followup_stage = COALESCE(followup_stage,0) + 1, followup_last_at = @now, updated_at = @now WHERE id = @id`)
+            .run({ id: lead.id, now });
+          recordOutreachEvent({
+            lead_id: lead.id, event_type: 'followup_sent', channel: 'email', status: 'contacted', user: 'manual',
+            note: `Manuelles Follow-up an ${lead.email} | Vorlage: "${tpl.name}" | Betreff: "${rendered.subject}"`,
+          });
+        }
+        results.push({ id, name: lead.name, success: res.success, error: res.error });
+      }
+      return { sent: results.filter(r => r.success).length, failed: results.filter(r => !r.success).length, results };
+    }
+  );
+
+  // Fertige Follow-up-Vorlagen bereitstellen (idempotent)
+  seedFollowupTemplates();
+
+  // Hintergrund-Worker starten
   startAutoSender();
+  startScheduledSender();
+  startFollowupSender();
 }
 
 function enrichLeads(leads: Lead[]) {

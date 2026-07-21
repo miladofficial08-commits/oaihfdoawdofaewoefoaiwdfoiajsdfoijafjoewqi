@@ -450,6 +450,61 @@
   .job-note { font-size: 11px; color: var(--txt3); font-style: italic; }
   .job-actions { display: flex; gap: 7px; flex-wrap: wrap; }
   .as-today { display: flex; align-items: center; gap: 10px; background: var(--surf); border: 1px solid var(--line); border-radius: var(--radius); padding: 13px 18px; margin-bottom: 14px; font-size: 12px; color: var(--txt2); }
+  .fu-switch { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: var(--txt2); white-space: nowrap; cursor: pointer; }
+  .fu-switch input { width: 18px; height: 18px; accent-color: #4d90ff; cursor: pointer; }
+  .fu-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+  .fu-stat { background: var(--elev); border: 1px solid var(--line2); border-radius: 9px; padding: 11px 13px; }
+  .fu-stat-v { font-size: 20px; font-weight: 800; color: #c0cce0; line-height: 1.1; }
+  .fu-stat-l { font-size: 10.5px; color: var(--txt3); margin-top: 3px; }
+  /* Angeschrieben & Follow-up */
+  .fl-note { background: rgba(34,209,124,.06); border: 1px solid rgba(34,209,124,.22); border-radius: 10px; padding: 11px 15px; font-size: 12px; color: #9fdcc0; line-height: 1.55; margin-bottom: 14px; }
+  .fl-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .fl-kpi { background: var(--surf); border: 1px solid var(--line); border-radius: 11px; padding: 13px 15px; }
+  .fl-kpi.hot { border-color: rgba(255,120,80,.35); background: rgba(255,120,80,.06); }
+  .fl-kpi.g { border-color: rgba(34,209,124,.28); }
+  .fl-kpi.p { border-color: rgba(167,139,250,.3); }
+  .fl-kpi-v { font-size: 24px; font-weight: 800; color: #d3ddec; line-height: 1; }
+  .fl-kpi.hot .fl-kpi-v { color: #ff8a5c; }
+  .fl-kpi.g .fl-kpi-v { color: var(--g); }
+  .fl-kpi-l { font-size: 11px; color: var(--txt3); margin-top: 5px; }
+  .fl-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .fl-tabs { display: inline-flex; gap: 4px; background: var(--surf); border: 1px solid var(--line); border-radius: 9px; padding: 3px; }
+  .fl-tab { border: 0; background: transparent; color: var(--txt2); font-size: 12px; font-weight: 600; padding: 7px 13px; border-radius: 7px; cursor: pointer; }
+  .fl-tab.active { background: #1b2436; color: #cdd8ea; }
+  .fl-toolbar .an-filter { max-width: 240px; }
+  .fl-table-wrap { background: var(--surf); border: 1px solid var(--line); border-radius: var(--radius); overflow-x: auto; }
+  .fl-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .fl-table th { text-align: left; padding: 11px 14px; color: var(--txt3); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .fl-th-ind { display: block; text-transform: none; letter-spacing: 0; color: var(--txt4); font-weight: 400; font-size: 9.5px; }
+  .fl-table td { padding: 11px 14px; border-bottom: 1px solid #12161f; vertical-align: middle; color: var(--txt2); }
+  .fl-table tr:last-child td { border-bottom: 0; }
+  .fl-table tr.fl-hot td { background: rgba(255,120,80,.04); }
+  .fl-firm { font-weight: 600; color: #cdd8ea; }
+  .fl-firm-sub { font-size: 10.5px; color: var(--txt3); margin-top: 2px; }
+  .fl-muted { color: var(--txt4); }
+  .fl-sig { display: inline-block; font-size: 10.5px; font-weight: 600; padding: 3px 7px; border-radius: 6px; margin: 1px 2px 1px 0; white-space: nowrap; }
+  .fl-sig.click { background: rgba(255,120,80,.14); color: #ff9166; }
+  .fl-sig.visit { background: rgba(34,209,124,.13); color: var(--g); }
+  .fl-sig.reply { background: rgba(167,139,250,.15); color: #b9a4fb; }
+  .fl-sig.bounce { background: rgba(255,90,90,.13); color: #ff7a7a; }
+  .fl-tag { display: inline-block; font-size: 10.5px; font-weight: 600; padding: 3px 8px; border-radius: 6px; }
+  .fl-tag.seq { background: rgba(77,144,255,.13); color: #7fb0ff; }
+  .fl-tag.done { background: #1b2233; color: var(--txt3); }
+  .fl-tag.ok { background: rgba(167,139,250,.15); color: #b9a4fb; }
+  .fl-tag.stop { background: #2a1f1f; color: #d59a9a; }
+  .fl-due-now { color: #ffb37a; font-weight: 600; }
+  .fl-actions { white-space: nowrap; }
+  .fl-btn { border: 1px solid var(--line2); background: var(--elev); color: var(--txt2); font-size: 11px; font-weight: 600; padding: 6px 10px; border-radius: 7px; cursor: pointer; margin-left: 4px; }
+  .fl-btn:hover { border-color: #3a445c; color: #cdd8ea; }
+  .fl-btn.ok { border-color: rgba(34,209,124,.3); color: #6bd6a0; }
+  .fl-cb-col { width: 34px; text-align: center; }
+  .fl-cb-col input { width: 16px; height: 16px; accent-color: #4d90ff; cursor: pointer; }
+  .fl-table tr.fl-sel td { background: rgba(77,144,255,.07); }
+  .fl-bulkbar { display: none; align-items: center; gap: 10px; flex-wrap: wrap; background: rgba(77,144,255,.09); border: 1px solid rgba(77,144,255,.3); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: 12px; color: var(--txt2); }
+  .fl-bulkbar.show { display: flex; }
+  .fl-bulkbar .fl-bulk-count { font-size: 12.5px; color: #cdd8ea; }
+  .fl-bulkbar .fl-bulk-count b { color: #7fb0ff; font-size: 14px; }
+  .fl-bulkbar select.an-filter { max-width: 260px; }
   .as-today b { color: var(--g); font-size: 15px; }
 
   /* ── VORLAGEN SEITE ── */
@@ -550,6 +605,81 @@
   @media (max-width: 1400px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } .ost-row { grid-template-columns: repeat(3, 1fr); } .sender-grid { grid-template-columns: 1fr; } .inbox-wrap { grid-template-columns: 340px 1fr; } }
   @media (max-width: 1100px) { .dash-grid { grid-template-columns: 1fr; } }
   @media (max-width: 900px) { .sidebar { width: 60px; } .logo-sub,.nav-item span,.nav-badge,.nav-sec,.conn-lbl,.logo-name { display: none; } .main { margin-left: 60px; } .leads-grid { grid-template-columns: 1fr; } .kanban { grid-template-columns: repeat(3, minmax(220px, 1fr)); } .inbox-wrap { grid-template-columns: 1fr; height: auto; } }
+
+  /* ══ E-MAIL CENTER: Vorlagen-Picker + Planung ══ */
+  .tpl-picker { display: grid; gap: 8px; max-height: 340px; overflow-y: auto; padding-right: 2px; }
+  .tpl-card { text-align: left; background: #090c12; border: 1px solid var(--line2); border-radius: 10px; padding: 12px 14px; cursor: pointer; transition: all .13s; display: grid; gap: 4px; }
+  .tpl-card:hover { border-color: #33405a; }
+  .tpl-card.sel { border-color: var(--g); background: rgba(34,209,124,.06); box-shadow: 0 0 0 1px rgba(34,209,124,.25) inset; }
+  .tpl-card-top { display: flex; align-items: center; gap: 8px; }
+  .tpl-card-name { font-size: 13px; font-weight: 700; color: #fff; flex: 1; }
+  .tpl-card-cat { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--p); background: rgba(167,139,250,.12); padding: 2px 7px; border-radius: 20px; }
+  .tpl-card-subj { font-size: 11.5px; color: var(--txt2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tpl-card-prev { font-size: 10.5px; color: var(--txt3); line-height: 1.4; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .tpl-card .tpl-radio { width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--line2); flex-shrink: 0; }
+  .tpl-card.sel .tpl-radio { border-color: var(--g); background: radial-gradient(circle, var(--g) 40%, transparent 46%); }
+  .seg { display: inline-flex; background: #090c12; border: 1px solid var(--line2); border-radius: 8px; padding: 3px; gap: 2px; }
+  .seg button { flex: 1; padding: 8px 14px; border-radius: 6px; font-size: 12px; font-weight: 700; color: var(--txt2); background: transparent; border: 0; cursor: pointer; transition: all .12s; }
+  .seg button.on { background: rgba(34,209,124,.14); color: var(--g); }
+  .sched-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .sched-list { display: grid; gap: 8px; }
+  .sched-item { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; background: #090c12; border: 1px solid var(--line); border-radius: 10px; padding: 11px 14px; }
+  .sched-item .si-main { min-width: 0; }
+  .sched-item .si-to { font-size: 12.5px; font-weight: 700; color: var(--txt); }
+  .sched-item .si-meta { font-size: 11px; color: var(--txt3); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sched-item .si-when { font-size: 11px; color: #8ab4ff; font-weight: 600; }
+  .sched-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+  /* ══ ANALYTICS: Filterleiste, KPI-Deltas, Status, Timeline ══ */
+  .an-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--surf); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 16px; }
+  .an-presets { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+  .an-preset { padding: 6px 11px; border-radius: 7px; font-size: 11px; font-weight: 700; color: var(--txt2); background: #090c12; border: 1px solid var(--line2); cursor: pointer; }
+  .an-preset:hover { color: var(--txt); border-color: #33405a; }
+  .an-preset.on { background: rgba(34,209,124,.12); color: var(--g); border-color: rgba(34,209,124,.4); }
+  .an-filter { background: #090c12; color: var(--txt); border: 1px solid var(--line2); border-radius: 8px; padding: 8px 10px; font-size: 12px; }
+  .an-filter:focus { outline: none; border-color: var(--g); }
+  .an-filter-sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 2px; }
+  .an-active-note { font-size: 11px; color: var(--txt3); }
+  .an-tablebar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 18px; border-bottom: 1px solid var(--line); background: var(--surf2); }
+  .an-tablebar .an-filter { padding: 7px 10px; }
+  .an-live { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: var(--txt2); cursor: pointer; user-select: none; }
+  .an-live input { accent-color: var(--g); width: 14px; height: 14px; margin: 0; }
+  .an-live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--txt4); }
+  .an-live-dot.on { background: var(--g); box-shadow: 0 0 0 0 rgba(34,209,124,.6); animation: pulseDot 2s infinite; }
+  @keyframes pulseDot { 0% { box-shadow: 0 0 0 0 rgba(34,209,124,.5); } 70% { box-shadow: 0 0 0 6px rgba(34,209,124,0); } 100% { box-shadow: 0 0 0 0 rgba(34,209,124,0); } }
+  .kpi-delta { font-size: 10px; font-weight: 700; margin-top: 5px; display: inline-flex; align-items: center; gap: 4px; }
+  .kpi-delta.up { color: var(--g); } .kpi-delta.down { color: var(--r); } .kpi-delta.flat { color: var(--txt3); }
+  .st-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
+  .st-good { color: var(--g); background: rgba(34,209,124,.12); }
+  .st-ok { color: #7ab4ff; background: rgba(77,144,255,.12); }
+  .st-info { color: #8ab4ff; background: rgba(77,144,255,.08); }
+  .st-warn { color: #fbbf24; background: rgba(245,158,11,.12); }
+  .st-bad { color: #f87171; background: rgba(248,113,113,.12); }
+  .st-muted { color: var(--txt3); background: #12161f; }
+  .an-links { display: grid; gap: 7px; padding: 12px 18px 18px; max-height: 300px; overflow-y: auto; }
+  .an-link-row { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; background: #090c12; border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; font-size: 11px; }
+  .an-link-row .lu { color: var(--txt2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .an-link-row .lc { color: var(--g); font-weight: 800; font-variant-numeric: tabular-nums; }
+  .an-link-row .lr { color: var(--txt3); font-variant-numeric: tabular-nums; }
+  .tl { display: grid; gap: 0; padding: 4px 0; }
+  .tl-step { display: grid; grid-template-columns: 22px 1fr; gap: 10px; align-items: start; position: relative; }
+  .tl-step:not(:last-child)::before { content: ''; position: absolute; left: 10px; top: 20px; bottom: -4px; width: 2px; background: var(--line2); }
+  .tl-dot { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 10px; z-index: 1; border: 2px solid var(--line2); background: #090c12; color: var(--txt4); }
+  .tl-dot.done { border-color: var(--g); background: rgba(34,209,124,.15); color: var(--g); }
+  .tl-dot.bad { border-color: var(--r); background: rgba(248,113,113,.15); color: var(--r); }
+  .tl-body { padding-bottom: 12px; }
+  .tl-lbl { font-size: 12px; color: var(--txt); font-weight: 600; }
+  .tl-lbl.pending { color: var(--txt4); font-weight: 500; }
+  .tl-time { font-size: 10.5px; color: var(--txt3); margin-top: 1px; }
+  .an-detail { background: #090c12; border-radius: 8px; padding: 14px 16px; margin: 4px 0 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .an-detail-expl { font-size: 11.5px; color: var(--txt2); line-height: 1.5; }
+  .an-detail-expl .rec { color: #fbbf24; margin-top: 6px; }
+  .an-detail-links { display: grid; gap: 5px; }
+  .an-chip-row { display: flex; gap: 8px; flex-wrap: wrap; padding: 4px 20px 14px; }
+  .an-chip { font-size: 11px; font-weight: 700; padding: 5px 11px; border-radius: 20px; display: inline-flex; gap: 6px; align-items: center; }
+  .an-chip b { font-variant-numeric: tabular-nums; }
+  @media (max-width: 1200px) { .an-detail { grid-template-columns: 1fr; } .sched-row { grid-template-columns: 1fr; } }
+  @media (max-width: 700px) { .an-kpis { grid-template-columns: repeat(2, 1fr); } .an-toolbar { gap: 8px; } .an-table { font-size: 11px; } }
   </style>
 </head>
 <body>
@@ -573,7 +703,7 @@
       <span class="nav-badge zero" id="nb-pipeline">0</span>
     </div>
     <div class="nav-item" id="nav-sender" onclick="setPage('sender')">
-      <span class="nav-icon">✉</span><span>E-Mail Sender</span>
+      <span class="nav-icon">✉</span><span>E-Mail-Center</span>
     </div>
     <div class="nav-item" id="nav-sent" onclick="setPage('sent')">
       <span class="nav-icon">↗</span><span>Gesendet</span>
@@ -593,6 +723,10 @@
     <div class="nav-item" id="nav-inbox" onclick="setPage('inbox')">
       <span class="nav-icon">📥</span><span>Posteingang</span>
       <span class="nav-badge blue zero" id="nb-inbox">0</span>
+    </div>
+    <div class="nav-item" id="nav-followup" onclick="setPage('followup')">
+      <span class="nav-icon">🔁</span><span>Angeschrieben</span>
+      <span class="nav-badge zero" id="nb-followup">0</span>
     </div>
     <div class="nav-item" id="nav-outreach" onclick="setPage('outreach')">
       <span class="nav-icon">→</span><span>Pipeline</span>
@@ -679,6 +813,7 @@
       <p>Wähle eine Branche aus – das System sucht passende Betriebe im Internet und analysiert sie automatisch für dein Voice-Agent-Angebot.</p>
       <div class="ind-controls">
         <select id="ind-region"><option value="">Region wählen…</option></select>
+        <button class="ind-run-btn" id="backfill-btn" onclick="runBackfill()" title="Bereits gefundene Leads erneut prüfen und fehlende E-Mails aus Impressum/Kontakt nachtragen">✉ Kontakte nachtragen</button>
       </div>
     </div>
     <div class="ind-cat-tabs" id="ind-cat-tabs"></div>
@@ -727,51 +862,64 @@
   <!-- ─── E-MAIL SENDER ─── -->
   <div class="page" id="p-sender">
     <div class="sender-grid">
+      <!-- LINKS: Empfänger + Versandoptionen -->
       <div style="display:grid;gap:18px">
         <div class="sender-panel">
           <div class="sp-head">
-            <h3>Direkt-Versand</h3>
-            <p>E-Mail-Adressen eintragen → die Vorlage wird automatisch verwendet → ein Klick versendet an alle. Firmen die heute „schreib uns" gesagt haben, kommen hier rein.</p>
+            <h3>✉ E-Mail senden</h3>
+            <p>Empfänger eintragen, rechts eine Vorlage wählen und sofort senden – oder für einen späteren Zeitpunkt planen (z.B. heute 18:30 Uhr, Zeitzone Europe/Berlin).</p>
           </div>
           <div class="sp-body">
             <div class="field">
               <label>Empfänger (eine pro Zeile: <span style="text-transform:none;font-weight:500;color:var(--txt3)">Name, email@firma.de</span> — Name optional)</label>
-              <textarea id="bulk-input" rows="7" placeholder="Zahnarztpraxis Müller, info@praxis-mueller.de&#10;Elektro Schmidt, kontakt@elektro-schmidt.de&#10;info@friseur-beispiel.de"></textarea>
+              <textarea id="bulk-input" rows="6" placeholder="Zahnarztpraxis Müller, info@praxis-mueller.de&#10;Elektro Schmidt, kontakt@elektro-schmidt.de&#10;info@friseur-beispiel.de"></textarea>
             </div>
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
               <button class="btn btn-ghost" onclick="parseRecipients()">Empfänger prüfen</button>
               <span id="recip-info" style="font-size:12px;color:var(--txt3)"></span>
             </div>
             <div class="recip-list" id="recip-list"></div>
-            <button class="btn btn-solid" style="padding:12px;font-size:13px" id="bulk-send-btn" onclick="doBulkSend()">✉ Vorlage an alle senden</button>
+
+            <div class="field">
+              <label>Kampagne <span style="text-transform:none;font-weight:500;color:var(--txt3)">(optional – erscheint in der Analyse)</span></label>
+              <input id="send-campaign" type="text" placeholder="z.B. Verpasster Anruf – Juli">
+            </div>
+
+            <div class="field">
+              <label>Versandzeitpunkt</label>
+              <div class="seg" id="send-mode-seg">
+                <button type="button" class="on" data-mode="now" onclick="setSendMode('now')">⚡ Sofort senden</button>
+                <button type="button" data-mode="schedule" onclick="setSendMode('schedule')">⏰ Planen</button>
+              </div>
+            </div>
+            <div class="sched-row" id="schedule-fields" style="display:none">
+              <div class="field"><label>Datum</label><input id="send-date" type="date"></div>
+              <div class="field"><label>Uhrzeit (Europe/Berlin)</label><input id="send-time" type="time"></div>
+            </div>
+
+            <button class="btn btn-solid" style="padding:12px;font-size:13px" id="bulk-send-btn" onclick="doSenderSend()">✉ Jetzt an alle senden</button>
           </div>
+        </div>
+
+        <div class="sender-panel">
+          <div class="sp-head"><h3>⏰ Geplante E-Mails</h3><p>Zeitgesteuerter Versand über den Server. Bis zum Versand kannst du bearbeiten oder stornieren.</p></div>
+          <div class="sp-body"><div class="sched-list" id="sender-scheduled"><div style="color:var(--txt4);font-size:12px;text-align:center;padding:16px">Lade…</div></div></div>
         </div>
       </div>
 
+      <!-- RECHTS: Vorlagen-Auswahl + Vorschau -->
       <div style="display:grid;gap:18px">
         <div class="sender-panel">
           <div class="sp-head">
-            <h3>📝 E-Mail Vorlage</h3>
-            <p>Diese Vorlage wird für jeden Versand verwendet. Der Voice-Agent zum Anrufen steht im Text.</p>
+            <h3>📄 Vorlage wählen</h3>
+            <p>Alle Vorlagen aus dem Bereich „Vorlagen" – neue erscheinen hier automatisch. <span style="color:var(--g);cursor:pointer;font-weight:600" onclick="setPage('templates')">Vorlagen verwalten →</span></p>
           </div>
           <div class="sp-body">
-            <div class="field">
-              <label>Betreff</label>
-              <input id="tmpl-subject" type="text">
-            </div>
-            <div class="field">
-              <label>Nachricht</label>
-              <textarea id="tmpl-body" rows="14"></textarea>
-            </div>
-            <div class="tmpl-hint">Platzhalter: <code>{name}</code> = Firmenname · <code>{branche}</code> = Branche · <code>{stadt}</code> = Stadt. Trag die echte Demo-Nummer deines Voice Agents ein.</div>
-            <div style="display:flex;gap:8px">
-              <button class="btn btn-solid" onclick="saveTemplate()">Vorlage speichern</button>
-              <button class="btn btn-ghost" onclick="loadTemplate()">Zurücksetzen</button>
-            </div>
+            <div class="tpl-picker" id="sender-tpl-picker"><div style="color:var(--txt4);font-size:12px;text-align:center;padding:20px">Lade Vorlagen…</div></div>
           </div>
         </div>
         <div class="sender-panel">
-          <div class="sp-head"><h3>Vorschau</h3><p>So sieht die E-Mail aus (Beispiel-Firma).</p></div>
+          <div class="sp-head"><h3>Vorschau</h3><p>So sieht die gewählte Vorlage beim Empfänger aus (Beispiel-Firma).</p></div>
           <div class="sp-body">
             <div class="preview-box">
               <div class="preview-subj" id="prev-subj"></div>
@@ -819,6 +967,30 @@
       <div class="flex1"></div>
       <button class="topbar-btn" onclick="loadAutoSend()">↻ Aktualisieren</button>
     </div>
+
+    <!-- ─── FOLLOW-UP-SEQUENZ ─── -->
+    <div class="sender-panel" style="margin-bottom:14px">
+      <div class="sp-head" style="display:flex;align-items:flex-start;gap:14px">
+        <div style="flex:1">
+          <h3>🔁 Automatische Follow-ups</h3>
+          <p>Nachfass-Mails an bereits kontaktierte Firmen, die nicht geantwortet haben. Bei Cold Mail kommen die meisten Antworten erst ab der 2.–3. Mail. Stoppt automatisch bei Antwort, Klick oder Bounce – dieselbe Firma wird nie doppelt belästigt.</p>
+        </div>
+        <label class="fu-switch" title="Follow-ups an/aus">
+          <input type="checkbox" id="fu-enabled" onchange="saveFollowupConfig()">
+          <span id="fu-enabled-lbl">Aus</span>
+        </label>
+      </div>
+      <div class="sp-body">
+        <div class="fu-stats" id="fu-stats"></div>
+        <div class="as-form" style="grid-template-columns:repeat(3,1fr);display:grid;gap:12px;margin-top:12px">
+          <div class="field"><label>1. Follow-up nach (Tagen)</label><input id="fu-gap1" type="number" min="1" max="60" step="1" value="3" onchange="saveFollowupConfig()"></div>
+          <div class="field"><label>2. Follow-up nach weiteren (Tagen)</label><input id="fu-gap2" type="number" min="1" max="60" step="1" value="4" onchange="saveFollowupConfig()"></div>
+          <div class="field"><label>Follow-ups max. / Tag</label><input id="fu-cap" type="number" min="1" max="200" step="1" value="50" onchange="saveFollowupConfig()"></div>
+        </div>
+        <div class="as-legal" style="margin-top:10px">Zwei Stufen: <b>Bump</b> (kurze Nachfrage) und <b>Break-up</b> („letzter Versuch" – höchste Antwortrate). Es gelten dieselben Schutzlimits wie beim Auto-Versand (Sendefenster, globales Tageslimit 200).</div>
+      </div>
+    </div>
+
     <div class="as-grid">
       <div class="sender-panel">
         <div class="sp-head">
@@ -845,11 +1017,26 @@
             </select>
           </div>
           <div class="field">
+            <label>Pause zwischen E-Mails</label>
+            <select id="as-gap" onchange="onGapChange()">
+              <option value="15">15 Sekunden – schnell</option>
+              <option value="30" selected>30 Sekunden – empfohlen</option>
+              <option value="60">1 Minute – sehr sicher</option>
+              <option value="120">2 Minuten – maximal vorsichtig</option>
+              <option value="custom">Eigene Zeit…</option>
+            </select>
+            <input id="as-gap-custom" type="number" min="15" max="600" value="45" placeholder="Sekunden (min. 15)" style="display:none;margin-top:8px" oninput="updateEstimate()">
+          </div>
+          <div class="field">
+            <label>Startzeit <span style="text-transform:none;font-weight:500;color:var(--txt3)">(leer = sofort starten)</span></label>
+            <input id="as-start" type="datetime-local">
+          </div>
+          <div class="field">
             <label>Vorlagen (werden zufällig rotiert)</label>
             <div class="as-tpl-list" id="as-tpl-list"></div>
           </div>
           <div class="as-estimate" id="as-estimate"></div>
-          <div class="as-legal"><strong>⚠ Wichtig:</strong> Zu viele E-Mails auf einmal führen zur Sperrung des SMTP-Kontos und Spam-Einstufung. Das System hält deshalb automatisch ein: zufällige Abstände (60–180 Sek.), Sendefenster 8–20 Uhr, dein Tageslimit und ein hartes globales Limit von 200/Tag. Mehrere Vorlagen im Wechsel senken zusätzlich das Spam-Risiko.</div>
+          <div class="as-legal"><strong>⚠ Wichtig:</strong> Zu viele E-Mails auf einmal führen zur Sperrung des SMTP-Kontos und Spam-Einstufung. Das System hält deshalb automatisch ein: deine gewählte Pause (min. 15 Sek., <b>empfohlen 30</b>), Sendefenster 8–24 Uhr, dein Tageslimit und ein hartes globales Limit von 200/Tag. Mehrere Vorlagen im Wechsel senken zusätzlich das Spam-Risiko.</div>
           <button class="btn btn-solid" style="padding:12px;font-size:13px" id="as-create-btn" onclick="createSendJob()">⚡ Auto-Versand starten</button>
         </div>
       </div>
@@ -872,7 +1059,10 @@
           <p>Platzhalter <code style="color:var(--g)">{name}</code> <code style="color:var(--g)">{branche}</code> <code style="color:var(--g)">{stadt}</code> werden pro Firma automatisch ersetzt. Diese Vorlagen stehen überall zur Verfügung: Auto-Versand, Leads finden, E-Mail Sender.</p>
         </div>
         <div class="sp-body">
-          <div class="field"><label>Name der Vorlage</label><input id="tpl-edit-name" type="text"></div>
+          <div class="sched-row">
+            <div class="field"><label>Name der Vorlage</label><input id="tpl-edit-name" type="text"></div>
+            <div class="field"><label>Kategorie <span style="text-transform:none;font-weight:500;color:var(--txt3)">(optional)</span></label><input id="tpl-edit-category" type="text" placeholder="z.B. Voice Agent, Follow-up"></div>
+          </div>
           <div class="field"><label>Betreff</label><input id="tpl-edit-subject" type="text"></div>
           <div class="field"><label>Nachricht</label><textarea id="tpl-edit-body" rows="13"></textarea></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -895,41 +1085,91 @@
   <div class="page" id="p-analytics">
     <div class="an-note warn" id="an-tracking-note" style="display:none"></div>
 
-    <div class="an-kpis">
-      <div class="kpi b"><div class="kpi-lbl">E-Mails gesendet</div><div class="kpi-val" id="an-sent">—</div><div class="kpi-sub"><span id="an-failed">0</span> fehlgeschlagen</div></div>
-      <div class="kpi g"><div class="kpi-lbl">Öffnungsrate</div><div class="kpi-val" id="an-openrate">—</div><div class="kpi-sub"><span id="an-opened">0</span> geöffnet</div></div>
-      <div class="kpi p"><div class="kpi-lbl">Klickrate</div><div class="kpi-val" id="an-clickrate">—</div><div class="kpi-sub"><span id="an-clicked">0</span> haben geklickt</div></div>
-      <div class="kpi o"><div class="kpi-lbl">Antworten</div><div class="kpi-val" id="an-replies">—</div><div class="kpi-sub" id="an-replyrate">—</div></div>
-      <div class="kpi"><div class="kpi-lbl">Zustellfehler</div><div class="kpi-val" id="an-bounces" style="color:var(--r)">—</div><div class="kpi-sub"><button class="bf-clear" style="color:var(--b);cursor:pointer" onclick="scanBounces()">↻ Posteingang prüfen</button></div></div>
-      <div class="kpi g"><div class="kpi-lbl">Interessenten</div><div class="kpi-val" id="an-interested">—</div><div class="kpi-sub">Geantwortet + Demo + Angebot + Gewonnen</div></div>
+    <!-- ── Zeitraum + Live-Status ── -->
+    <div class="an-toolbar">
+      <div class="an-presets" id="an-presets">
+        <button class="an-preset" data-range="today" onclick="setRange('today')">Heute</button>
+        <button class="an-preset" data-range="yesterday" onclick="setRange('yesterday')">Gestern</button>
+        <button class="an-preset on" data-range="7d" onclick="setRange('7d')">7 Tage</button>
+        <button class="an-preset" data-range="30d" onclick="setRange('30d')">30 Tage</button>
+        <button class="an-preset" data-range="month" onclick="setRange('month')">Dieser Monat</button>
+        <button class="an-preset" data-range="all" onclick="setRange('all')">Alles</button>
+      </div>
+      <input type="date" class="an-filter" id="an-from" onchange="setRange('custom')" title="Von">
+      <span style="color:var(--txt4)">–</span>
+      <input type="date" class="an-filter" id="an-to" onchange="setRange('custom')" title="Bis">
+      <div class="flex1"></div>
+      <label class="an-live" title="Daten automatisch aktualisieren"><input type="checkbox" id="an-autorefresh" checked onchange="toggleAnalyticsAuto()"><span class="an-live-dot" id="an-live-dot"></span>Live</label>
+      <span class="an-active-note" id="an-updated"></span>
+      <button class="topbar-btn" onclick="exportAnalyticsCsv()">⬇ CSV</button>
+      <button class="topbar-btn" onclick="loadAnalytics()">↻ Aktualisieren</button>
     </div>
+
+    <!-- ── KPI-Karten ── -->
+    <div class="an-kpis">
+      <div class="kpi b"><div class="kpi-lbl">Versendet</div><div class="kpi-val" id="an-k-sent">—</div><div class="kpi-sub" id="an-k-sent-sub"></div></div>
+      <div class="kpi g"><div class="kpi-lbl">Zugestellt</div><div class="kpi-val" id="an-k-delivered">—</div><div class="kpi-sub" id="an-k-delivered-sub">—</div></div>
+      <div class="kpi g"><div class="kpi-lbl">Öffnungen</div><div class="kpi-val" id="an-k-opened">—</div><div class="kpi-sub" id="an-k-opened-sub">—</div></div>
+      <div class="kpi p"><div class="kpi-lbl">Klicks</div><div class="kpi-val" id="an-k-clicked">—</div><div class="kpi-sub" id="an-k-clicked-sub">—</div></div>
+      <div class="kpi o"><div class="kpi-lbl">Zustellprobleme</div><div class="kpi-val" id="an-k-bounced" style="color:var(--r)">—</div><div class="kpi-sub"><button class="bf-clear" style="color:var(--b);cursor:pointer;background:none;border:0;padding:0;font:inherit" onclick="scanBounces()">↻ Posteingang prüfen</button></div></div>
+      <div class="kpi"><div class="kpi-lbl">Geplant</div><div class="kpi-val" id="an-k-scheduled" style="color:#8ab4ff">—</div><div class="kpi-sub">noch nicht versendet</div></div>
+    </div>
+    <div class="an-chip-row" id="an-chips"></div>
 
     <div class="an-grid">
       <div class="panel">
-        <div class="ph"><div class="ph-title">Versand & Öffnungen — letzte 14 Tage</div></div>
+        <div class="ph"><div class="ph-title" id="an-days-title">Versand & Öffnungen</div><div class="ph-muted" id="an-days-sub"></div></div>
         <div class="chart-wrap">
           <div class="bars-days" id="an-days"></div>
           <div class="chart-legend"><span><i style="background:var(--b)"></i>Gesendet</span><span><i style="background:var(--g)"></i>Geöffnet</span></div>
         </div>
       </div>
       <div class="panel">
-        <div class="ph"><div class="ph-title">Öffnungen nach Uhrzeit</div><div class="ph-muted">Wann deine Empfänger lesen</div></div>
+        <div class="ph"><div class="ph-title">Öffnungen nach Uhrzeit</div><div class="ph-muted">Beste Sendezeit erkennen (Europe/Berlin)</div></div>
         <div class="chart-wrap">
           <div class="bars-hours" id="an-hours"></div>
-          <div class="chart-legend"><span>0–23 Uhr · beste Sendezeit erkennen</span></div>
+          <div class="chart-legend"><span>0–23 Uhr</span></div>
         </div>
       </div>
     </div>
 
     <div class="an-grid">
       <div class="panel" style="grid-column:1/-1">
-        <div class="ph">
+        <div class="ph" style="flex-wrap:wrap;gap:8px">
           <div class="ph-title">Jede einzelne E-Mail</div>
           <div class="ph-muted" id="an-mail-cnt"></div>
         </div>
-        <div style="max-height:480px;overflow-y:auto">
+        <!-- ── Filter für die Tabelle ── -->
+        <div class="an-tablebar">
+          <input type="text" class="an-filter" id="an-search" placeholder="🔍 Empfänger / Betreff…" oninput="debouncedAnalytics()">
+          <select class="an-filter" id="an-f-template" onchange="loadAnalytics()"><option value="">Alle Vorlagen</option></select>
+          <select class="an-filter" id="an-f-campaign" onchange="loadAnalytics()"><option value="">Alle Kampagnen</option></select>
+          <select class="an-filter" id="an-f-status" onchange="loadAnalytics()">
+            <option value="">Alle Status</option>
+            <option value="delivered">Zugestellt</option>
+            <option value="handed_off">An Versanddienst übergeben</option>
+            <option value="deferred">Verzögert</option>
+            <option value="invalid_address">Ungültige Adresse</option>
+            <option value="blocked">Blockiert</option>
+            <option value="rejected">Abgelehnt</option>
+            <option value="send_error">Versandfehler</option>
+          </select>
+          <select class="an-filter" id="an-f-open" onchange="loadAnalytics()">
+            <option value="">Öffnung: alle</option>
+            <option value="opened">Geöffnet</option>
+            <option value="not_opened">Nicht geöffnet</option>
+            <option value="auto">Nur autom. Abruf</option>
+          </select>
+          <select class="an-filter" id="an-f-click" onchange="loadAnalytics()">
+            <option value="">Klick: alle</option>
+            <option value="clicked">Geklickt</option>
+            <option value="not_clicked">Nicht geklickt</option>
+          </select>
+          <button class="an-preset" onclick="resetFilters()">Filter zurücksetzen</button>
+        </div>
+        <div style="max-height:520px;overflow-y:auto">
           <table class="an-table">
-            <thead><tr><th>Empfänger</th><th>Betreff</th><th>Gesendet</th><th>Status</th><th>Öffnungen</th><th>Zuletzt geöffnet</th><th>Klicks</th><th>Geräte</th></tr></thead>
+            <thead><tr><th>Empfänger</th><th>Vorlage</th><th>Gesendet</th><th>Status</th><th>Öffnungen</th><th>Klicks</th><th>Geklickter Link</th></tr></thead>
             <tbody id="an-mails"></tbody>
           </table>
         </div>
@@ -938,14 +1178,51 @@
 
     <div class="an-grid">
       <div class="panel">
+        <div class="ph"><div class="ph-title">Top-Vorlagen</div><div class="ph-muted">Versand · Öffnungen · Klicks</div></div>
+        <div class="an-links" id="an-top-templates"></div>
+      </div>
+      <div class="panel">
+        <div class="ph"><div class="ph-title">Top-Kampagnen</div><div class="ph-muted">nach Klicks</div></div>
+        <div class="an-links" id="an-top-campaigns"></div>
+      </div>
+    </div>
+
+    <div class="an-grid">
+      <div class="panel">
+        <div class="ph"><div class="ph-title">🔗 Meistgeklickte Links</div><div class="ph-muted">Klicks · Empfänger</div></div>
+        <div class="an-links" id="an-top-links"></div>
+      </div>
+      <div class="panel">
+        <div class="ph"><div class="ph-title">🔥 Empfänger mit Klicks</div><div class="ph-muted">heißeste Kontakte</div></div>
+        <div class="an-links" id="an-recipients-clicked"></div>
+      </div>
+    </div>
+
+    <div class="an-grid">
+      <div class="panel" style="grid-column:1/-1">
         <div class="ph"><div class="ph-title">📱 SMS-Marketing (Voice Agent)</div><div class="ph-muted" id="an-sms-note"></div></div>
-        <div class="chart-wrap" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding-bottom:8px">
+        <div class="chart-wrap" style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;padding-bottom:4px">
           <div class="ind-metric"><b id="an-sms-total">—</b><span>SMS gesamt</span></div>
           <div class="ind-metric"><b id="an-sms-today">—</b><span>Heute</span></div>
+          <div class="ind-metric"><b id="an-sms-delivered" style="color:var(--g)">—</b><span>Zugestellt</span></div>
           <div class="ind-metric"><b id="an-sms-failed" style="color:var(--r)">—</b><span>Fehlgeschlagen</span></div>
-          <div class="ind-metric"><b id="an-sms-feedback">—</b><span>Link geklickt (Bewertungen)</span></div>
+          <div class="ind-metric"><b id="an-sms-clicks">—</b><span>Link-Klicks (eind.)</span></div>
         </div>
-        <div class="sms-recent" id="an-sms-recent"></div>
+        <div class="an-chip-row" id="an-sms-status-chips"></div>
+        <div class="an-note" id="an-sms-info" style="display:none;margin:0 18px 12px"></div>
+        <div style="max-height:360px;overflow-y:auto">
+          <table class="an-table">
+            <thead><tr><th>Nummer</th><th>Status</th><th>Nachricht</th><th>Link</th><th>Klick</th><th>Zeit</th></tr></thead>
+            <tbody id="an-sms-rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="an-grid">
+      <div class="panel">
+        <div class="ph"><div class="ph-title">Meistgeklickte SMS-Links</div><div class="ph-muted">Klicks · Besucher</div></div>
+        <div class="an-links" id="an-sms-top-links"></div>
       </div>
       <div class="panel">
         <div class="ph"><div class="ph-title">Lead-Funnel</div><div class="ph-muted">Vom Kontakt zum Kunden</div></div>
@@ -1005,6 +1282,43 @@
   </div>
 
   <!-- ─── PIPELINE (Outreach Kanban) ─── -->
+  <!-- ─── ANGESCHRIEBEN & FOLLOW-UP ─── -->
+  <div class="page" id="p-followup">
+    <div class="fl-note">
+      <b>Vertrauenswürdige Signale:</b> Klick, Website-Besuch und Antwort belegen echtes Interesse zu ~100 %.
+      <b>Öffnungen</b> sind nur ein schwacher Indikator (Apple/Gmail laden Tracking-Pixel automatisch vor) – daher hier bewusst nachrangig.
+    </div>
+    <div class="fl-summary" id="fl-summary"></div>
+    <div class="fl-toolbar">
+      <div class="fl-tabs" id="fl-tabs">
+        <button class="fl-tab active" data-f="all" onclick="setFollowupFilter('all')">Alle</button>
+        <button class="fl-tab" data-f="hot" onclick="setFollowupFilter('hot')">🔥 Heiß</button>
+        <button class="fl-tab" data-f="sequence" onclick="setFollowupFilter('sequence')">In Sequenz</button>
+        <button class="fl-tab" data-f="stopped" onclick="setFollowupFilter('stopped')">Gestoppt</button>
+      </div>
+      <input type="text" id="fl-search" class="an-filter" placeholder="🔍 Firma / E-Mail…" oninput="renderFollowupLeads()">
+      <div class="flex1"></div>
+      <button class="topbar-btn" onclick="loadFollowupLeads()">↻ Aktualisieren</button>
+    </div>
+    <div class="fl-bulkbar" id="fl-bulkbar">
+      <span class="fl-bulk-count"><b id="fl-bulk-n">0</b> ausgewählt</span>
+      <span class="fl-muted">→ Follow-up-Vorlage:</span>
+      <select id="fl-bulk-tpl" class="an-filter"></select>
+      <button class="btn btn-solid" style="padding:8px 14px;font-size:12px" onclick="sendManualFollowups()">✉ Follow-up senden</button>
+      <button class="fl-btn" onclick="clearFollowupSelection()">Auswahl aufheben</button>
+    </div>
+    <div class="fl-table-wrap">
+      <table class="fl-table">
+        <thead><tr>
+          <th class="fl-cb-col"><input type="checkbox" id="fl-select-all" onclick="toggleSelectAllFollowup(this.checked)" title="Alle sichtbaren auswählen"></th>
+          <th>Firma</th><th>Signale</th><th>Follow-up</th><th>Nächstes</th><th>Öffn.<span class="fl-th-ind">Indikator</span></th><th>Aktion</th>
+        </tr></thead>
+        <tbody id="fl-tbody"></tbody>
+      </table>
+      <div id="fl-empty" class="empty-state" style="display:none;padding:48px 0"><div class="ei">🔁</div><div class="et">Noch keine kontaktierten Firmen</div><div class="es">Sobald der Auto-Versand läuft, erscheinen hier alle angeschriebenen Firmen mit ihren Reaktionen</div></div>
+    </div>
+  </div>
+
   <div class="page" id="p-outreach">
     <div class="ost-row">
       <div class="ost b"><div class="ost-lbl">Kontaktiert</div><div class="ost-val" id="os-c">—</div><div class="ost-sub">E-Mails raus</div></div>
@@ -1042,6 +1356,35 @@
     <div class="modal-foot">
       <button class="btn btn-ghost" onclick="closePreview()">Abbrechen</button>
       <button class="btn btn-solid" id="pvSendBtn" onclick="confirmPreviewSend()">✉ Jetzt senden</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── GEPLANTE E-MAIL BEARBEITEN ─── -->
+<div class="modal-overlay" id="schedEditOverlay" onclick="if(event.target===this)closeScheduledEdit()">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">Geplante E-Mail bearbeiten</div>
+      <button class="modal-x" onclick="closeScheduledEdit()">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="se-id">
+      <div class="sp-body" style="padding:14px 0">
+        <div class="sched-row">
+          <div class="field"><label>Name</label><input id="se-name" type="text"></div>
+          <div class="field"><label>E-Mail</label><input id="se-email" type="email"></div>
+        </div>
+        <div class="sched-row">
+          <div class="field"><label>Datum</label><input id="se-date" type="date"></div>
+          <div class="field"><label>Uhrzeit (Europe/Berlin)</label><input id="se-time" type="time"></div>
+        </div>
+        <div class="field"><label>Betreff</label><input id="se-subject" type="text"></div>
+        <div class="field"><label>Nachricht</label><textarea id="se-body" rows="9"></textarea></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeScheduledEdit()">Abbrechen</button>
+      <button class="btn btn-solid" onclick="saveScheduledEdit()">Speichern</button>
     </div>
   </div>
 </div>
@@ -1096,15 +1439,17 @@ function setPage(name) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('p-' + name).classList.add('active');
   document.getElementById('nav-' + name).classList.add('active');
-  const titles = { dashboard:'Übersicht', pipeline:'Leads finden', sender:'E-Mail Sender', sent:'Gesendet', autosend:'Auto-Versand', templates:'Vorlagen', analytics:'Analyse', inbox:'Posteingang', outreach:'Pipeline' };
+  const titles = { dashboard:'Übersicht', pipeline:'Leads finden', sender:'E-Mail-Center', sent:'Gesendet', autosend:'Auto-Versand', templates:'Vorlagen', analytics:'Analyse', inbox:'Posteingang', followup:'Angeschrieben', outreach:'Pipeline' };
   document.getElementById('topbar-title').textContent = titles[name] || name;
   if (name === 'pipeline') { loadLeads(); renderIndustryPicker(); }
-  if (name === 'sender') loadTemplate();
+  if (name === 'sender') loadSenderPage();
   if (name === 'sent') loadSentPage();
   if (name === 'autosend') loadAutoSend();
   if (name === 'templates') loadTemplatesPage();
-  if (name === 'analytics') loadAnalytics();
+  if (name === 'analytics') { setRange(anRange); if (document.getElementById('an-autorefresh')?.checked) startAnalyticsAuto(); }
+  else stopAnalyticsAuto();
   if (name === 'inbox') { inboxTab==='in' ? loadInbox() : loadSentList(); }
+  if (name === 'followup') loadFollowupLeads();
   if (name === 'outreach') loadOutreach();
   if (name === 'dashboard') { renderDashboard(); hydrateTemplateEditors(); }
 }
@@ -1229,8 +1574,9 @@ async function loadActivityFeed() {
 function renderIndustryPicker() {
   const regionSel = document.getElementById('ind-region');
   if (regionSel && strategy.regions?.length && regionSel.options.length <= 1) {
-    regionSel.innerHTML = '<option value="">Region wählen…</option>' +
-      strategy.regions.map(r => `<optgroup label="${esc(r.label)}">` +
+    regionSel.innerHTML = '<option value="">Region/Stadt wählen…</option>' +
+      strategy.regions.map((r, i) => `<optgroup label="${esc(r.label)}">` +
+        `<option value="region:${i}">➜ Ganze Region: ${esc(r.label)} (${r.cities.length} Städte)</option>` +
         r.cities.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('') + '</optgroup>').join('');
   }
   const cats = ['all', ...new Set((strategy.verticals||[]).map(v => v.category).filter(Boolean))];
@@ -1259,7 +1605,7 @@ function renderIndustryCards() {
       </div>
       <div class="ind-run">
         <select id="term-${vt.id}">${vt.searchTerms.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('')}</select>
-        <input id="max-${vt.id}" type="number" min="1" max="100" value="20" title="Anzahl Leads">
+        <input id="max-${vt.id}" type="number" min="1" max="200" value="50" title="Anzahl Leads pro Stadt">
         <button class="ind-run-btn" id="run-${vt.id}" onclick="runIndustry('${vt.id}')">▶ Suchen</button>
       </div>
     </div>`).join('');
@@ -1267,23 +1613,53 @@ function renderIndustryCards() {
 
 async function runIndustry(id) {
   const branche = document.getElementById('term-'+id)?.value;
-  const stadt = document.getElementById('ind-region')?.value;
+  const sel = document.getElementById('ind-region')?.value;
   const max = Number(document.getElementById('max-'+id)?.value || 20);
-  if (!stadt) { toast('Bitte zuerst oben eine Region/Stadt wählen', true); return; }
+  if (!sel) { toast('Bitte zuerst oben eine Region/Stadt wählen', true); return; }
+  // "region:<index>" = ganze Region (alle Städte), sonst einzelne Stadt.
+  let payload, label;
+  if (sel.startsWith('region:')) {
+    const region = strategy.regions?.[Number(sel.slice(7))];
+    if (!region) { toast('Region nicht gefunden', true); return; }
+    payload = { branche, staedte: region.cities, max, skipAi: true };
+    label = branche + ' in ' + region.label + ' (' + region.cities.length + ' Städte)';
+  } else {
+    payload = { branche, stadt: sel, max, skipAi: true };
+    label = branche + ' in ' + sel;
+  }
   const btn = document.getElementById('run-'+id);
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Suche…';
-  toast('Suche ' + branche + ' in ' + stadt + '…');
+  toast('Suche ' + label + '…');
   try {
-    const r = await post('/api/run', { branche, stadt, max, skipAi: true });
+    const r = await post('/api/run', payload);
     const body = await r.json();
     if (!r.ok) { toast(body.error || 'Suche fehlgeschlagen', true); return; }
-    toast('✓ ' + (body.total||0) + ' Leads gefunden für ' + branche);
+    toast('✓ ' + (body.total||0) + ' Leads gefunden (' + (body.inserted||0) + ' neu)');
     await loadReport();
     loadLeads();
   } catch (e) {
     toast('Fehler bei der Suche', true);
   } finally {
     btn.disabled = false; btn.innerHTML = '▶ Suchen';
+  }
+}
+
+async function runBackfill() {
+  if (!confirm('Alle bereits gefundenen Leads erneut prüfen und fehlende E-Mails aus Impressum/Kontakt nachtragen?\n\nDas kann je nach Anzahl einige Minuten dauern.')) return;
+  const btn = document.getElementById('backfill-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Prüfe…';
+  toast('Kontakte werden nachgetragen – bitte warten…');
+  try {
+    const r = await post('/api/reanalyze', {});
+    const b = await r.json();
+    if (!r.ok) { toast(b.error || 'Backfill fehlgeschlagen', true); return; }
+    toast('✓ ' + (b.analyzed||0) + ' geprüft · ' + (b.newEmails||0) + ' neue E-Mails gefunden');
+    await loadReport();
+    loadLeads();
+  } catch (e) {
+    toast('Fehler beim Nachtragen', true);
+  } finally {
+    btn.disabled = false; btn.innerHTML = '✉ Kontakte nachtragen';
   }
 }
 
@@ -1296,7 +1672,11 @@ async function loadLeads() {
   if (document.getElementById('fa')?.checked) p.set('includeArchived','1');
   const grid = document.getElementById('grid');
   grid.innerHTML = Array(4).fill('<div class="skel skel-card"></div>').join('');
-  const leads = await fetchJSON('/api/leads?'+p);
+  let leads = await fetchJSON('/api/leads?'+p);
+  // "Leads finden" zeigt nur noch NEUE/unkontaktierte Firmen. Kontaktierte wandern in
+  // "Angeschrieben". Ausnahme: der Nutzer filtert explizit nach einem Outreach-Status.
+  const OUTREACH = ['contacted','replied','demo_booked','proposal_sent','won','lost','no_interest'];
+  if (!st) leads = leads.filter(l => !OUTREACH.includes(l.status));
   leadsCache = leads;
   renderBrancheFilter();
   renderLeads(applyVerticalFilter(leads));
@@ -1590,6 +1970,161 @@ function bulkSendSelected() {
 }
 function quickSend(id) { openSinglePreview(id); }
 
+// ════ ANGESCHRIEBEN & FOLLOW-UP ════
+let followupData = { leads: [], summary: {}, config: {} };
+let followupFilter = 'all';
+
+async function loadFollowupLeads() {
+  const [d, tpls] = await Promise.all([
+    fetchJSON('/api/followup/leads').catch(()=>null),
+    fetchJSON('/api/email-templates').catch(()=>[]),
+  ]);
+  if (!d) return;
+  followupData = d;
+  // Template-Picker füllen (Follow-up-Vorlagen zuerst)
+  const sel = document.getElementById('fl-bulk-tpl');
+  if (sel) {
+    const sorted = [...(tpls||[])].sort((a,b) => (b.category==='Follow-up'?1:0)-(a.category==='Follow-up'?1:0));
+    const prev = sel.value;
+    sel.innerHTML = sorted.map(t => `<option value="${t.id}">${esc(t.name)}${t.category==='Follow-up'?' ⭐':''}</option>`).join('');
+    if (prev && sorted.some(t=>t.id===prev)) sel.value = prev;
+  }
+  // Auswahl auf noch vorhandene Firmen beschränken
+  const present = new Set((d.leads||[]).map(l=>l.id));
+  for (const id of [...followupSel]) if (!present.has(id)) followupSel.delete(id);
+  const s = d.summary || {};
+  document.getElementById('fl-summary').innerHTML = [
+    ['Kontaktiert', s.contacted||0, 'b', 'Firmen angeschrieben'],
+    ['🔥 Heiß', s.hot||0, 'hot', 'Klick, Besuch oder Antwort'],
+    ['Geklickt', s.clicked||0, 'g', 'echte Link-Klicks'],
+    ['Website-Besuch', s.visited||0, 'g', 'nach der Mail auf der Seite'],
+    ['Geantwortet', s.replied||0, 'p', 'im Posteingang'],
+    ['In Follow-up-Sequenz', s.in_sequence||0, '', 'warten auf Nachfass'],
+  ].map(([l,v,cls,t]) => `<div class="fl-kpi ${cls}" title="${t}"><div class="fl-kpi-v">${v}</div><div class="fl-kpi-l">${l}</div></div>`).join('');
+  // Nav-Badge = heiße Leads
+  const nb = document.getElementById('nb-followup');
+  nb.textContent = s.hot||0; nb.classList.toggle('zero', !(s.hot>0));
+  renderFollowupLeads();
+}
+
+function setFollowupFilter(f) {
+  followupFilter = f;
+  document.querySelectorAll('#fl-tabs .fl-tab').forEach(b => b.classList.toggle('active', b.dataset.f===f));
+  renderFollowupLeads();
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(String(iso).replace(' ','T'));
+  if (isNaN(d)) return '—';
+  return d.toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit' });
+}
+function dueLabel(iso) {
+  if (!iso) return '<span class="fl-muted">—</span>';
+  const d = new Date(String(iso).replace(' ','T')).getTime();
+  const days = Math.round((d - Date.now())/86400000);
+  if (days <= 0) return '<span class="fl-due-now">jetzt fällig</span>';
+  return `<span class="fl-muted">in ${days} Tag${days>1?'en':''}</span>`;
+}
+
+function renderFollowupLeads() {
+  const q = (document.getElementById('fl-search')?.value||'').toLowerCase().trim();
+  let list = followupData.leads || [];
+  if (followupFilter==='hot') list = list.filter(l => l.hot);
+  else if (followupFilter==='sequence') list = list.filter(l => l.status==='contacted' && !l.followup_stopped && l.followup_stage<2);
+  else if (followupFilter==='stopped') list = list.filter(l => l.followup_stopped);
+  if (q) list = list.filter(l => (`${l.name} ${l.email} ${l.branche} ${l.stadt}`).toLowerCase().includes(q));
+
+  const tbody = document.getElementById('fl-tbody');
+  const empty = document.getElementById('fl-empty');
+  if (!list.length) { tbody.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display='none';
+
+  const stageLabel = (l) => {
+    if (l.followup_stopped) return `<span class="fl-tag stop">Gestoppt</span>`;
+    if (l.replied) return `<span class="fl-tag ok">Reagiert</span>`;
+    if (l.followup_done) return `<span class="fl-tag done">2/2 fertig</span>`;
+    return `<span class="fl-tag seq">${l.followup_stage}/2 gesendet</span>`;
+  };
+  const signals = (l) => {
+    const b = [];
+    if (l.clicked) b.push(`<span class="fl-sig click" title="${l.clicks} Klick(s) – sehr heiß">🖱 Klick${l.clicks>1?' ×'+l.clicks:''}</span>`);
+    if (l.visited) b.push(`<span class="fl-sig visit" title="${l.visits} Website-Besuch(e)">🌐 Besuch${l.visits>1?' ×'+l.visits:''}</span>`);
+    if (l.replied) b.push(`<span class="fl-sig reply">💬 Antwort</span>`);
+    if (l.bounced) b.push(`<span class="fl-sig bounce" title="Adresse ungültig">⚠ Bounce</span>`);
+    return b.length ? b.join(' ') : '<span class="fl-muted">keine Reaktion</span>';
+  };
+  const actions = (l) => {
+    const a = [];
+    if (!l.replied) a.push(`<button class="fl-btn ok" onclick="markReplied('${l.id}');setTimeout(loadFollowupLeads,400)">Als geantwortet</button>`);
+    if (l.followup_stopped) a.push(`<button class="fl-btn" onclick="resumeFollowup('${l.id}')">Fortsetzen</button>`);
+    else if (l.status==='contacted' && !l.followup_done) a.push(`<button class="fl-btn" onclick="stopFollowup('${l.id}')">Stoppen</button>`);
+    return a.join(' ');
+  };
+
+  tbody.innerHTML = list.map(l => `<tr class="${l.hot?'fl-hot':''} ${followupSel.has(l.id)?'fl-sel':''}">
+    <td class="fl-cb-col"><input type="checkbox" class="fl-row-cb" ${followupSel.has(l.id)?'checked':''} ${l.email?'':'disabled'} onclick="toggleFollowupRow('${l.id}', this.checked)"></td>
+    <td><div class="fl-firm">${esc(l.name)}</div><div class="fl-firm-sub">${esc(l.branche||'')}${l.stadt?' · '+esc(l.stadt):''} · <span class="fl-muted">${esc(l.email||'')}</span></div></td>
+    <td>${signals(l)}</td>
+    <td>${stageLabel(l)}${l.followup_stopped&&l.followup_stopped_reason?`<div class="fl-firm-sub">${esc(l.followup_stopped_reason)}</div>`:''}</td>
+    <td>${l.followup_stopped||l.replied||l.followup_done?'<span class="fl-muted">—</span>':dueLabel(l.next_due_at)}</td>
+    <td><span class="fl-muted" title="Nur Indikator – nicht verlässlich">${l.opens_reliable||0}</span></td>
+    <td class="fl-actions">${actions(l)}</td>
+  </tr>`).join('');
+  updateFollowupBulkBar();
+}
+
+const followupSel = new Set();
+function toggleFollowupRow(id, on) {
+  if (on) followupSel.add(id); else followupSel.delete(id);
+  const tr = document.querySelector(`#fl-tbody input[onclick*="${id}"]`)?.closest('tr');
+  if (tr) tr.classList.toggle('fl-sel', on);
+  updateFollowupBulkBar();
+}
+function toggleSelectAllFollowup(on) {
+  document.querySelectorAll('#fl-tbody .fl-row-cb:not([disabled])').forEach(cb => {
+    const id = (cb.getAttribute('onclick').match(/'([^']+)'/)||[])[1];
+    if (!id) return;
+    cb.checked = on;
+    if (on) followupSel.add(id); else followupSel.delete(id);
+    cb.closest('tr')?.classList.toggle('fl-sel', on);
+  });
+  updateFollowupBulkBar();
+}
+function clearFollowupSelection() {
+  followupSel.clear();
+  const sa = document.getElementById('fl-select-all'); if (sa) sa.checked = false;
+  document.querySelectorAll('#fl-tbody .fl-row-cb').forEach(cb => { cb.checked = false; cb.closest('tr')?.classList.remove('fl-sel'); });
+  updateFollowupBulkBar();
+}
+function updateFollowupBulkBar() {
+  const bar = document.getElementById('fl-bulkbar');
+  set('fl-bulk-n', followupSel.size);
+  bar.classList.toggle('show', followupSel.size > 0);
+}
+async function sendManualFollowups() {
+  const ids = [...followupSel];
+  if (!ids.length) { toast('Keine Firmen ausgewählt', true); return; }
+  const sel = document.getElementById('fl-bulk-tpl');
+  const tplId = sel?.value || '';
+  const tplName = sel?.options[sel.selectedIndex]?.textContent || 'Vorlage';
+  if (!confirm(`${ids.length} Follow-up(s) mit Vorlage „${tplName}" jetzt senden?`)) return;
+  const r = await post('/api/followup/send-manual', { leadIds: ids, templateId: tplId }).catch(()=>null);
+  if (!r) { toast('Versand fehlgeschlagen', true); return; }
+  toast(`${r.sent} Follow-up(s) gesendet${r.failed?`, ${r.failed} fehlgeschlagen`:''}`, r.failed>0 && r.sent===0);
+  clearFollowupSelection();
+  loadFollowupLeads();
+}
+
+async function stopFollowup(id) {
+  await post('/api/followup/stop', { leadId: id, reason: 'Manuell gestoppt' }).catch(()=>{});
+  toast('Follow-up gestoppt'); loadFollowupLeads();
+}
+async function resumeFollowup(id) {
+  await post('/api/followup/resume', { leadId: id }).catch(()=>{});
+  toast('Follow-up fortgesetzt'); loadFollowupLeads();
+}
+
 // ════ OUTREACH KANBAN ════
 async function loadOutreach() {
   const sc = reportCache.status_counts || {};
@@ -1745,6 +2280,29 @@ function renderTpl(t, vars) {
     .replace(/\{stadt\}/g, vars.stadt||'');
   return { subject: rep(t.subject), body: rep(t.body) };
 }
+function renderPreviewBodyHtml(body) {
+  const linkSyntax = /\[([^\]\n]+)\]\((https?:\/\/[^\s)<>"]+|mailto:[^\s)<>"]+)\)|<a\s+href=["'](https?:\/\/[^"'\s<>]+|mailto:[^"'\s<>]+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  const renderPlain = text => esc(text).replace(/(https?:\/\/[^\s<>"]+|www\.[^\s<>"]+)/g, url => {
+    const m = url.match(/^(.+?)([.,;:!?)]*)$/);
+    const core = m ? m[1] : url;
+    const trailing = m ? m[2] : '';
+    const href = core.startsWith('www.') ? 'https://' + core : core;
+    return `<a href="${esc(href)}" target="_blank" rel="noopener" style="color:#1a73e8;text-decoration:underline">${core}</a>${trailing}`;
+  });
+  const source = String(body || '');
+  let out = '';
+  let last = 0;
+  for (const match of source.matchAll(linkSyntax)) {
+    const index = match.index || 0;
+    const href = match[2] || match[3];
+    const label = (match[1] || match[4] || '').replace(/<[^>]*>/g, '');
+    out += renderPlain(source.slice(last, index));
+    out += `<a href="${esc(href)}" target="_blank" rel="noopener" style="color:#1a73e8;text-decoration:underline">${esc(label)}</a>`;
+    last = index + match[0].length;
+  }
+  out += renderPlain(source.slice(last));
+  return out;
+}
 const TMPL_EDITORS = [['tmpl','prev'], ['dtmpl','dprev']];
 function fillTemplateFields(t) {
   TMPL_EDITORS.forEach(([pfx]) => {
@@ -1762,7 +2320,7 @@ function updateAllPreviews() {
     const r = renderTpl({ subject: subjEl.value, body: bodyEl.value }, sample);
     const ps = document.getElementById(ppfx+'-subj'), pb = document.getElementById(ppfx+'-body');
     if (ps) ps.textContent = r.subject;
-    if (pb) pb.textContent = r.body;
+    if (pb) pb.innerHTML = renderPreviewBodyHtml(r.body);
   });
 }
 function bindTemplateInputs() {
@@ -1776,8 +2334,185 @@ async function hydrateTemplateEditors() {
   fillTemplateFields(templateCache);
   bindTemplateInputs();
 }
-// Sender-Seite ruft weiterhin loadTemplate() auf
+// Dashboard-Schnelleditor ruft weiterhin loadTemplate() auf
 async function loadTemplate() { await hydrateTemplateEditors(); }
+
+// ════ E-MAIL-CENTER (Sender-Seite) ════
+let senderTemplates = [];
+let senderState = { templateId: null, mode: 'now' };
+
+async function loadSenderPage() {
+  senderTemplates = await fetchJSON('/api/email-templates').catch(() => []);
+  if (!senderState.templateId || !senderTemplates.find(t => t.id === senderState.templateId))
+    senderState.templateId = (senderTemplates.find(t => t.id === 'default') || senderTemplates[0])?.id || null;
+  renderSenderTemplates();
+  renderSenderPreview();
+  // Standard-Planungszeit: in 1 Stunde (lokale = Berliner Zeit des Nutzers)
+  const dEl = document.getElementById('send-date'), tEl = document.getElementById('send-time');
+  if (dEl && !dEl.value) {
+    const soon = new Date(Date.now() + 60 * 60 * 1000);
+    dEl.value = `${soon.getFullYear()}-${String(soon.getMonth()+1).padStart(2,'0')}-${String(soon.getDate()).padStart(2,'0')}`;
+    tEl.value = `${String(soon.getHours()).padStart(2,'0')}:${String(soon.getMinutes()).padStart(2,'0')}`;
+  }
+  loadSenderScheduled();
+}
+
+function renderSenderTemplates() {
+  const el = document.getElementById('sender-tpl-picker');
+  if (!el) return;
+  if (!senderTemplates.length) {
+    el.innerHTML = '<div style="color:var(--txt4);font-size:12px;text-align:center;padding:20px">Noch keine Vorlagen. Lege im Bereich „Vorlagen" welche an.</div>';
+    return;
+  }
+  el.innerHTML = senderTemplates.map(t => `
+    <button type="button" class="tpl-card ${t.id === senderState.templateId ? 'sel' : ''}" onclick="selectSenderTemplate('${t.id}')">
+      <div class="tpl-card-top">
+        <span class="tpl-radio"></span>
+        <span class="tpl-card-name">${esc(t.name)}</span>
+        ${t.category ? `<span class="tpl-card-cat">${esc(t.category)}</span>` : (t.id === 'default' ? '<span class="tpl-card-cat">Standard</span>' : '')}
+      </div>
+      <div class="tpl-card-subj">${esc(t.subject || '(kein Betreff)')}</div>
+      <div class="tpl-card-prev">${esc((t.body || '').replace(/\s+/g, ' ').slice(0, 120))}</div>
+    </button>`).join('');
+}
+
+function selectSenderTemplate(id) {
+  senderState.templateId = id;
+  renderSenderTemplates();
+  renderSenderPreview();
+}
+
+function renderSenderPreview() {
+  const t = senderTemplates.find(x => x.id === senderState.templateId);
+  const sample = { name: 'Zahnarztpraxis Dr. Müller', branche: 'Zahnarzt', stadt: 'Düsseldorf' };
+  const r = t ? renderTpl(t, sample) : { subject: '', body: '' };
+  set('prev-subj', r.subject);
+  const pb = document.getElementById('prev-body'); if (pb) pb.innerHTML = renderPreviewBodyHtml(r.body);
+}
+
+function setSendMode(m) {
+  senderState.mode = m;
+  document.querySelectorAll('#send-mode-seg button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
+  document.getElementById('schedule-fields').style.display = m === 'schedule' ? 'grid' : 'none';
+  const btn = document.getElementById('bulk-send-btn');
+  btn.innerHTML = m === 'schedule' ? '⏰ Versand planen' : '✉ Jetzt an alle senden';
+}
+
+function scheduleLocalValue() {
+  const d = document.getElementById('send-date')?.value, t = document.getElementById('send-time')?.value;
+  return (d && t) ? d + 'T' + t : null;
+}
+
+async function doSenderSend() {
+  if (!parsedRecipients.length) parseRecipients();
+  const recipients = parsedRecipients.filter(r => r.valid).map(x => ({ name: x.name, email: x.email }));
+  if (!recipients.length) { toast('Keine gültigen Empfänger', true); return; }
+  if (!senderState.templateId) { toast('Bitte eine Vorlage wählen', true); return; }
+  const tpl = senderTemplates.find(t => t.id === senderState.templateId);
+  const campaign = document.getElementById('send-campaign')?.value.trim() || undefined;
+  const btn = document.getElementById('bulk-send-btn');
+  const label = btn.innerHTML;
+
+  if (senderState.mode === 'schedule') {
+    const local = scheduleLocalValue();
+    if (!local) { toast('Bitte Datum und Uhrzeit wählen', true); return; }
+    if (new Date(local).getTime() < Date.now()) { toast('Der Zeitpunkt liegt in der Vergangenheit', true); return; }
+    if (!confirm(`${recipients.length} E-Mail(s) mit Vorlage „${tpl.name}" planen für\n${new Date(local).toLocaleString('de-DE')} Uhr?`)) return;
+    btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Plane…';
+    try {
+      const r = await post('/api/bulk-send', { recipients, templateId: senderState.templateId, scheduleAt: local, campaign });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { toast(d.error || 'Planen fehlgeschlagen', true); return; }
+      toast(`⏰ ${d.scheduled} E-Mail(s) geplant für ${new Date(local).toLocaleString('de-DE')}`);
+      loadSenderScheduled();
+    } finally { btn.disabled = false; btn.innerHTML = label; }
+  } else {
+    if (!confirm(`${recipients.length} E-Mail(s) mit Vorlage „${tpl.name}" jetzt senden?`)) return;
+    btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Sende…';
+    try {
+      const r = await post('/api/bulk-send', { recipients, templateId: senderState.templateId, campaign });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { toast(d.error || 'Versand fehlgeschlagen', true); return; }
+      toast(`✓ ${d.sent} gesendet${d.failed ? ', ' + d.failed + ' fehlgeschlagen' : ''}`);
+      (d.results || []).forEach(res => {
+        const i = parsedRecipients.findIndex(p => p.email === res.email);
+        if (i >= 0) { parsedRecipients[i]._sent = res.success; parsedRecipients[i]._failed = !res.success; }
+      });
+      renderRecipients();
+      await loadReport();
+    } finally { btn.disabled = false; btn.innerHTML = label; }
+  }
+}
+
+let scheduledCache = [];
+async function loadSenderScheduled() {
+  const el = document.getElementById('sender-scheduled');
+  if (!el) return;
+  scheduledCache = await fetchJSON('/api/scheduled-emails').catch(() => []);
+  const active = scheduledCache.filter(r => r.status === 'scheduled' || r.status === 'processing');
+  if (!active.length) {
+    el.innerHTML = '<div style="color:var(--txt4);font-size:12px;text-align:center;padding:16px">Keine geplanten E-Mails</div>';
+    return;
+  }
+  el.innerHTML = active.map(r => `
+    <div class="sched-item">
+      <div class="si-main">
+        <div class="si-to">${esc(r.to_name || r.to_email)}</div>
+        <div class="si-meta">${esc(r.subject || '')}</div>
+        <div class="si-when">⏰ ${esc(r.scheduled_at_local || '')}${r.status === 'processing' ? ' · wird gesendet…' : ''}</div>
+      </div>
+      <div class="sched-actions">
+        ${r.status === 'scheduled' ? `<button class="btn btn-ghost" onclick="openScheduledEdit('${r.id}')">Bearbeiten</button>` : ''}
+        ${r.status === 'scheduled' ? `<button class="btn btn-danger" onclick="cancelScheduled('${r.id}')">Stornieren</button>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+async function cancelScheduled(id) {
+  if (!confirm('Diese geplante E-Mail stornieren?')) return;
+  const r = await fetch('/api/scheduled-emails/' + id, { method: 'DELETE' });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { toast(d.error || 'Stornieren fehlgeschlagen', true); return; }
+  toast('Storniert'); loadSenderScheduled();
+}
+
+function openScheduledEdit(id) {
+  const r = scheduledCache.find(x => x.id === id);
+  if (!r) return;
+  document.getElementById('se-id').value = r.id;
+  document.getElementById('se-name').value = r.to_name || '';
+  document.getElementById('se-email').value = r.to_email || '';
+  document.getElementById('se-subject').value = r.subject || '';
+  document.getElementById('se-body').value = r.body || '';
+  // scheduled_at_local kommt als "TT.MM.JJ, HH:MM" – für die Inputs aus scheduled_at (ISO) ableiten
+  const dt = new Date(r.scheduled_at);
+  if (!isNaN(dt.getTime())) {
+    document.getElementById('se-date').value = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+    document.getElementById('se-time').value = `${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+  }
+  document.getElementById('schedEditOverlay').classList.add('show');
+}
+function closeScheduledEdit() { document.getElementById('schedEditOverlay').classList.remove('show'); }
+
+async function saveScheduledEdit() {
+  const id = document.getElementById('se-id').value;
+  const payload = {
+    subject: document.getElementById('se-subject').value,
+    body: document.getElementById('se-body').value,
+    to_email: document.getElementById('se-email').value.trim(),
+    to_name: document.getElementById('se-name').value,
+  };
+  const d = document.getElementById('se-date').value, t = document.getElementById('se-time').value;
+  if (d && t) {
+    if (new Date(d + 'T' + t).getTime() < Date.now()) { toast('Der Zeitpunkt liegt in der Vergangenheit', true); return; }
+    payload.scheduleAt = d + 'T' + t;
+  }
+  const r = await fetch('/api/scheduled-emails/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const res = await r.json().catch(() => ({}));
+  if (!r.ok) { toast(res.error || 'Speichern fehlgeschlagen', true); return; }
+  toast('✓ Geplante E-Mail aktualisiert');
+  closeScheduledEdit(); loadSenderScheduled();
+}
 async function putTemplate(subject, body) {
   if (!subject || !body) { toast('Betreff und Text sind Pflicht', true); return false; }
   const r = await fetch('/api/email-template', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ subject, body }) });
@@ -1806,7 +2541,7 @@ function currentPreviewContent() {
 function renderPreviewBody() {
   const c = currentPreviewContent();
   set('pvSubj', c.subject);
-  document.getElementById('pvBody').textContent = c.body;
+  document.getElementById('pvBody').innerHTML = renderPreviewBodyHtml(c.body);
 }
 function buildSourceRow() {
   const row = document.getElementById('prevSourceRow');
@@ -1945,23 +2680,80 @@ async function loadAutoSend() {
   tl.innerHTML = tpls.map((t,i) => `<label class="as-tpl-cb">
     <input type="checkbox" value="${t.id}" ${prevChecked.size ? (prevChecked.has(t.id)?'checked':'') : (i===0?'checked':'')} onchange="updateEstimate()">
     <span>${esc(t.name)}</span>
-    <span style="margin-left:auto;font-size:10px;color:var(--txt3)">${esc((t.subject||'').slice(0,30))}…</span>
   </label>`).join('');
   updateEstimate();
   renderJobs();
+  loadFollowup();
   // Nav-Badge: laufende Jobs
   const running = jobs.filter(j => j.status === 'running').length;
   const nb = document.getElementById('nb-autosend');
   nb.textContent = running; nb.classList.toggle('zero', !running);
 }
+
+let fuLoaded = false;
+async function loadFollowup() {
+  const s = await fetchJSON('/api/followup/stats').catch(()=>null);
+  if (!s) return;
+  const on = s.enabled === 1 || s.enabled === true;
+  const chk = document.getElementById('fu-enabled');
+  chk.checked = on;
+  set('fu-enabled-lbl', on ? 'An' : 'Aus');
+  // Felder nur beim ersten Laden setzen (nicht überschreiben, während getippt wird)
+  if (!fuLoaded) {
+    document.getElementById('fu-gap1').value = s.gap1_days;
+    document.getElementById('fu-gap2').value = s.gap2_days;
+    document.getElementById('fu-cap').value = s.daily_cap;
+    fuLoaded = true;
+  }
+  document.getElementById('fu-stats').innerHTML = [
+    ['In Sequenz', s.in_sequence, 'Kontaktiert, warten auf Follow-up'],
+    ['Wartet auf 1. Follow-up', s.awaiting_stage1, ''],
+    ['Wartet auf 2. Follow-up', s.awaiting_stage2, ''],
+    ['Follow-ups heute', s.sent_today + ' / ' + s.daily_cap, ''],
+    ['Gesendet gesamt', s.sent_total, ''],
+    ['Gestoppt (Antwort/Klick)', s.stopped, 'Reagiert – Mensch übernimmt'],
+  ].map(([l,v,t]) => `<div class="fu-stat" title="${t}"><div class="fu-stat-v">${v}</div><div class="fu-stat-l">${l}</div></div>`).join('');
+}
+
+async function saveFollowupConfig() {
+  const body = {
+    enabled: document.getElementById('fu-enabled').checked,
+    gap1_days: Number(document.getElementById('fu-gap1').value) || 3,
+    gap2_days: Number(document.getElementById('fu-gap2').value) || 4,
+    daily_cap: Number(document.getElementById('fu-cap').value) || 50,
+  };
+  const r = await fetch('/api/followup/config', { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }).then(x=>x.json()).catch(()=>null);
+  if (r) { toast(body.enabled ? 'Follow-ups aktiv' : 'Follow-ups pausiert'); loadFollowup(); }
+}
+function gapValue() {
+  const sel = document.getElementById('as-gap');
+  if (!sel) return 30;
+  if (sel.value === 'custom') {
+    const c = Number(document.getElementById('as-gap-custom')?.value || 45);
+    return Math.max(15, Math.min(600, c));
+  }
+  return Number(sel.value) || 30;
+}
+function onGapChange() {
+  const sel = document.getElementById('as-gap');
+  const custom = document.getElementById('as-gap-custom');
+  if (custom) custom.style.display = (sel && sel.value === 'custom') ? 'block' : 'none';
+  updateEstimate();
+}
+function gapLabel(s) {
+  if (s < 60) return s + ' Sek.';
+  const m = s / 60;
+  return (Number.isInteger(m) ? m : m.toFixed(1)) + ' Min.';
+}
 function updateEstimate() {
   const total = Number(document.getElementById('as-total')?.value || 0);
   const daily = Number(document.getElementById('as-daily')?.value || 100);
   const tplN = document.querySelectorAll('#as-tpl-list input:checked').length;
+  const gap = gapValue();
   const days = total > 0 ? Math.ceil(total / daily) : 0;
   const el = document.getElementById('as-estimate');
   if (el) el.innerHTML = total > 0
-    ? `📅 <b>${total} E-Mails</b> bei <b>${daily}/Tag</b> ≈ <b>${days} Tag${days>1?'e':''}</b> Laufzeit · ${tplN||1} Vorlage${tplN>1?'n':''} im Zufalls-Wechsel · Versand nur 8–20 Uhr, alle 1–3 Minuten eine`
+    ? `📅 <b>${total} E-Mails</b> bei <b>${daily}/Tag</b> ≈ <b>${days} Tag${days>1?'e':''}</b> Laufzeit · ${tplN||1} Vorlage${tplN>1?'n':''} im Zufalls-Wechsel · Pause <b>~${gapLabel(gap)}</b> · Versand nur 8–20 Uhr`
     : 'Anzahl eingeben…';
 }
 async function createSendJob() {
@@ -1969,13 +2761,17 @@ async function createSendJob() {
   const dailyLimit = Number(document.getElementById('as-daily')?.value || 100);
   const verticalId = document.getElementById('as-vertical')?.value || undefined;
   const templateIds = [...document.querySelectorAll('#as-tpl-list input:checked')].map(i => i.value);
+  const gapSeconds = gapValue();
+  const startAtRaw = document.getElementById('as-start')?.value || '';
   if (!totalTarget || totalTarget < 1) { toast('Anzahl E-Mails eingeben', true); return; }
   if (!templateIds.length) { toast('Mindestens eine Vorlage auswählen', true); return; }
+  if (startAtRaw && new Date(startAtRaw).getTime() < Date.now() - 60000) { toast('Startzeit liegt in der Vergangenheit', true); return; }
   const days = Math.ceil(totalTarget / dailyLimit);
-  if (!confirm(`Auto-Versand starten?\n\n${totalTarget} E-Mails · ${dailyLimit}/Tag · ca. ${days} Tag(e)\n${templateIds.length} Vorlage(n) im Wechsel\n\nDas System verschickt ab sofort automatisch.`)) return;
+  const startTxt = startAtRaw ? `Start: ${new Date(startAtRaw).toLocaleString('de-DE')}` : 'Start: sofort';
+  if (!confirm(`Auto-Versand starten?\n\n${totalTarget} E-Mails · ${dailyLimit}/Tag · ca. ${days} Tag(e)\nPause ~${gapLabel(gapSeconds)} zwischen Mails\n${templateIds.length} Vorlage(n) im Wechsel\n${startTxt}`)) return;
   const btn = document.getElementById('as-create-btn');
   btn.disabled = true;
-  const r = await post('/api/send-jobs', { totalTarget, dailyLimit, verticalId, templateIds });
+  const r = await post('/api/send-jobs', { totalTarget, dailyLimit, verticalId, templateIds, gapSeconds, startAt: startAtRaw || undefined });
   const d = await r.json().catch(()=>({}));
   btn.disabled = false;
   if (!r.ok) { toast(d.error||'Fehler beim Starten', true); return; }
@@ -1992,11 +2788,14 @@ function renderJobs() {
   el.innerHTML = jobsCache.map(j => {
     const pctN = Math.min(100, Math.round(j.sent_count / Math.max(1, j.total_target) * 100));
     const tplNames = (j.template_ids||[]).map(id => templatesCache.find(t=>t.id===id)?.name || id).join(', ');
+    const gapTxt = j.min_gap_s ? ` · ~${gapLabel(j.min_gap_s)} Pause` : '';
+    const pend = (j.status==='running' && j.next_send_at && new Date(j.next_send_at) > new Date())
+      ? `<div class="job-note">⏰ Geplanter Start: ${new Date(j.next_send_at).toLocaleString('de-DE')}</div>` : '';
     return `<div class="job-card">
       <div class="job-head">
         <div>
           <div class="job-name">${esc(j.name)}</div>
-          <div class="job-meta">Vorlagen: ${esc(tplNames)} · ${j.daily_limit}/Tag · Fenster ${j.window_start}–${j.window_end} Uhr</div>
+          <div class="job-meta">Vorlagen: ${esc(tplNames)} · ${j.daily_limit}/Tag${gapTxt} · Fenster ${j.window_start}–${j.window_end} Uhr</div>
         </div>
         <span class="job-status js-${j.status}">${stLabel[j.status]||j.status}</span>
       </div>
@@ -2006,6 +2805,7 @@ function renderJobs() {
         <span>Heute: <b>${j.sent_today||0}</b> / ${j.daily_limit}</span>
         ${j.failed_count?`<span style="color:var(--r)">Fehler: <b>${j.failed_count}</b></span>`:''}
       </div>
+      ${pend}
       ${j.note?`<div class="job-note">${esc(j.note)}</div>`:''}
       <div class="job-actions">
         ${j.status==='running'?`<button class="btn btn-warn" onclick="jobAction('${j.id}','paused')">⏸ Pausieren</button>`:''}
@@ -2053,6 +2853,7 @@ function selectTemplate(id) {
   const t = templatesCache.find(x => x.id === id);
   if (!t) return;
   document.getElementById('tpl-edit-name').value = t.name || '';
+  document.getElementById('tpl-edit-category').value = t.category || '';
   document.getElementById('tpl-edit-subject').value = t.subject || '';
   document.getElementById('tpl-edit-body').value = t.body || '';
   set('tpl-edit-title', 'Vorlage: ' + t.name);
@@ -2063,15 +2864,16 @@ function updateTplPreview() {
   const sample = { name:'Zahnarztpraxis Dr. Müller', branche:'Zahnarzt', stadt:'Düsseldorf' };
   const r = renderTpl({ subject: document.getElementById('tpl-edit-subject')?.value, body: document.getElementById('tpl-edit-body')?.value }, sample);
   set('tpl-prev-subj', r.subject);
-  const pb = document.getElementById('tpl-prev-body'); if (pb) pb.textContent = r.body;
+  const pb = document.getElementById('tpl-prev-body'); if (pb) pb.innerHTML = renderPreviewBodyHtml(r.body);
 }
 async function saveEditedTemplate() {
   if (!editingTplId) return;
   const name = document.getElementById('tpl-edit-name')?.value?.trim();
+  const category = document.getElementById('tpl-edit-category')?.value?.trim() || null;
   const subject = document.getElementById('tpl-edit-subject')?.value?.trim();
   const body = document.getElementById('tpl-edit-body')?.value?.trim();
   if (!subject || !body) { toast('Betreff und Text sind Pflicht', true); return; }
-  const r = await fetch('/api/email-templates/'+editingTplId, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name, subject, body }) });
+  const r = await fetch('/api/email-templates/'+editingTplId, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name, category, subject, body }) });
   if (!r.ok) { toast('Speichern fehlgeschlagen', true); return; }
   toast('✓ Vorlage gespeichert');
   if (editingTplId === 'default') { templateCache = { subject, body }; }
@@ -2196,33 +2998,140 @@ function openSentDetail(id) {
 
 // ════ ANALYSE ════
 let anMailsCache = [];
-async function loadAnalytics() {
+let anCache = null;
+let anRange = '7d';
+let anDebounce = null;
+
+function fmtDateInput(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+
+function setRange(range) {
+  anRange = range;
+  const from = document.getElementById('an-from'), to = document.getElementById('an-to');
+  const today = new Date(); today.setHours(0,0,0,0);
+  const set2 = (a, b) => { from.value = fmtDateInput(a); to.value = fmtDateInput(b); };
+  if (range === 'today') set2(today, today);
+  else if (range === 'yesterday') { const y = new Date(today); y.setDate(y.getDate()-1); set2(y, y); }
+  else if (range === '7d') { const a = new Date(today); a.setDate(a.getDate()-6); set2(a, today); }
+  else if (range === '30d') { const a = new Date(today); a.setDate(a.getDate()-29); set2(a, today); }
+  else if (range === 'month') { set2(new Date(today.getFullYear(), today.getMonth(), 1), today); }
+  else if (range === 'all') { from.value = ''; to.value = ''; }
+  // 'custom' lässt die Inputs unverändert
+  document.querySelectorAll('#an-presets .an-preset').forEach(b => b.classList.toggle('on', b.dataset.range === range));
+  loadAnalytics();
+}
+function resetFilters() {
+  ['an-search','an-f-template','an-f-campaign','an-f-status','an-f-open','an-f-click'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  setRange('7d');
+}
+function debouncedAnalytics() { clearTimeout(anDebounce); anDebounce = setTimeout(loadAnalytics, 400); }
+
+// ── Auto-Refresh (Echtzeit) ──
+let anAutoTimer = null;
+const AN_REFRESH_MS = 20000;
+function analyticsInteracting() {
+  const ae = document.activeElement;
+  if (ae && ['INPUT','SELECT','TEXTAREA'].includes(ae.tagName)) return true;
+  // Nicht refreshen, während eine Detailzeile offen ist (würde zuklappen)
+  return [...document.querySelectorAll('#an-mails .ev-row')].some(r => r.style.display !== 'none');
+}
+function toggleAnalyticsAuto() {
+  const on = document.getElementById('an-autorefresh')?.checked;
+  document.getElementById('an-live-dot')?.classList.toggle('on', !!on);
+  if (on) startAnalyticsAuto(); else stopAnalyticsAuto();
+}
+function startAnalyticsAuto() {
+  stopAnalyticsAuto();
+  document.getElementById('an-live-dot')?.classList.add('on');
+  anAutoTimer = setInterval(() => {
+    if (currentPage === 'analytics' && !document.hidden && !analyticsInteracting()) loadAnalytics(true);
+  }, AN_REFRESH_MS);
+}
+function stopAnalyticsAuto() { if (anAutoTimer) { clearInterval(anAutoTimer); anAutoTimer = null; } }
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && currentPage === 'analytics' && document.getElementById('an-autorefresh')?.checked) loadAnalytics(true);
+});
+function buildAnalyticsQuery() {
+  const p = new URLSearchParams();
+  const from = document.getElementById('an-from')?.value, to = document.getElementById('an-to')?.value;
+  if (from) p.set('from', from + 'T00:00');
+  if (to) p.set('to', to + 'T23:59');
+  const map = { search:'search', 'f-template':'template', 'f-campaign':'campaign', 'f-status':'status', 'f-open':'open', 'f-click':'click' };
+  for (const [suffix, key] of Object.entries(map)) {
+    const v = document.getElementById('an-' + suffix)?.value?.trim();
+    if (v) p.set(key, v);
+  }
+  return p.toString();
+}
+function deltaHtml(cur, prev) {
+  if (prev == null || prev === 0) return prev === 0 && cur > 0 ? '<span class="kpi-delta up">▲ neu</span>' : '';
+  const d = Math.round((cur - prev) / prev * 100);
+  if (d === 0) return '<span class="kpi-delta flat">± 0% vs. Vorperiode</span>';
+  return `<span class="kpi-delta ${d>0?'up':'down'}">${d>0?'▲':'▼'} ${Math.abs(d)}% vs. Vorperiode</span>`;
+}
+
+async function loadAnalytics(silent) {
+  const qs = buildAnalyticsQuery();
   const [an, sms] = await Promise.all([
-    fetchJSON('/api/analytics/email').catch(()=>null),
+    fetchJSON('/api/analytics/email' + (qs ? '?' + qs : '')).catch(()=>null),
     fetchJSON('/api/analytics/sms').catch(()=>null),
   ]);
   if (!an) return;
+  anCache = an;
+  const upd = document.getElementById('an-updated');
+  if (upd) upd.textContent = 'aktualisiert ' + new Date().toLocaleTimeString('de-DE');
+
+  // Filter-Dropdowns befüllen (Optionen aus Backend), Auswahl erhalten
+  const tSel = document.getElementById('an-f-template');
+  if (tSel && an.filters) {
+    const cur = tSel.value;
+    tSel.innerHTML = '<option value="">Alle Vorlagen</option>' + an.filters.templates.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
+    tSel.value = cur;
+  }
+  const cSel = document.getElementById('an-f-campaign');
+  if (cSel && an.filters) {
+    const cur = cSel.value;
+    cSel.innerHTML = '<option value="">Alle Kampagnen</option>' + an.filters.campaigns.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+    cSel.value = cur;
+  }
 
   // Tracking-Hinweis
   const note = document.getElementById('an-tracking-note');
   if (!an.tracking.public) {
     note.style.display = 'block';
-    note.innerHTML = '<strong>⚠ Tracking noch nicht live:</strong> Öffnungs-Pixel und Klick-Links sind in jede neue E-Mail eingebaut, aber der Server ist nur lokal erreichbar (' + esc(an.tracking.base_url||'PUBLIC_BASE_URL fehlt') + '). Damit Gmail & Co. Öffnungen melden können, muss <code style="color:var(--o)">PUBLIC_BASE_URL</code> in der .env auf eine öffentliche Adresse zeigen (z.B. Cloudflare Tunnel oder Deployment). Zustellfehler-Erkennung über den Posteingang funktioniert schon jetzt.';
+    note.innerHTML = '<strong>⚠ Öffnungs-Tracking eingeschränkt:</strong> Öffnungs-Pixel und Klick-Links sind in jede neue E-Mail eingebaut, aber der Server ist nur lokal erreichbar (' + esc(an.tracking.base_url||'PUBLIC_BASE_URL fehlt') + '). Damit Gmail & Co. Öffnungen melden können, muss <code style="color:var(--o)">PUBLIC_BASE_URL</code> in der .env auf eine öffentliche Adresse zeigen. Klicks & Zustellfehler werden auch jetzt schon erfasst.';
   } else { note.style.display = 'none'; }
 
-  // KPIs
-  const t = an.totals;
-  set('an-sent', t.ok||0); set('an-failed', t.failed||0);
-  set('an-openrate', an.open_rate + '%'); set('an-opened', (t.opened||0) + (t.technical_opened ? ' echt / ' + t.technical_opened + ' technisch' : ''));
-  set('an-clickrate', an.click_rate + '%'); set('an-clicked', t.clicked||0);
-  set('an-bounces', t.bounced||0);
-  const sc = reportCache.status_counts || {};
-  const replies = (sc.replied||0)+(sc.demo_booked||0)+(sc.proposal_sent||0)+(sc.won||0);
-  set('an-replies', sc.replied||0);
-  set('an-replyrate', pct(sc.replied, Math.max(1, sc.contacted||1)) + ' der Kontaktierten');
-  set('an-interested', replies);
+  const t = an.totals, r = an.rates, prev = an.previous;
+  set('an-k-sent', t.sent||0);
+  document.getElementById('an-k-sent-sub').innerHTML = prev ? deltaHtml(t.sent, prev.attempted) : `${t.failed||0} fehlgeschlagen`;
+  set('an-k-delivered', t.delivered||0);
+  document.getElementById('an-k-delivered-sub').innerHTML = `Zustellrate ${r.delivery_rate}%` + (prev ? ' · ' + deltaHtml(t.delivered, prev.delivered) : '');
+  set('an-k-opened', t.opened||0);
+  document.getElementById('an-k-opened-sub').innerHTML = `${r.open_rate}% Rate · ${t.opens_total||0} gesamt`;
+  set('an-k-clicked', t.clicked||0);
+  document.getElementById('an-k-clicked-sub').innerHTML = `${r.click_rate}% Rate · ${t.clicks_total||0} gesamt` + (prev ? ' · ' + deltaHtml(t.clicked, prev.clicked) : '');
+  set('an-k-bounced', t.bounced||0);
+  set('an-k-scheduled', t.scheduled||0);
 
-  // Chart: 14 Tage
+  // Sekundär-Kennzahlen als Chips
+  const chip = (label, val, tone) => `<span class="an-chip st-${tone}"><b>${val}</b> ${label}</span>`;
+  document.getElementById('an-chips').innerHTML = [
+    chip('Zustellrate', r.delivery_rate + '%', 'ok'),
+    chip('Öffnungsrate', r.open_rate + '%', 'good'),
+    chip('Klickrate', r.click_rate + '%', 'good'),
+    chip('Klick→Öffnung', r.click_to_open_rate + '%', 'info'),
+    chip('gesamte Öffnungen', t.opens_total||0, 'muted'),
+    chip('gesamte Klicks', t.clicks_total||0, 'muted'),
+    chip('autom. Abrufe (keine Öffnung)', t.technical_opened||0, 'muted'),
+    chip('Bounces', t.bounced||0, t.bounced?'bad':'muted'),
+    chip('fehlgeschlagen', t.failed||0, t.failed?'bad':'muted'),
+    chip('Abmeldungen', t.unsubscribed||0, 'muted'),
+  ].join('');
+
+  // Chart-Titel je nach Zeitraum
+  set('an-days-sub', an.days.length + ' Tage');
+
+  // Chart: Tage
   const maxDay = Math.max(1, ...an.days.map(d => Math.max(d.sent, d.opened)));
   document.getElementById('an-days').innerHTML = an.days.map(d => `
     <div class="bar-day" title="${d.day}: ${d.sent} gesendet, ${d.opened} geöffnet">
@@ -2243,39 +3152,34 @@ async function loadAnalytics() {
 
   // Mail-Tabelle
   anMailsCache = an.emails||[];
-  set('an-mail-cnt', anMailsCache.length + ' E-Mails (neueste zuerst)');
+  set('an-mail-cnt', anMailsCache.length + ' E-Mails' + (an.scheduled.length ? ' · ' + an.scheduled.length + ' geplant' : ''));
+  const firstLink = m => (m.clicked_links && m.clicked_links[0]) ? m.clicked_links[0].url : null;
   document.getElementById('an-mails').innerHTML = anMailsCache.map(m => {
-    const status = m.bounces > 0 ? '<span class="an-bounce">↩ Bounce</span>'
-      : m.clicks > 0 ? '<span class="an-open">🔗 Geklickt</span>'
-      : m.opens > 0 ? '<span class="an-open">👁 Echt geöffnet</span>'
-      : m.technical_opens > 0 ? '<span class="an-zero">Technischer Abruf</span>'
-      : m.success ? '<span class="an-open">✓ Zugestellt</span>' : '<span class="an-bounce">✗ Fehler</span>';
+    const link = firstLink(m);
     return `<tr class="mail-row" onclick="toggleMailEvents('${m.id}', this)">
-      <td><b style="color:var(--txt)">${esc(m.to_name||'')}</b><br><span style="font-size:10px;color:var(--txt3)">${esc(m.to_email)}</span></td>
-      <td>${esc((m.subject||'').slice(0,50))}</td>
+      <td><b style="color:var(--txt)">${esc(m.to_name||'—')}</b><br><span style="font-size:10px;color:var(--txt3)">${esc(m.to_email)}</span></td>
+      <td>${esc(m.template_name||'—')}${m.job_id?' <span style="color:#8ab4ff;font-size:9px" title="Auto-Versand">⚡</span>':''}${m.campaign?`<br><span style="font-size:9px;color:var(--p)">${esc(m.campaign)}</span>`:''}</td>
       <td style="white-space:nowrap">${esc(m.sent_at_local || fmtDate(m.sent_at))}</td>
-      <td>${status}${m.job_id?' <span style="color:#8ab4ff;font-size:9px">⚡</span>':''}</td>
-      <td class="${m.opens>0?'an-open':'an-zero'}" title="${m.technical_opens?m.technical_opens+' technische Pixel-Abrufe, nicht als Öffnung gezählt':''}">${m.opens>0?'👁 '+m.opens+'×':(m.technical_opens>0?'technisch':'—')}</td>
-      <td style="white-space:nowrap" class="${m.last_open?'':'an-zero'}">${m.last_open?esc(m.last_open_local || fmtDate(m.last_open)):'—'}</td>
+      <td><span class="st-badge st-${m.status_tone}">${esc(m.status_label)}</span></td>
+      <td class="${m.unique_open?'an-open':'an-zero'}" title="${m.technical_opens?m.technical_opens+' automatische Abrufe (nicht als Öffnung gezählt)':''}">${m.unique_open?'👁 '+m.opens+'×':(m.technical_opens>0?'autom.':'—')}</td>
       <td class="${m.clicks>0?'an-open':'an-zero'}">${m.clicks>0?'🔗 '+m.clicks:'—'}</td>
-      <td class="${m.devices>1?'an-open':'an-zero'}" title="Mehrere Geräte kann auf Weiterleitung hindeuten">${m.devices||0}</td>
-    </tr><tr class="ev-row" id="ev-${m.id}" style="display:none"><td colspan="8"></td></tr>`;
-  }).join('') || '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--txt4)">Noch keine E-Mails versendet</td></tr>';
+      <td class="an-zero" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${link?`<a href="${esc(link)}" target="_blank" rel="noopener" style="color:var(--b)" onclick="event.stopPropagation()">${esc(link.replace(/^https?:\/\//,'').slice(0,40))}</a>`:'—'}</td>
+    </tr><tr class="ev-row" id="ev-${m.id}" style="display:none"><td colspan="7"></td></tr>`;
+  }).join('') || '<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--txt4)">Keine E-Mails im gewählten Zeitraum / Filter</td></tr>';
+
+  // Top-Vorlagen
+  const linkRow = (a, b, c) => `<div class="an-link-row"><span class="lu">${a}</span><span class="lc">${b}</span><span class="lr">${c}</span></div>`;
+  document.getElementById('an-top-templates').innerHTML = (an.top_templates||[]).map(x =>
+    linkRow(esc(x.name), x.opened + '👁', x.clicked + '🔗 / ' + x.sent + '✉')).join('') || emptyLine('Keine Daten');
+  document.getElementById('an-top-campaigns').innerHTML = (an.top_campaigns||[]).map(x =>
+    linkRow(esc(x.campaign), x.clicked + '🔗', x.opened + '👁 / ' + x.sent + '✉')).join('') || emptyLine('Keine Kampagnen erfasst');
+  document.getElementById('an-top-links').innerHTML = (an.top_links||[]).map(x =>
+    linkRow(esc(x.url.replace(/^https?:\/\//,'')), x.clicks + '🔗', x.recipients + ' Empf.')).join('') || emptyLine('Noch keine Klicks');
+  document.getElementById('an-recipients-clicked').innerHTML = (an.recipients_clicked||[]).map(x =>
+    linkRow(`${esc(x.to_name||x.to_email)}<br><small style="color:var(--txt4)">${esc(x.last_local||'')}</small>`, x.clicks + '🔗', '')).join('') || emptyLine('Noch keine Klick-Interaktionen');
 
   // SMS
-  if (sms) {
-    if (sms.error) set('an-sms-note', sms.error);
-    else set('an-sms-note', 'Live aus dem Voice-Agent-System');
-    set('an-sms-total', sms.total ?? '—');
-    set('an-sms-today', sms.today ?? '—');
-    set('an-sms-failed', sms.failed ?? '—');
-    set('an-sms-feedback', sms.feedback_count ?? '—');
-    document.getElementById('an-sms-recent').innerHTML = (sms.recent||[]).map(s => `
-      <div class="sms-item">
-        <div class="top"><span class="to">${esc(s.phone_number)}</span><span style="color:${s.status==='sent'?'var(--g)':'var(--r)'}">${s.status==='sent'?'✓':'✗'} ${fmtShort(s.created_at)}</span></div>
-        <div class="msg">${esc(s.message||'')}</div>
-      </div>`).join('') || '<div style="color:var(--txt4);font-size:12px;text-align:center;padding:16px">Noch keine SMS</div>';
-  }
+  renderSmsAnalytics(sms);
 
   const web = an.web || {};
   set('an-web-visits', web.total || 0);
@@ -2304,6 +3208,7 @@ async function loadAnalytics() {
     : 'PUBLIC_BASE_URL fehlt, Tracking-Script kann noch nicht erzeugt werden.';
 
   // Funnel (kompakt)
+  const sc = (reportCache && reportCache.status_counts) || {};
   const rows = [
     { label:'Kontaktiert', n: sc.contacted||0, color:'#6aa4ff' },
     { label:'Geöffnet', n: t.opened||0, color:'#22d17c' },
@@ -2319,23 +3224,122 @@ async function loadAnalytics() {
       <div class="f-n">${r.n}</div></div>`).join('');
 }
 
+function emptyLine(txt) { return `<div style="color:var(--txt4);font-size:12px;text-align:center;padding:16px">${esc(txt)}</div>`; }
+
 async function toggleMailEvents(id, rowEl) {
   const evRow = document.getElementById('ev-'+id);
   if (!evRow) return;
   if (evRow.style.display !== 'none') { evRow.style.display = 'none'; return; }
-  const events = await fetchJSON('/api/analytics/email/'+id+'/events').catch(()=>[]);
-  const icons = { open:'👁', open_machine:'·', open_unverified:'·', click:'🔗', bounce:'↩' };
-  const labels = { open:'Echt geöffnet', open_machine:'Technischer Mailclient-Abruf', open_unverified:'Zu früher Pixel-Abruf', click:'Link geklickt', bounce:'Zustellfehler (Bounce)' };
-  evRow.querySelector('td').innerHTML = events.length
-    ? `<div class="an-events">${events.map(e => `
-        <div class="an-ev"><span class="t">${esc(e.created_at_local || fmtDate(e.created_at))}</span>
-          <span class="ic-${e.effective_type||e.event_type}">${icons[e.effective_type||e.event_type]||'·'} ${labels[e.effective_type||e.event_type]||e.event_type}</span>
-          ${e.url?`<span style="color:var(--txt3);overflow:hidden;text-overflow:ellipsis">→ ${esc(e.url.slice(0,80))}</span>`:''}
-          ${e.user_agent&&e.event_type!=='bounce'?`<span style="color:var(--txt4);font-size:9px">${esc(deviceName(e.user_agent))}</span>`:''}
-          ${e.event_type==='bounce'&&e.user_agent?`<span style="color:var(--txt4);font-size:10px">${esc(e.user_agent.slice(0,90))}</span>`:''}
-        </div>`).join('')}</div>`
-    : '<div class="an-events"><span style="color:var(--txt4);font-size:11px">Noch keine Ereignisse — Öffnungen erscheinen hier sobald der Empfänger die Mail lädt (benötigt öffentliche PUBLIC_BASE_URL).</span></div>';
+  const mail = anMailsCache.find(m => m.id === id) || {};
+  const res = await fetchJSON('/api/analytics/email/'+id+'/events').catch(()=>({ events:[], timeline:[] }));
+  const events = res.events || [];
+  const timeline = res.timeline || [];
+
+  const tl = timeline.map(step => `
+    <div class="tl-step">
+      <div class="tl-dot ${step.done ? (step.tone==='bad'?'bad':'done') : ''}">${step.done ? (step.tone==='bad'?'✕':'✓') : '·'}</div>
+      <div class="tl-body">
+        <div class="tl-lbl ${step.done?'':'pending'}">${esc(step.label)}</div>
+        ${step.at_local ? `<div class="tl-time">${esc(step.at_local)}</div>` : (step.done ? '' : '<div class="tl-time">ausstehend</div>')}
+      </div>
+    </div>`).join('');
+
+  const rawEvents = events.length ? events.map(e => `
+    <div class="an-ev">
+      <span class="t">${esc(e.created_at_local || fmtDate(e.created_at))}</span>
+      <span class="ic-${e.effective_type||e.event_type}">${esc(e.label || e.event_type)}</span>
+      ${e.url?`<span style="color:var(--txt3);overflow:hidden;text-overflow:ellipsis">→ ${esc(String(e.url).slice(0,80))}</span>`:''}
+      ${e.user_agent&&e.event_type!=='bounce'?`<span style="color:var(--txt4);font-size:9px">${esc(deviceName(e.user_agent))}</span>`:''}
+    </div>`).join('') : '<span style="color:var(--txt4);font-size:11px">Noch keine Tracking-Ereignisse. Klicks & Öffnungen erscheinen hier, sobald der Empfänger reagiert (Öffnungen benötigen eine öffentliche PUBLIC_BASE_URL).</span>';
+
+  const links = (mail.clicked_links||[]).length
+    ? `<div style="font-size:11px;font-weight:700;color:var(--txt2);margin-bottom:4px">Geklickte Links</div>` + (mail.clicked_links||[]).map(l =>
+        `<div class="an-link-row"><span class="lu"><a href="${esc(l.url)}" target="_blank" rel="noopener" style="color:var(--b)">${esc(l.url.slice(0,60))}</a></span><span class="lc">${l.clicks}×</span><span class="lr">${esc(l.last_local||'')}</span></div>`).join('')
+    : '';
+
+  evRow.querySelector('td').innerHTML = `
+    <div class="an-detail">
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--txt2);margin-bottom:8px">Ereignis-Timeline</div>
+        <div class="tl">${tl}</div>
+      </div>
+      <div class="an-detail-expl">
+        <div><span class="st-badge st-${mail.status_tone}">${esc(mail.status_label||'')}</span></div>
+        <div style="margin-top:8px">${esc(mail.status_explanation||'')}</div>
+        ${mail.status_recommendation?`<div class="rec">➜ ${esc(mail.status_recommendation)}</div>`:''}
+        ${mail.error?`<details style="margin-top:8px"><summary style="cursor:pointer;color:var(--txt3);font-size:10.5px">Technische Anbieter-Meldung anzeigen</summary><div style="margin-top:6px;color:var(--txt3);font-size:10.5px;word-break:break-word">${esc(mail.error)}</div></details>`:''}
+        <div style="margin-top:12px">${links}</div>
+        <div class="an-events" style="margin-top:12px">${rawEvents}</div>
+      </div>
+    </div>`;
   evRow.style.display = '';
+}
+
+function isTrackedSmsLink(link) { return !!link && /\/track\/sms\//.test(link); }
+
+function renderSmsAnalytics(sms) {
+  if (!sms) return;
+  set('an-sms-note', sms.error ? sms.error : (sms.configured ? 'Live aus dem Voice-Agent-System · „Versendet" = ans Netz übergeben, „Zugestellt" erscheint sobald seven.io eine Zustellbestätigung (DLR) liefert' : 'Nicht konfiguriert'));
+  set('an-sms-total', sms.total ?? '—');
+  set('an-sms-today', sms.today ?? '—');
+  set('an-sms-delivered', sms.delivered ?? 0);
+  set('an-sms-failed', sms.failed ?? 0);
+  set('an-sms-clicks', sms.clicks_unique ?? 0);
+
+  document.getElementById('an-sms-status-chips').innerHTML = (sms.by_status||[]).map(s =>
+    `<span class="an-chip st-${s.tone}"><b>${s.count}</b> ${esc(s.label)}</span>`).join('') || '';
+
+  const recent = sms.recent_detailed || [];
+  document.getElementById('an-sms-rows').innerHTML = recent.map(s => {
+    const tracked = isTrackedSmsLink(s.link);
+    const clickCell = s.clicked
+      ? `<span class="an-open">🔗 ${s.click_count}×</span>`
+      : (s.link && !tracked
+          ? `<span class="an-zero" title="Dieser Link läuft nicht über den Tracking-Redirect – Klicks können nicht gemessen werden">nicht messbar</span>`
+          : '<span class="an-zero">—</span>');
+    return `
+    <tr>
+      <td style="white-space:nowrap" title="Vollständig: ${esc(s.phone_number)}">${esc(s.phone_masked)}</td>
+      <td><span class="st-badge st-${s.status_tone}">${esc(s.status_label)}</span></td>
+      <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.message||'')}</td>
+      <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.link?`<a href="${esc(s.link)}" target="_blank" rel="noopener" style="color:var(--b)">${esc(s.link.replace(/^https?:\/\//,'').slice(0,32))}</a>`:'—'}</td>
+      <td>${clickCell}</td>
+      <td style="white-space:nowrap">${esc(fmtShort(s.created_at))}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--txt4)">Noch keine SMS</td></tr>';
+
+  // Transparenz-Hinweis: Klicks nur messbar, wenn der SMS-Link über den Tracking-Redirect läuft.
+  const info = document.getElementById('an-sms-info');
+  const withLink = recent.filter(s => s.link);
+  const anyTracked = withLink.some(s => isTrackedSmsLink(s.link));
+  const fmt = (anCache && anCache.web && anCache.web.sms_link_format) || '';
+  if (withLink.length && !anyTracked) {
+    info.style.display = 'block';
+    info.innerHTML = '<strong>ℹ Warum stehen Klicks auf „nicht messbar"?</strong> Die SMS enthalten direkte Links (z.B. <code>www.tawano.de</code>). Ein Klick lässt sich technisch nur erfassen, wenn der Link im Voice-Agent-System über den Tracking-Redirect verschickt wird:' +
+      (fmt ? ` <code style="color:var(--g)">${esc(fmt)}</code>` : ' <code style="color:var(--g)">' + esc((location.origin) + '/track/sms/{sms_id}?u=ZIELSEITE') + '</code>') +
+      ' Danach werden Klicks pro Nummer hier live angezeigt.';
+  } else { info.style.display = 'none'; }
+
+  document.getElementById('an-sms-top-links').innerHTML = (sms.top_links||[]).map(l =>
+    `<div class="an-link-row"><span class="lu">${esc(l.url.replace(/^https?:\/\//,''))}</span><span class="lc">${l.clicks}🔗</span><span class="lr">${l.visitors} Besucher</span></div>`).join('') || emptyLine('Noch keine SMS-Link-Klicks (Tracking-Redirect nötig)');
+}
+
+function csvCell(v) { const s = String(v == null ? '' : v).replace(/"/g, '""'); return `"${s}"`; }
+function exportAnalyticsCsv() {
+  if (!anMailsCache.length) { toast('Keine Daten zum Export', true); return; }
+  const head = ['Empfaenger','Email','Vorlage','Kampagne','Gesendet','Status','Oeffnungen','Klicks','Geklickter_Link'];
+  const lines = [head.map(csvCell).join(',')];
+  for (const m of anMailsCache) {
+    const link = (m.clicked_links && m.clicked_links[0]) ? m.clicked_links[0].url : '';
+    lines.push([m.to_name, m.to_email, m.template_name, m.campaign, m.sent_at_local, m.status_label, m.opens, m.clicks, link].map(csvCell).join(','));
+  }
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'email-analyse-' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('✓ CSV exportiert (' + anMailsCache.length + ' Zeilen)');
 }
 
 function deviceName(ua) {

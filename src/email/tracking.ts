@@ -30,9 +30,57 @@ const MACHINE_USER_AGENT_PATTERNS = [
   /WhatsApp/i,
   /TelegramBot/i,
   /Applebot/i,
+  // Weitere Anbieter-Proxys & Scanner, die Bilder automatisch vorladen (keine echte Öffnung).
+  /YahooMailProxy/i,
+  /Yahoo!\s*Slurp/i,
+  /YandexImages|YandexBot/i,
+  /Mail\.RU/i,
+  /LinkedInBot/i,
+  /Twitterbot/i,
+  /AhrefsBot|SemrushBot|DotBot|MJ12bot|PetalBot/i,
+  /GoogleDocs|GoogleOther|Google-Read-Aloud/i,
+  /Cloudflare|Cloud Front|Amazon CloudFront/i,
+  /ProofpointURLDefense|urldefense/i,
+  /GMX|WEB\.DE/i,
+  /Zscaler|Forcepoint|Symantec|McAfee|Trend\s*Micro|Sophos/i,
 ];
 
 const MIN_SECONDS_FOR_RELIABLE_OPEN = 30;
+
+// Öffnungen desselben Empfängers innerhalb dieses Fensters gelten als EIN Vorgang
+// (verhindert, dass mehrfaches Nachladen des Pixels als mehrere Öffnungen zählt).
+export const OPEN_DEDUP_WINDOW_SECONDS = 120;
+
+/**
+ * Entdoppelt Öffnungs-Events zeitlich: mehrere Events mit gleicher Signatur (Gerät/IP),
+ * die dicht beieinander liegen, werden zu einem einzigen Öffnungs-Vorgang zusammengefasst.
+ * Erwartet Events als { signature, created_at }; gibt die Anzahl distinkter Öffnungen zurück.
+ */
+export function countDistinctOpens(
+  events: Array<{ signature: string; created_at: string }>,
+  windowSeconds: number = OPEN_DEDUP_WINDOW_SECONDS
+): number {
+  const bySig = new Map<string, number[]>();
+  for (const e of events) {
+    const t = parseTrackedTime(e.created_at)?.getTime();
+    if (t == null) continue;
+    const arr = bySig.get(e.signature) || [];
+    arr.push(t);
+    bySig.set(e.signature, arr);
+  }
+  let total = 0;
+  for (const times of bySig.values()) {
+    times.sort((a, b) => a - b);
+    let last = -Infinity;
+    for (const t of times) {
+      if (t - last > windowSeconds * 1000) {
+        total++;
+        last = t;
+      }
+    }
+  }
+  return total;
+}
 
 export function parseTrackedTime(value: unknown): Date | null {
   if (!value) return null;
@@ -80,4 +128,38 @@ export function isReliableOpen(input: {
 
 export function isOpenLikeEvent(eventType?: string | null): boolean {
   return eventType === 'open' || eventType === 'open_machine' || eventType === 'open_unverified';
+}
+
+// ── Klick-Tracking ─────────────────────────────────────────────────────────
+// Firmen-Mailscanner (Outlook SafeLinks, Proofpoint, Mimecast, Barracuda …) folgen
+// automatisch JEDEM Link in einer Mail, um ihn auf Schadcode zu prüfen. Ohne Filterung
+// zählt jeder solche Scan als echter Klick und bläht die Statistik auf.
+export type EmailClickEventType = 'click' | 'click_machine';
+
+export function classifyClickEvent(userAgent?: string | null): EmailClickEventType {
+  return isMachineOpenUserAgent(userAgent) ? 'click_machine' : 'click';
+}
+
+// Echter Klick: gespeicherter Typ 'click' UND kein Maschinen-/Scanner-User-Agent.
+// Die zweite Prüfung fängt auch Alt-Daten ab, die vor der Klassifizierung noch
+// pauschal als 'click' gespeichert wurden.
+export function isRealClick(input: { event_type?: string | null; user_agent?: string | null }): boolean {
+  if (input.event_type !== 'click') return false;
+  return !isMachineOpenUserAgent(input.user_agent);
+}
+
+export function isClickLikeEvent(eventType?: string | null): boolean {
+  return eventType === 'click' || eventType === 'click_machine';
+}
+
+// Entdoppelt Klicks je (Link + Gerät/IP) im Zeitfenster – analog zu Öffnungen,
+// damit mehrfaches Nachladen/Prefetch nicht als mehrere Klicks zählt.
+export function countDistinctClicks(
+  events: Array<{ url?: string | null; signature: string; created_at: string }>,
+  windowSeconds: number = OPEN_DEDUP_WINDOW_SECONDS
+): number {
+  return countDistinctOpens(
+    events.map(e => ({ signature: `${e.url || 'unknown'}|${e.signature}`, created_at: e.created_at })),
+    windowSeconds
+  );
 }

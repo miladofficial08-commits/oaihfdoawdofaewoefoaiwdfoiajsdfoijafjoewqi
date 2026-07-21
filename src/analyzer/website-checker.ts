@@ -41,10 +41,38 @@ export async function analyzeWebsite(url: string): Promise<WebsiteAnalysis> {
 
   try {
     const startedAt = Date.now();
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12000);
+    const page = await fetchPage(normalized);
 
-    const res = await fetch(normalized, {
+    if (page.status && page.status >= 400) return emptyResult(`HTTP ${page.status}`);
+    if (page.html == null) return emptyResult('Timeout');
+
+    const analysis = analyzeHtml(page.html, normalized, Date.now() - startedAt, page.finalUrl);
+
+    // E-Mail-Nachfassen: Deutsche Firmen haben ihre E-Mail fast immer nur im Impressum
+    // oder auf der Kontaktseite (Impressumspflicht §5 TMG), praktisch nie auf der Startseite.
+    // Ohne diesen Schritt bleiben die meisten Leads ohne E-Mail und damit nicht anschreibbar.
+    if (!analysis.email) {
+      const found = await findEmailOnContactPages(page.html, page.finalUrl);
+      if (found) {
+        analysis.email = found.email;
+        analysis.evidence?.push(`Oeffentliche E-Mail auf Unterseite gefunden: ${found.email} (${found.source})`);
+      }
+    }
+
+    return analysis;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return emptyResult(msg.includes('abort') ? 'Timeout' : msg.slice(0, 100));
+  }
+}
+
+interface FetchedPage { html?: string; finalUrl: string; status?: number }
+
+async function fetchPage(url: string): Promise<FetchedPage> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+  try {
+    const res = await fetch(url, {
       signal: controller.signal,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
@@ -52,16 +80,52 @@ export async function analyzeWebsite(url: string): Promise<WebsiteAnalysis> {
       },
       redirect: 'follow',
     });
+    const finalUrl = res.url || url;
+    if (!res.ok) return { finalUrl, status: res.status };
+    return { html: await res.text(), finalUrl, status: res.status };
+  } finally {
     clearTimeout(timeout);
-
-    if (!res.ok) return emptyResult(`HTTP ${res.status}`);
-
-    const html = await res.text();
-    return analyzeHtml(html, normalized, Date.now() - startedAt, res.url);
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return emptyResult(msg.includes('abort') ? 'Timeout' : msg.slice(0, 100));
   }
+}
+
+// Folgt bis zu 3 Impressum-/Kontakt-Unterseiten (nur gleiche Domain) und sucht dort eine E-Mail.
+async function findEmailOnContactPages(homeHtml: string, base: string): Promise<{ email: string; source: string } | undefined> {
+  for (const u of candidateContactUrls(homeHtml, base).slice(0, 3)) {
+    try {
+      const page = await fetchPage(u);
+      if (!page.html) continue;
+      const email = extractEmail(page.html);
+      if (email) return { email, source: u };
+    } catch { /* Unterseite nicht erreichbar – ignorieren */ }
+  }
+  return undefined;
+}
+
+function candidateContactUrls(html: string, base: string): string[] {
+  let baseHost: string;
+  try { baseHost = new URL(base).hostname.replace(/^www\./, ''); } catch { return []; }
+
+  const sameHost = (u: string): boolean => {
+    try { return new URL(u).hostname.replace(/^www\./, '') === baseHost; } catch { return false; }
+  };
+
+  const out: string[] = [];
+  const add = (u: string) => { if (sameHost(u) && !out.includes(u)) out.push(u); };
+
+  // 1. Echte Impressum-/Kontakt-Links aus der Startseite (präziser als Rate-Pfade)
+  const re = /href=["']([^"']+)["']/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html))) {
+    const href = m[1];
+    if (href.toLowerCase().startsWith('mailto:')) continue;
+    if (!/impressum|imprint|kontakt|contact/i.test(href)) continue;
+    try { add(new URL(href, base).toString()); } catch { /* ungültiger href */ }
+  }
+  // 2. Standard-Pfade als Fallback, falls kein Link im HTML steht
+  for (const p of ['/impressum', '/impressum/', '/kontakt', '/kontakt/', '/contact', '/imprint']) {
+    try { add(new URL(p, base).toString()); } catch { /* ignore */ }
+  }
+  return out;
 }
 
 export function analyzeHtml(html: string, url: string, durationMs = 0, finalUrl = url): WebsiteAnalysis {
@@ -121,9 +185,42 @@ function isOldWebsite(html: string): boolean {
   return oldSignals >= 2 || !hasViewport;
 }
 
+// Rollen-Adressen sind fast immer die richtige Geschäfts-Mail (nicht die private des Webmasters).
+const EMAIL_ROLE_PREFIXES = [
+  'info', 'kontakt', 'mail', 'email', 'office', 'buero', 'sekretariat', 'empfang',
+  'service', 'anfrage', 'praxis', 'kanzlei', 'zentrale', 'post', 'hallo', 'team', 'moin',
+];
+const EMAIL_RE = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
+
 function extractEmail(html: string): string | undefined {
-  const matches = html.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) ?? [];
-  return matches.find(isLikelyBusinessEmail);
+  const candidates = collectEmailCandidates(html);
+  if (!candidates.length) return undefined;
+  // Rollen-Adresse bevorzugen, sonst die erste plausible Geschäfts-Mail.
+  const role = candidates.find(e => EMAIL_ROLE_PREFIXES.some(p => e.startsWith(p + '@')));
+  return role ?? candidates[0];
+}
+
+function collectEmailCandidates(html: string): string[] {
+  const found: string[] = [];
+  const push = (raw?: string | null) => {
+    if (!raw) return;
+    const e = raw.trim().replace(/^mailto:/i, '').split('?')[0].toLowerCase();
+    if (isLikelyBusinessEmail(e) && !found.includes(e)) found.push(e);
+  };
+  // 1. mailto:-Links – zuverlässigste Quelle
+  for (const m of html.matchAll(/mailto:([^"'?\s>]+)/gi)) push(m[1]);
+  // 2. Klartext-E-Mails im HTML
+  for (const m of html.match(EMAIL_RE) ?? []) push(m);
+  // 3. Verschleierte E-Mails entschlüsseln: info(at)firma.de, info [at] firma [dot] de, HTML-Entities
+  for (const m of deobfuscateEmails(html).match(EMAIL_RE) ?? []) push(m);
+  return found;
+}
+
+function deobfuscateEmails(html: string): string {
+  return html
+    .replace(/&#0*64;/g, '@').replace(/&#0*46;/g, '.')
+    .replace(/\s*[\[({<]\s*(?:at|@)\s*[\])}>]\s*/gi, '@')
+    .replace(/\s*[\[({<]\s*(?:dot|punkt)\s*[\])}>]\s*/gi, '.');
 }
 
 function extractWhatsApp(html: string): string | undefined {
