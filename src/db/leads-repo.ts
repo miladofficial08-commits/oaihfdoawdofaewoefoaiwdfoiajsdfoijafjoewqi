@@ -356,7 +356,15 @@ export function getDailyReport() {
   const leads = db.prepare(`SELECT branche, prioritaet, score_gesamt FROM leads WHERE status != 'archived'`).all() as Lead[];
   const value = estimatePipelineValue(leads);
 
+  // Echte Versandzahlen direkt aus sent_emails – keine Hochrechnung, keine Status-Zähler.
+  const emailsSentTotal = (db.prepare(`SELECT COUNT(*) as n FROM sent_emails WHERE success = 1`).get() as { n: number }).n;
+  const emailsSentToday = (db.prepare(
+    `SELECT COUNT(*) as n FROM sent_emails WHERE success = 1 AND sent_at >= datetime('now','start of day','localtime')`
+  ).get() as { n: number }).n;
+
   return {
+    emails_sent_total: emailsSentTotal,
+    emails_sent_today: emailsSentToday,
     neue: (db.prepare(`SELECT COUNT(*) as n FROM leads WHERE date(created_at) = ?`).get(today) as { n: number }).n,
     a_leads: (db.prepare(`SELECT COUNT(*) as n FROM leads WHERE prioritaet = 'A' AND status != 'archived'`).get() as { n: number }).n,
     b_leads: (db.prepare(`SELECT COUNT(*) as n FROM leads WHERE prioritaet = 'B' AND status != 'archived'`).get() as { n: number }).n,
