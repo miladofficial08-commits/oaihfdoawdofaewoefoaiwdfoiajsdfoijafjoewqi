@@ -207,13 +207,30 @@ function collectEmailCandidates(html: string): string[] {
     const e = raw.trim().replace(/^mailto:/i, '').split('?')[0].toLowerCase();
     if (isLikelyBusinessEmail(e) && !found.includes(e)) found.push(e);
   };
-  // 1. mailto:-Links – zuverlässigste Quelle
-  for (const m of html.matchAll(/mailto:([^"'?\s>]+)/gi)) push(m[1]);
-  // 2. Klartext-E-Mails im HTML
-  for (const m of html.match(EMAIL_RE) ?? []) push(m);
-  // 3. Verschleierte E-Mails entschlüsseln: info(at)firma.de, info [at] firma [dot] de, HTML-Entities
-  for (const m of deobfuscateEmails(html).match(EMAIL_RE) ?? []) push(m);
+  // Viele deutsche Seiten kodieren die Adresse als HTML-Entities gegen Spam-Bots
+  // (z.B. &#105;&#x6E;&#102;&#x6F;&#64;… = info@…). Deshalb zusätzlich dekodiert durchsuchen.
+  const decoded = decodeHtmlEntities(html);
+  for (const source of decoded === html ? [html] : [html, decoded]) {
+    // 1. mailto:-Links – zuverlässigste Quelle
+    for (const m of source.matchAll(/mailto:([^"'?\s>]+)/gi)) push(m[1]);
+    // 2. Klartext-E-Mails im HTML
+    for (const m of source.match(EMAIL_RE) ?? []) push(m);
+  }
+  // 3. Verschleierungen aufloesen: info(at)firma.de, info [at] firma [dot] de
+  for (const m of deobfuscateEmails(decoded).match(EMAIL_RE) ?? []) push(m);
   return found;
+}
+
+/** Wandelt numerische HTML-Entities (&#105; dezimal und &#x6E; hex) zurueck in Zeichen. */
+export function decodeHtmlEntities(text: string): string {
+  if (!text.includes('&#')) return text;
+  const toChar = (code: number): string => {
+    if (!Number.isFinite(code) || code < 1 || code > 0x10ffff) return '';
+    try { return String.fromCodePoint(code); } catch { return ''; }
+  };
+  return text
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => toChar(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => toChar(parseInt(dec, 10)));
 }
 
 function deobfuscateEmails(html: string): string {
