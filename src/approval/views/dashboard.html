@@ -468,6 +468,27 @@
   .fl-kpi.hot .fl-kpi-v { color: #c2410c; }
   .fl-kpi.g .fl-kpi-v { color: var(--g); }
   .fl-kpi-l { font-size: 11px; color: var(--txt3); margin-top: 5px; }
+  /* Anrufliste */
+  .cl-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .cl-list { display: flex; flex-direction: column; gap: 10px; }
+  .cl-card { background: var(--surf); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; }
+  .cl-card.prio-A { border-left: 3px solid var(--o); }
+  .cl-main { min-width: 0; }
+  .cl-name { font-size: 14px; font-weight: 700; color: var(--txt); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .cl-meta { font-size: 11.5px; color: var(--txt3); margin-top: 3px; }
+  .cl-tags { display: flex; gap: 6px; margin-top: 7px; flex-wrap: wrap; }
+  .cl-tag { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #eef1f5; color: var(--txt2); }
+  .cl-tag.prioA { background: rgba(255,150,60,.16); color: #c2410c; }
+  .cl-tag.notdienst { background: rgba(239,68,68,.12); color: #dc2626; }
+  .cl-tag.emailed { background: rgba(46,110,232,.12); color: #1d5ad0; }
+  .cl-tag.rating { background: rgba(34,209,124,.12); color: #15803d; }
+  .cl-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; }
+  .cl-phone { font-size: 16px; font-weight: 800; color: var(--txt); text-decoration: none; letter-spacing: .3px; }
+  .cl-phone:hover { color: var(--b); }
+  .cl-btns { display: flex; gap: 6px; }
+  .cl-btn { border: 1px solid var(--line2); background: var(--elev); color: var(--txt2); font-size: 11.5px; font-weight: 600; padding: 7px 12px; border-radius: 8px; cursor: pointer; }
+  .cl-btn.done { background: var(--g); border-color: var(--g); color: #052012; }
+  .cl-btn:hover { filter: brightness(.97); }
   .fl-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
   .fl-tabs { display: inline-flex; gap: 4px; background: var(--surf); border: 1px solid var(--line); border-radius: 9px; padding: 3px; }
   .fl-tab { border: 0; background: transparent; color: var(--txt2); font-size: 12px; font-weight: 600; padding: 7px 13px; border-radius: 7px; cursor: pointer; }
@@ -726,6 +747,10 @@
     <div class="nav-item" id="nav-autosend" onclick="setPage('autosend')">
       <span class="nav-icon">⚡</span><span>Auto-Versand</span>
       <span class="nav-badge zero" id="nb-autosend">0</span>
+    </div>
+    <div class="nav-item" id="nav-calls" onclick="setPage('calls')">
+      <span class="nav-icon">📞</span><span>Anrufliste</span>
+      <span class="nav-badge blue zero" id="nb-calls">0</span>
     </div>
     <div class="nav-item" id="nav-templates" onclick="setPage('templates')">
       <span class="nav-icon">📄</span><span>Vorlagen</span>
@@ -1406,6 +1431,26 @@ info@nur-eine-adresse.de"></textarea>
     </div>
   </div>
 
+  <!-- ─── ANRUFLISTE ─── -->
+  <div class="page" id="p-calls">
+    <div class="fl-note">
+      <b>Telefon-Bereitschaft:</b> Die heißesten, noch nicht angerufenen Betriebe mit Telefonnummer – sortiert nach Priorität, Notdienst und Telefon-Score.
+      Du verkaufst einen Telefonassistenten – <b>beweise ihn, indem du selbst durchkommst.</b> Ziel pro Anruf ist ein 15-Min-Demo-Termin, kein Abschluss.
+      Betriebe mit <span class="cl-tag emailed">bereits angeschrieben</span> sind Warm-Calls (E-Mail + Anruf = höhere Conversion).
+    </div>
+    <div class="cl-summary" id="cl-summary"></div>
+    <div class="fl-toolbar">
+      <input type="text" id="cl-search" class="an-filter" placeholder="🔍 Firma / Ort / Branche…" oninput="renderCallList()">
+      <div class="flex1"></div>
+      <button class="topbar-btn" onclick="loadCallList()">↻ Aktualisieren</button>
+    </div>
+    <div id="cl-list" class="cl-list"></div>
+    <div id="cl-empty" class="empty-state" style="display:none;padding:48px 0">
+      <div class="ei">📞</div><div class="et">Keine offenen Anrufe</div>
+      <div class="es">Sobald neue Leads mit Telefonnummer gescraped werden, erscheinen sie hier. Bereits angerufene sind ausgeblendet.</div>
+    </div>
+  </div>
+
   <div class="page" id="p-outreach">
     <div class="ost-row">
       <div class="ost b"><div class="ost-lbl">Kontaktiert</div><div class="ost-val" id="os-c">—</div><div class="ost-sub">E-Mails raus</div></div>
@@ -1526,13 +1571,14 @@ function setPage(name) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('p-' + name).classList.add('active');
   document.getElementById('nav-' + name).classList.add('active');
-  const titles = { dashboard:'Übersicht', pipeline:'Leads finden', sender:'E-Mail-Center', leads:'Leads', sent:'Gesendet', autosend:'Auto-Versand', templates:'Vorlagen', analytics:'Analyse', inbox:'Posteingang', followup:'Angeschrieben', outreach:'Pipeline' };
+  const titles = { dashboard:'Übersicht', pipeline:'Leads finden', sender:'E-Mail-Center', leads:'Leads', sent:'Gesendet', autosend:'Auto-Versand', calls:'Anrufliste', templates:'Vorlagen', analytics:'Analyse', inbox:'Posteingang', followup:'Angeschrieben', outreach:'Pipeline' };
   document.getElementById('topbar-title').textContent = titles[name] || name;
   if (name === 'pipeline') { loadLeads(); renderIndustryPicker(); }
   if (name === 'sender') loadSenderPage();
   if (name === 'sent') loadSentPage();
   if (name === 'leads') loadInventory();
   if (name === 'autosend') loadAutoSend();
+  if (name === 'calls') loadCallList();
   if (name === 'templates') loadTemplatesPage();
   if (name === 'analytics') { setRange(anRange); if (document.getElementById('an-autorefresh')?.checked) startAnalyticsAuto(); }
   else stopAnalyticsAuto();
@@ -1545,6 +1591,7 @@ function setPage(name) {
 // ════ DATA ════
 async function reload() {
   await Promise.all([loadReport(), loadSmtpStatus(), loadImapStatus(), loadStrategy(), ensureTemplate(), updateAutosendBadge()]);
+  refreshCallsBadge();
   if (currentPage === 'pipeline') loadLeads();
   if (currentPage === 'outreach') loadOutreach();
   if (currentPage === 'dashboard') { renderDashboard(); hydrateTemplateEditors(); }
@@ -2064,6 +2111,76 @@ function bulkSendSelected() {
   openBulkPreview(recipients, 'pipeline');
 }
 function quickSend(id) { openSinglePreview(id); }
+
+// ════ ANRUFLISTE (Telefon-Bereitschaft) ════
+let callListData = { leads: [], summary: {} };
+
+async function loadCallList() {
+  const d = await fetchJSON('/api/call-list').catch(()=>null);
+  if (!d) return;
+  callListData = d;
+  const s = d.summary || {};
+  document.getElementById('cl-summary').innerHTML = [
+    ['Offen zum Anrufen', s.open_total||0, 'b', 'Leads mit Telefon, noch nicht angerufen'],
+    ['Heute angerufen', s.called_today||0, 'g', 'als angerufen markiert'],
+    ['In dieser Liste', s.shown||0, '', 'Top-Priorität zuerst'],
+  ].map(([l,v,cls,t]) => `<div class="fl-kpi ${cls}" title="${esc(t)}"><div class="fl-kpi-v">${v}</div><div class="fl-kpi-l">${esc(l)}</div></div>`).join('');
+  refreshCallsBadge(s.open_total);
+  renderCallList();
+}
+
+function refreshCallsBadge(n) {
+  const nb = document.getElementById('nb-calls');
+  if (!nb) return;
+  if (typeof n === 'number') { nb.textContent = n; nb.classList.toggle('zero', !(n>0)); }
+  else { fetchJSON('/api/call-list?limit=1').then(d => { const t=d?.summary?.open_total||0; nb.textContent=t; nb.classList.toggle('zero', !(t>0)); }).catch(()=>{}); }
+}
+
+function renderCallList() {
+  const q = (document.getElementById('cl-search')?.value||'').toLowerCase().trim();
+  let rows = callListData.leads || [];
+  if (q) rows = rows.filter(l => [l.name,l.stadt,l.branche,l.telefon].some(x => String(x||'').toLowerCase().includes(q)));
+  const list = document.getElementById('cl-list');
+  const empty = document.getElementById('cl-empty');
+  if (!rows.length) { list.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display='none';
+  list.innerHTML = rows.map(l => {
+    const tel = String(l.telefon||'').trim();
+    const telHref = tel.replace(/[^0-9+]/g,'');
+    const rating = (l.google_bewertung!=null && l.google_bewertung>0)
+      ? `<span class="cl-tag rating" title="${l.google_anzahl_reviews||0} Bewertungen">★ ${Number(l.google_bewertung).toFixed(1)}</span>` : '';
+    const tags = [
+      l.prioritaet==='A' ? '<span class="cl-tag prioA">A-Priorität</span>' : '',
+      l.hat_notdienst_hinweis ? '<span class="cl-tag notdienst">Notdienst</span>' : '',
+      l.already_emailed ? '<span class="cl-tag emailed">bereits angeschrieben</span>' : '',
+      rating,
+    ].filter(Boolean).join('');
+    const hint = l.kontakt_hinweis ? `<div class="cl-meta">${esc(l.kontakt_hinweis)}</div>` : '';
+    return `<div class="cl-card ${l.prioritaet==='A'?'prio-A':''}">
+      <div class="cl-main">
+        <div class="cl-name">${esc(l.name)}</div>
+        <div class="cl-meta">${esc(l.branche||'')} · ${esc(l.stadt||'')}${l.adresse?' · '+esc(l.adresse):''}</div>
+        <div class="cl-tags">${tags||'<span class="cl-tag">—</span>'}</div>
+        ${hint}
+      </div>
+      <div class="cl-actions">
+        <a class="cl-phone" href="tel:${esc(telHref)}">📞 ${esc(tel)}</a>
+        <div class="cl-btns">
+          <button class="cl-btn done" onclick="markCalled('${l.id}')">✓ Angerufen</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function markCalled(id) {
+  const input = prompt('Kurze Notiz zum Anruf (z. B. „nicht erreicht", „Demo-Termin Di 10 Uhr"):', '');
+  if (input === null) return; // abgebrochen
+  const note = input.trim() || ('Angerufen am ' + new Date().toLocaleString('de-DE'));
+  const r = await post('/api/manual-call', { id, note });
+  if (r && r.ok) { toast('Als angerufen markiert'); loadCallList(); }
+  else { toast('Konnte nicht speichern', true); }
+}
 
 // ════ ANGESCHRIEBEN & FOLLOW-UP ════
 let followupData = { leads: [], summary: {}, config: {} };

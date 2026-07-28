@@ -34,7 +34,8 @@ import { generateAdVariants } from '../ai/ad-generator';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../db/schema';
 import { fetchInboxEmails, getImapStatus, markEmailSeen } from '../email/inbox';
-import { getEmailTemplate, updateEmailTemplate, renderTemplate, listEmailTemplates, createEmailTemplate, deleteEmailTemplate, getTemplateById, seedFollowupTemplates } from '../email/template';
+import { getEmailTemplate, updateEmailTemplate, renderTemplate, listEmailTemplates, createEmailTemplate, deleteEmailTemplate, getTemplateById, seedFollowupTemplates, seedOutreachTemplates } from '../email/template';
+import { startDailyEngine } from '../email/daily-engine';
 import { startAutoSender, recordSentEmail, sentTodayCount, GLOBAL_DAILY_CAP, ALLOWED_DAILY_LIMITS, SendJob } from '../email/auto-sender';
 import { startFollowupSender, getFollowupConfig, setFollowupConfig, followupStats } from '../email/followup-sender';
 import { classifyOpenEvent, isOpenLikeEvent, isReliableOpen, secondsBetween, countDistinctOpens, OPEN_DEDUP_WINDOW_SECONDS, classifyClickEvent, isRealClick, isClickLikeEvent, countDistinctClicks } from '../email/tracking';
@@ -1719,13 +1720,51 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     }
   );
 
-  // Fertige Follow-up-Vorlagen bereitstellen (idempotent)
+  // ── Tägliche Anrufliste (Hebel 2 – Telefon-Bereitschaft) ──────────────────
+  // Liefert die heißesten, noch nicht angerufenen Leads MIT Telefonnummer, damit
+  // der Gründer parallel zum Auto-Versand gezielt cold-callen kann. Bereits per
+  // E-Mail kontaktierte Betriebe sind erlaubt (Mehrfach-Touch = höhere Conversion)
+  // und werden als "bereits angeschrieben" markiert – ein starker Warm-Call-Anlass.
+  app.get<{ Querystring: { limit?: string } }>('/api/call-list', async (req) => {
+    const db = getDb();
+    const limit = Math.max(1, Math.min(100, Number(req.query.limit) || 20));
+    const rows = db.prepare(
+      `SELECT l.id, l.name, l.branche, l.stadt, l.telefon, l.email, l.website, l.adresse,
+              l.prioritaet, l.score_gesamt, l.score_telefon, l.google_bewertung, l.google_anzahl_reviews,
+              l.hat_notdienst_hinweis, l.status, l.kontakt_hinweis, l.manual_call_note,
+              CASE WHEN l.email IS NOT NULL AND LOWER(TRIM(l.email)) IN (
+                     SELECT LOWER(TRIM(to_email)) FROM sent_emails WHERE success = 1 AND to_email IS NOT NULL AND to_email != ''
+                   ) THEN 1 ELSE 0 END AS already_emailed
+       FROM leads l
+       WHERE l.telefon IS NOT NULL AND length(TRIM(l.telefon)) > 5
+         AND l.status IN ('new','checked','draft_ready','approved','manual_review','contacted')
+         AND COALESCE(l.manual_call_done, 0) = 0
+       ORDER BY CASE l.prioritaet WHEN 'A' THEN 0 WHEN 'B' THEN 1 ELSE 2 END,
+                l.hat_notdienst_hinweis DESC, l.score_telefon DESC, l.score_gesamt DESC
+       LIMIT ?`
+    ).all(limit) as any[];
+    const openTotal = (db.prepare(
+      `SELECT COUNT(*) n FROM leads
+       WHERE telefon IS NOT NULL AND length(TRIM(telefon)) > 5
+         AND status IN ('new','checked','draft_ready','approved','manual_review','contacted')
+         AND COALESCE(manual_call_done, 0) = 0`
+    ).get() as { n: number }).n;
+    const calledToday = (db.prepare(
+      `SELECT COUNT(*) n FROM leads WHERE manual_call_done = 1 AND date(last_manual_call_at) = date('now','localtime')`
+    ).get() as { n: number }).n;
+    return { leads: rows, summary: { open_total: openTotal, shown: rows.length, called_today: calledToday } };
+  });
+
+  // Fertige Follow-up- + Erstkontakt-Vorlagen bereitstellen (idempotent).
+  // seedOutreachTemplates repariert zusätzlich die beschädigte Standard-Vorlage.
   seedFollowupTemplates();
+  seedOutreachTemplates();
 
   // Hintergrund-Worker starten
   startAutoSender();
   startScheduledSender();
   startFollowupSender();
+  startDailyEngine();
 }
 
 function enrichLeads(leads: Lead[]) {

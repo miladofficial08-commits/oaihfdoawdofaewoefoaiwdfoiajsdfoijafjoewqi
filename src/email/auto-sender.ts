@@ -12,6 +12,26 @@ export const ALLOWED_DAILY_LIMITS = [30, 50, 100, 150, 200];
 // Worker-Takt: alle 10s prüfen, damit auch kurze Pausen (min. 15s) sauber greifen.
 const TICK_MS = 10_000;
 
+// ── Warmup-Rampe (Reputationsschutz) ───────────────────────────────────────
+// Ein junges Absenderkonto darf nicht sofort volles Volumen fahren, sonst
+// steigt die Spam-/Sperr-Gefahr. Das effektive Tageslimit startet niedrig und
+// wächst wöchentlich, gedeckelt durch das konfigurierte daily_limit des Jobs.
+export const WARMUP_START_PER_DAY = 25;
+export const WARMUP_STEP_PER_WEEK = 10;
+
+/**
+ * Effektives Tageslimit unter Berücksichtigung der Aufwärmphase.
+ * Woche 0: 25, Woche 1: 35, Woche 2: 45 … bis job.daily_limit erreicht ist.
+ * Gemessen ab dem Erstellungsdatum des Jobs.
+ */
+export function warmupDailyLimit(job: SendJob): number {
+  const created = new Date(job.created_at).getTime();
+  if (Number.isNaN(created)) return job.daily_limit;
+  const weeks = Math.max(0, Math.floor((Date.now() - created) / (7 * 86_400_000)));
+  const ramped = WARMUP_START_PER_DAY + weeks * WARMUP_STEP_PER_WEEK;
+  return Math.min(job.daily_limit, ramped);
+}
+
 export interface SendJob {
   id: string;
   name: string;
@@ -152,9 +172,11 @@ async function processJob(job: SendJob): Promise<void> {
     setJob(job.id, { note: `Außerhalb Sendefenster (${job.window_start}–${job.window_end} Uhr) – wartet` });
     return;
   }
-  // Limits
-  if (sentTodayCount(job.id) >= job.daily_limit) {
-    setJob(job.id, { note: 'Tageslimit erreicht – geht morgen weiter' });
+  // Limits (mit Warmup-Rampe: junges Konto fährt zunächst reduziertes Tageslimit)
+  const effectiveDaily = warmupDailyLimit(job);
+  if (sentTodayCount(job.id) >= effectiveDaily) {
+    const ramped = effectiveDaily < job.daily_limit ? ` (Aufwärmphase: ${effectiveDaily}/${job.daily_limit})` : '';
+    setJob(job.id, { note: `Tageslimit erreicht – geht morgen weiter${ramped}` });
     return;
   }
   if (sentTodayCount() >= GLOBAL_DAILY_CAP) {

@@ -22,7 +22,7 @@ Bei Tawano entwickeln wir KI-Voice-Agenten, die Ihr Telefon rund um die Uhr betr
 • Nur wichtige Gespräche live an Sie weiterleiten
 
 Testen Sie es gleich selbst – rufen Sie unsere Demo-KI an:
-📞 +49 211 86943717
+📞 +49 211 86943411
 
 Wäre ein kurzes Gespräch (10 Min.) diese Woche möglich?
 
@@ -97,7 +97,7 @@ ich wollte kurz nachhaken, ob meine letzte Nachricht bei Ihnen angekommen ist.
 
 Viele {branche}-Betriebe verpassen täglich Anrufe – unser KI-Telefonassistent nimmt sie rund um die Uhr entgegen, bucht Termine und leitet nur die wichtigen Gespräche an Sie weiter.
 
-Testen Sie die Demo-KI direkt: +49 211 86943717
+Testen Sie die Demo-KI direkt: +49 211 86943411
 
 Reicht Ihnen ein kurzer Anruf (10 Min.) diese Woche? Antworten Sie einfach auf diese E-Mail.
 
@@ -131,6 +131,93 @@ export function seedFollowupTemplates(): void {
   );
   const now = new Date().toISOString();
   for (const t of FOLLOWUP_TEMPLATES) insert.run(t.id, t.name, t.subject, t.body, now);
+}
+
+// Kanonische Demo-Nummer (an einer Stelle, damit alle Vorlagen konsistent bleiben).
+export const DEMO_PHONE = '+49 211 86943411';
+
+// Erstkontakt-Varianten für die A/B-Rotation im Auto-Versand.
+// Unterschiedliche Betreffzeilen + Winkel senken das Spam-Risiko (keine identischen Massenmails)
+// und zeigen, welche Ansprache zieht. Alle branchenagnostisch über {branche}/{stadt}/{name}.
+export const OUTREACH_TEMPLATE_IDS = ['default', 'outreach-b', 'outreach-c'];
+
+const OUTREACH_VARIANTS: Array<{ id: string; name: string; subject: string; body: string }> = [
+  {
+    id: 'outreach-b',
+    name: 'Erstkontakt B – Umsatz-Winkel',
+    subject: 'Verpasste Anrufe = verlorene Aufträge, {name}?',
+    body: `Guten Tag {name}-Team,
+
+bei {branche}-Betrieben in {stadt} ist es oft dasselbe Bild: Das Telefon klingelt, alle sind im Einsatz, der Anrufer legt nach ein paar Klingeln auf – und ruft beim Nächsten an. Der Auftrag ist weg.
+
+Ich baue automatische Telefonassistenten, die genau das auffangen: jeden Anruf entgegennehmen, Anliegen und Rückrufwunsch aufnehmen und Sie sofort informieren – auch abends und am Wochenende.
+
+Sie können einmal selbst hören, wie natürlich das klingt: ${DEMO_PHONE}
+
+Wäre ein kurzer Austausch (10 Min.) diese Woche einen Blick wert?
+
+Viele Grüße
+Max – Tawano
+www.tawano.de | info@tawano.de`,
+  },
+  {
+    id: 'outreach-c',
+    name: 'Erstkontakt C – Kurz & direkt',
+    subject: 'Kurze Frage zu Ihrer Erreichbarkeit, {name}',
+    body: `Guten Tag {name}-Team,
+
+kurze Frage: Wie viele Anrufe gehen bei Ihnen täglich verloren, weil gerade niemand rangehen kann?
+
+Ich baue automatische Telefonassistenten für {branche}-Betriebe in {stadt} – der Assistent geht jederzeit ran, nimmt das Anliegen auf und benachrichtigt Sie sofort. Klingt wie ein echtes Gespräch, nicht wie ein Roboter.
+
+Einmal selbst testen: ${DEMO_PHONE}
+
+Passt ein kurzes Gespräch (10 Min.) diese Woche?
+
+Viele Grüße
+Max – Tawano
+www.tawano.de | info@tawano.de`,
+  },
+];
+
+/**
+ * Repariert die (in Alt-Installationen) beschädigte Standard-Vorlage und legt die
+ * Erstkontakt-Varianten an. Idempotent, überschreibt keine gesunden Nutzer-Edits:
+ * - 'default' wird nur überschrieben, wenn es die bekannten Defekt-Marker enthält
+ *   (nicht ersetzter Platzhalter {Firmenname} oder doppeltes Komma ",,").
+ * - Varianten werden per INSERT OR IGNORE nur angelegt, wenn sie fehlen.
+ */
+export function seedOutreachTemplates(): void {
+  const db = getDb();
+  const now = new Date().toISOString();
+
+  // Standard-Vorlage sicherstellen + ggf. reparieren.
+  const def = getEmailTemplate('default');
+  const corrupted = /\{Firmenname\}/.test(def.body) || /,,/.test(def.body) || /\{Firmenname\}/.test(def.subject);
+  if (corrupted) {
+    db.prepare(`UPDATE email_templates SET subject = @s, body = @b, updated_at = @now WHERE id = 'default'`)
+      .run({ s: DEFAULT_SUBJECT, b: DEFAULT_BODY, now });
+  }
+
+  const insert = db.prepare(
+    `INSERT OR IGNORE INTO email_templates (id, name, subject, body, category, updated_at) VALUES (?, ?, ?, ?, 'Erstkontakt', ?)`
+  );
+  for (const t of OUTREACH_VARIANTS) {
+    insert.run(t.id, t.name, t.subject, t.body, now);
+  }
+
+  // Demo-Nummer in ALLEN Vorlagen auf die kanonische Nummer normalisieren – fängt
+  // bereits geseedete Zeilen mit veralteter Nummer ab (lokal wie auf Prod), da
+  // INSERT OR IGNORE bestehende Zeilen sonst nie aktualisiert.
+  const OLD_DEMO_NUMBERS = ['+49 211 86943717', '+4921186943411'];
+  for (const old of OLD_DEMO_NUMBERS) {
+    if (old === DEMO_PHONE) continue;
+    db.prepare(
+      `UPDATE email_templates
+       SET body = REPLACE(body, @old, @new), subject = REPLACE(subject, @old, @new), updated_at = @now
+       WHERE body LIKE @like OR subject LIKE @like`
+    ).run({ old, new: DEMO_PHONE, now, like: '%' + old + '%' });
+  }
 }
 
 export function renderTemplate(

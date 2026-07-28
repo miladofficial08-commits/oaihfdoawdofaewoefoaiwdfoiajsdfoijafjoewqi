@@ -44,7 +44,7 @@ ich wollte kurz nachhaken, ob meine letzte Nachricht bei Ihnen angekommen ist.
 
 Viele {branche}-Betriebe verpassen täglich Anrufe – unser KI-Telefonassistent nimmt sie rund um die Uhr entgegen, bucht Termine und leitet nur die wichtigen Gespräche an Sie weiter.
 
-Testen Sie die Demo-KI direkt: +49 211 86943717
+Testen Sie die Demo-KI direkt: +49 211 86943411
 
 Reicht Ihnen ein kurzer Anruf (10 Min.) diese Woche? Antworten Sie einfach auf diese E-Mail.
 
