@@ -489,6 +489,27 @@
   .cl-btn { border: 1px solid var(--line2); background: var(--elev); color: var(--txt2); font-size: 11.5px; font-weight: 600; padding: 7px 12px; border-radius: 8px; cursor: pointer; }
   .cl-btn.done { background: var(--g); border-color: var(--g); color: #052012; }
   .cl-btn:hover { filter: brightness(.97); }
+  /* CRM-Liste */
+  .crm-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--txt2); font-weight: 600; cursor: pointer; user-select: none; }
+  .crm-table td { vertical-align: middle; }
+  .crm-firma { font-weight: 700; color: var(--txt); font-size: 13px; }
+  .crm-sub { font-size: 11px; color: var(--txt3); margin-top: 2px; }
+  .crm-contact a { color: var(--b); text-decoration: none; font-weight: 600; font-size: 12.5px; display: block; }
+  .crm-contact a:hover { text-decoration: underline; }
+  .crm-contact .crm-mail { color: var(--txt2); font-weight: 500; font-size: 11.5px; }
+  .crm-stage { font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+  .crm-stage.offen { background: #eef1f5; color: var(--txt2); }
+  .crm-stage.kontaktiert { background: rgba(46,110,232,.12); color: #1d5ad0; }
+  .crm-stage.interessiert { background: rgba(167,139,250,.16); color: #7c3aed; }
+  .crm-stage.termin { background: rgba(34,209,124,.16); color: #15803d; }
+  .crm-stage.angebot { background: rgba(255,150,60,.16); color: #c2410c; }
+  .crm-stage.gewonnen { background: var(--g); color: #052012; }
+  .crm-stage.tot { background: rgba(239,68,68,.1); color: #dc2626; }
+  .crm-stage.aussortiert { background: #eef1f5; color: var(--txt3); }
+  .crm-outcome { border: 1px solid var(--line2); background: var(--elev); color: var(--txt2); border-radius: 8px; padding: 6px 9px; font-size: 11.5px; font-weight: 600; cursor: pointer; max-width: 160px; }
+  .crm-pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 14px; font-size: 12.5px; color: var(--txt2); }
+  .crm-pager button { border: 1px solid var(--line2); background: var(--surf); color: var(--txt); border-radius: 8px; padding: 7px 13px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .crm-pager button:disabled { opacity: .4; cursor: not-allowed; }
   .fl-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
   .fl-tabs { display: inline-flex; gap: 4px; background: var(--surf); border: 1px solid var(--line); border-radius: 9px; padding: 3px; }
   .fl-tab { border: 0; background: transparent; color: var(--txt2); font-size: 12px; font-weight: 600; padding: 7px 13px; border-radius: 7px; cursor: pointer; }
@@ -1006,6 +1027,56 @@
   <!-- ─── AUTO-VERSAND ─── -->
   <!-- ─── LEADS (eigener Bereich) ─── -->
   <div class="page" id="p-leads">
+    <!-- ─── CRM: ALLE LEADS (echte Liste) ─── -->
+    <div class="sender-panel" style="margin-bottom:14px">
+      <div class="sp-head" style="display:flex;align-items:flex-start;gap:14px">
+        <div style="flex:1">
+          <h3>📇 Alle Leads — dein CRM</h3>
+          <p>Jeder Betrieb einzeln: Firma, Kontakt, Ort, Priorität, ob schon per Mail angeschrieben und in welcher Phase. Anrufen, Ergebnis markieren — der Lead wandert automatisch in die richtige Kategorie.</p>
+        </div>
+        <button class="topbar-btn" onclick="loadCrmLeads()">↻ Aktualisieren</button>
+      </div>
+      <div class="sp-body">
+        <div class="fl-summary" id="crm-summary"></div>
+        <div class="fl-toolbar">
+          <div class="fl-tabs" id="crm-tabs">
+            <button class="fl-tab active" data-s="" onclick="crmSetStage('')">Alle</button>
+            <button class="fl-tab" data-s="offen" onclick="crmSetStage('offen')">Offen</button>
+            <button class="fl-tab" data-s="kontaktiert" onclick="crmSetStage('kontaktiert')">Angeschrieben</button>
+            <button class="fl-tab" data-s="interessiert" onclick="crmSetStage('interessiert')">Interessiert</button>
+            <button class="fl-tab" data-s="termin" onclick="crmSetStage('termin')">Termin</button>
+            <button class="fl-tab" data-s="gewonnen" onclick="crmSetStage('gewonnen')">Gewonnen</button>
+            <button class="fl-tab" data-s="tot" onclick="crmSetStage('tot')">Kein Int./Tot</button>
+          </div>
+          <input type="text" id="crm-search" class="an-filter" placeholder="🔍 Firma / E-Mail / Telefon / Ort…" oninput="crmDebouncedSearch()">
+          <label class="crm-toggle"><input type="checkbox" id="crm-phone" onchange="loadCrmLeads(1)"> nur mit Telefon</label>
+          <label class="crm-toggle"><input type="checkbox" id="crm-open" onchange="loadCrmLeads(1)"> nur nicht angerufen</label>
+          <select id="crm-emailed" class="an-filter" onchange="loadCrmLeads(1)" style="max-width:190px">
+            <option value="">E-Mail: alle</option>
+            <option value="1">nur bereits angeschrieben</option>
+            <option value="0">nur noch nicht angeschrieben</option>
+          </select>
+          <div class="flex1"></div>
+          <select id="crm-sort" class="an-filter" onchange="loadCrmLeads(1)" style="max-width:170px">
+            <option value="prio">Sortierung: Priorität</option>
+            <option value="name">Name (A–Z)</option>
+            <option value="stadt">Stadt</option>
+            <option value="neu">Neueste zuerst</option>
+          </select>
+        </div>
+        <div class="fl-table-wrap">
+          <table class="fl-table crm-table">
+            <thead><tr>
+              <th>Firma</th><th>Kontakt</th><th>Ort · Branche</th><th>Signale</th><th>Phase</th><th>Aktion / Ergebnis</th>
+            </tr></thead>
+            <tbody id="crm-tbody"></tbody>
+          </table>
+          <div id="crm-empty" class="empty-state" style="display:none;padding:40px 0"><div class="ei">📇</div><div class="et">Keine Leads gefunden</div><div class="es">Filter anpassen oder oben neue Leads importieren / scrapen.</div></div>
+        </div>
+        <div class="crm-pager" id="crm-pager"></div>
+      </div>
+    </div>
+
     <!-- ─── LEAD-BESTAND (Mini-CRM) ─── -->
     <div class="sender-panel" style="margin-bottom:14px">
       <div class="sp-head" style="display:flex;align-items:flex-start;gap:14px">
@@ -1576,7 +1647,7 @@ function setPage(name) {
   if (name === 'pipeline') { loadLeads(); renderIndustryPicker(); }
   if (name === 'sender') loadSenderPage();
   if (name === 'sent') loadSentPage();
-  if (name === 'leads') loadInventory();
+  if (name === 'leads') { loadCrmLeads(); loadInventory(); }
   if (name === 'autosend') loadAutoSend();
   if (name === 'calls') loadCallList();
   if (name === 'templates') loadTemplatesPage();
@@ -2179,6 +2250,107 @@ async function markCalled(id) {
   const note = input.trim() || ('Angerufen am ' + new Date().toLocaleString('de-DE'));
   const r = await post('/api/manual-call', { id, note });
   if (r && r.ok) { toast('Als angerufen markiert'); loadCallList(); }
+  else { toast('Konnte nicht speichern', true); }
+}
+
+// ════ CRM: ALLE LEADS ════
+let crmState = { q:'', stage:'', phone:false, open:false, emailed:'', sort:'prio', page:1 };
+let crmSearchTimer = null;
+const CRM_STAGE = {
+  new:['offen','Offen'], checked:['offen','Offen'], draft_ready:['offen','Offen'], approved:['offen','Offen'], manual_review:['offen','Offen'],
+  contacted:['kontaktiert','Angeschrieben'], replied:['interessiert','Interessiert'], demo_booked:['termin','Termin'],
+  proposal_sent:['angebot','Angebot'], won:['gewonnen','Gewonnen'],
+  lost:['tot','Verloren'], no_interest:['tot','Kein Interesse'], do_not_contact:['tot','Nicht anrufen'],
+  not_suitable:['aussortiert','Aussortiert'], missing_data:['aussortiert','Unvollständig'], duplicate:['aussortiert','Duplikat'],
+};
+
+function crmDebouncedSearch() { clearTimeout(crmSearchTimer); crmSearchTimer = setTimeout(() => loadCrmLeads(1), 300); }
+function crmSetStage(s) {
+  crmState.stage = s;
+  document.querySelectorAll('#crm-tabs .fl-tab').forEach(b => b.classList.toggle('active', b.dataset.s === s));
+  loadCrmLeads(1);
+}
+
+async function loadCrmLeads(resetPage) {
+  if (resetPage) crmState.page = 1;
+  crmState.q = document.getElementById('crm-search')?.value || '';
+  crmState.phone = document.getElementById('crm-phone')?.checked || false;
+  crmState.open = document.getElementById('crm-open')?.checked || false;
+  crmState.emailed = document.getElementById('crm-emailed')?.value || '';
+  crmState.sort = document.getElementById('crm-sort')?.value || 'prio';
+  const p = new URLSearchParams();
+  if (crmState.q) p.set('q', crmState.q);
+  if (crmState.stage) p.set('stage', crmState.stage);
+  if (crmState.phone) p.set('phone', '1');
+  if (crmState.open) p.set('called', 'open');
+  if (crmState.emailed) p.set('emailed', crmState.emailed);
+  p.set('sort', crmState.sort); p.set('page', crmState.page); p.set('pageSize', '25');
+  const d = await fetchJSON('/api/crm/leads?' + p.toString()).catch(()=>null);
+  if (!d) return;
+  const s = d.summary || {};
+  document.getElementById('crm-summary').innerHTML = [
+    ['Gesamt', s.gesamt||0, ''], ['Offen', s.offen||0, 'g'], ['Angeschrieben', s.kontaktiert||0, 'b'],
+    ['Interessiert', s.interessiert||0, 'p'], ['Termin', s.termin||0, 'g'], ['Gewonnen', s.gewonnen||0, 'g'],
+  ].map(([l,v,cls]) => `<div class="fl-kpi ${cls}"><div class="fl-kpi-v">${v}</div><div class="fl-kpi-l">${esc(l)}</div></div>`).join('');
+  renderCrm(d);
+}
+
+function renderCrm(d) {
+  const rows = d.leads || [];
+  const tb = document.getElementById('crm-tbody');
+  const empty = document.getElementById('crm-empty');
+  if (!rows.length) { tb.innerHTML=''; empty.style.display='block'; document.getElementById('crm-pager').innerHTML=''; return; }
+  empty.style.display='none';
+  tb.innerHTML = rows.map(l => {
+    const [scls, slabel] = CRM_STAGE[l.status] || ['offen', l.status];
+    const tel = String(l.telefon||'').trim(); const telHref = tel.replace(/[^0-9+]/g,'');
+    const rating = (l.google_bewertung>0) ? `<span class="cl-tag rating">★ ${Number(l.google_bewertung).toFixed(1)}</span>` : '';
+    const signals = [
+      l.prioritaet==='A'?'<span class="cl-tag prioA">A</span>':'',
+      l.hat_notdienst_hinweis?'<span class="cl-tag notdienst">Notdienst</span>':'',
+      l.already_emailed?'<span class="cl-tag emailed">Mail ✓</span>':'',
+      rating,
+    ].filter(Boolean).join(' ');
+    const contact = [
+      tel ? `<a href="tel:${esc(telHref)}">📞 ${esc(tel)}</a>` : '',
+      l.email ? `<span class="crm-mail">${esc(l.email)}</span>` : '',
+    ].filter(Boolean).join('') || '<span class="crm-sub">kein Kontakt</span>';
+    return `<tr>
+      <td><div class="crm-firma">${esc(l.name)}</div>${l.adresse?`<div class="crm-sub">${esc(l.adresse)}</div>`:''}</td>
+      <td class="crm-contact">${contact}</td>
+      <td>${esc(l.stadt||'—')}<div class="crm-sub">${esc(l.branche||'')}</div></td>
+      <td>${signals||'<span class="crm-sub">—</span>'}</td>
+      <td><span class="crm-stage ${scls}">${esc(slabel)}</span></td>
+      <td>
+        <select class="crm-outcome" onchange="crmOutcome('${l.id}', this.value); this.value='';">
+          <option value="">Ergebnis wählen…</option>
+          <option value="termin">✅ Termin gebucht</option>
+          <option value="interessiert">👍 Interessiert</option>
+          <option value="nicht_erreicht">📵 Nicht erreicht</option>
+          <option value="kein_interesse">✋ Kein Interesse</option>
+          <option value="tot">⛔ Tot / nicht anrufen</option>
+        </select>
+      </td>
+    </tr>`;
+  }).join('');
+  const pg = document.getElementById('crm-pager');
+  pg.innerHTML = `<button ${d.page<=1?'disabled':''} onclick="crmGo(${d.page-1})">← Zurück</button>
+    <span>Seite ${d.page} / ${d.pages||1} · ${d.total} Leads</span>
+    <button ${d.page>=d.pages?'disabled':''} onclick="crmGo(${d.page+1})">Weiter →</button>`;
+}
+
+function crmGo(page) { crmState.page = page; loadCrmLeads(); }
+
+async function crmOutcome(id, outcome) {
+  if (!outcome) return;
+  const map = { termin:'demo_booked', interessiert:'replied', kein_interesse:'no_interest', tot:'do_not_contact' };
+  let r;
+  if (outcome === 'nicht_erreicht') {
+    r = await post('/api/manual-call', { id, note: 'Nicht erreicht (' + new Date().toLocaleDateString('de-DE') + ')' });
+  } else {
+    r = await post('/api/status', { id, status: map[outcome], notiz: 'CRM: ' + outcome });
+  }
+  if (r && r.ok) { toast('Lead aktualisiert'); loadCrmLeads(); refreshCallsBadge(); }
   else { toast('Konnte nicht speichern', true); }
 }
 

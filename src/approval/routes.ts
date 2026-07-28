@@ -1610,6 +1610,81 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     }
   );
 
+  // ── CRM: echte, durchsuchbare Lead-Liste mit Stage, Kontakt & Anruf-Status ──
+  // Das Herzstück der Leads-Seite: zeigt jeden einzelnen Lead (nicht nur Aggregate),
+  // gefiltert/sortiert/paginiert, inkl. "bereits per Mail angeschrieben" und Anruf-Status.
+  app.get<{ Querystring: {
+    q?: string; branche?: string; stadt?: string; stage?: string;
+    phone?: string; emailed?: string; called?: string;
+    sort?: string; page?: string; pageSize?: string;
+  } }>('/api/crm/leads', async (req) => {
+    const db = getDb();
+    const Q = req.query;
+    // Stage → zugrundeliegende Status-Menge
+    const STAGE_STATUS: Record<string, string[]> = {
+      offen: ['new', 'checked', 'draft_ready', 'approved', 'manual_review'],
+      kontaktiert: ['contacted'],
+      interessiert: ['replied'],
+      termin: ['demo_booked'],
+      angebot: ['proposal_sent'],
+      gewonnen: ['won'],
+      tot: ['lost', 'no_interest', 'do_not_contact'],
+      aussortiert: ['not_suitable', 'missing_data', 'duplicate'],
+    };
+    const where: string[] = [`l.status != 'archived'`];
+    const params: Record<string, unknown> = {};
+    if (Q.q && Q.q.trim()) {
+      where.push(`(LOWER(l.name) LIKE @q OR LOWER(l.email) LIKE @q OR l.telefon LIKE @q OR LOWER(l.stadt) LIKE @q OR LOWER(l.branche) LIKE @q)`);
+      params.q = '%' + Q.q.trim().toLowerCase() + '%';
+    }
+    if (Q.branche && Q.branche.trim()) { where.push(`LOWER(l.branche) = @branche`); params.branche = Q.branche.trim().toLowerCase(); }
+    if (Q.stadt && Q.stadt.trim()) { where.push(`LOWER(l.stadt) = @stadt`); params.stadt = Q.stadt.trim().toLowerCase(); }
+    if (Q.stage && STAGE_STATUS[Q.stage]) {
+      const list = STAGE_STATUS[Q.stage];
+      where.push(`l.status IN (${list.map((_, i) => '@st' + i).join(',')})`);
+      list.forEach((s, i) => { params['st' + i] = s; });
+    }
+    if (Q.phone === '1') where.push(`l.telefon IS NOT NULL AND length(TRIM(l.telefon)) > 5`);
+    const emailedExpr = `EXISTS (SELECT 1 FROM sent_emails se WHERE se.success = 1 AND se.to_email IS NOT NULL AND LOWER(TRIM(se.to_email)) = LOWER(TRIM(l.email)) AND l.email IS NOT NULL AND l.email != '')`;
+    if (Q.emailed === '1') where.push(emailedExpr);
+    if (Q.emailed === '0') where.push(`NOT ${emailedExpr}`);
+    if (Q.called === 'open') where.push(`COALESCE(l.manual_call_done, 0) = 0`);
+    if (Q.called === 'done') where.push(`l.manual_call_done = 1`);
+
+    const whereSql = 'WHERE ' + where.join(' AND ');
+    const total = (db.prepare(`SELECT COUNT(*) n FROM leads l ${whereSql}`).get(params) as { n: number }).n;
+
+    const page = Math.max(1, Number(Q.page) || 1);
+    const pageSize = Math.max(1, Math.min(100, Number(Q.pageSize) || 25));
+    const offset = (page - 1) * pageSize;
+    const sort = Q.sort === 'name' ? 'l.name COLLATE NOCASE ASC'
+      : Q.sort === 'stadt' ? 'l.stadt COLLATE NOCASE ASC, l.name COLLATE NOCASE ASC'
+      : Q.sort === 'neu' ? 'l.created_at DESC'
+      : `CASE l.prioritaet WHEN 'A' THEN 0 WHEN 'B' THEN 1 ELSE 2 END, l.score_gesamt DESC`;
+
+    const rows = db.prepare(
+      `SELECT l.id, l.name, l.branche, l.stadt, l.adresse, l.telefon, l.email, l.website,
+              l.prioritaet, l.score_gesamt, l.score_telefon, l.google_bewertung, l.google_anzahl_reviews,
+              l.hat_notdienst_hinweis, l.hat_website, l.status, l.manual_call_done, l.last_manual_call_at,
+              l.manual_call_note, l.contacted_at, l.gesendet_at, l.created_at,
+              (${emailedExpr}) AS already_emailed
+       FROM leads l ${whereSql}
+       ORDER BY ${sort}
+       LIMIT @limit OFFSET @offset`
+    ).all({ ...params, limit: pageSize, offset }) as any[];
+
+    // Stage-Zusammenfassung (unabhängig von der aktuellen Stage-Filterung, aber respektiert Such-/Kontaktfilter)
+    const summaryWhere: string[] = [`status != 'archived'`];
+    const summaryParams: Record<string, unknown> = {};
+    if (params.q) { summaryWhere.push(`(LOWER(name) LIKE @q OR LOWER(email) LIKE @q OR telefon LIKE @q OR LOWER(stadt) LIKE @q OR LOWER(branche) LIKE @q)`); summaryParams.q = params.q; }
+    const byStatus = db.prepare(`SELECT status, COUNT(*) n FROM leads WHERE ${summaryWhere.join(' AND ')} GROUP BY status`).all(summaryParams) as Array<{ status: string; n: number }>;
+    const stageOf = (s: string) => Object.keys(STAGE_STATUS).find(k => STAGE_STATUS[k].includes(s)) || 'offen';
+    const summary: Record<string, number> = { offen: 0, kontaktiert: 0, interessiert: 0, termin: 0, angebot: 0, gewonnen: 0, tot: 0, aussortiert: 0, gesamt: 0 };
+    for (const r of byStatus) { summary[stageOf(r.status)] = (summary[stageOf(r.status)] || 0) + r.n; summary.gesamt += r.n; }
+
+    return { leads: rows, total, page, pageSize, pages: Math.ceil(total / pageSize), summary };
+  });
+
   // ── Lead-Bestand (Mini-CRM): wo haben wir noch Reserven? ──────────────────
   app.get('/api/lead-inventory', async () => {
     const db = getDb();
