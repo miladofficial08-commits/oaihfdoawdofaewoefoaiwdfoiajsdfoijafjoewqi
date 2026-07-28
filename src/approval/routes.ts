@@ -702,6 +702,39 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     allowed_daily_limits: ALLOWED_DAILY_LIMITS,
   }));
 
+  // ── Live-Status fürs Dashboard: was läuft gerade, was ist heute passiert? ──
+  app.get('/api/activity', async () => {
+    const db = getDb();
+    const runningJobs = db.prepare(`SELECT id, name, sent_count, total_target, note FROM send_jobs WHERE status = 'running' ORDER BY created_at DESC`).all() as Array<{ id: string; name: string; sent_count: number; total_target: number; note: string | null }>;
+    const sentToday = sentTodayCount();
+    const callsToday = (db.prepare(`SELECT COUNT(*) n FROM leads WHERE manual_call_done = 1 AND date(last_manual_call_at) = date('now','localtime')`).get() as { n: number }).n;
+    const CALLABLE = `status IN ('new','checked','draft_ready','approved','manual_review','contacted') AND telefon IS NOT NULL AND length(TRIM(telefon)) > 5 AND COALESCE(manual_call_done,0) = 0`;
+    const callableOpen = (db.prepare(`SELECT COUNT(*) n FROM leads WHERE ${CALLABLE}`).get() as { n: number }).n;
+    const openLeads = (db.prepare(
+      `SELECT COUNT(*) n FROM leads WHERE status IN ('new','checked','draft_ready','approved','manual_review')
+         AND email IS NOT NULL AND email != ''
+         AND LOWER(TRIM(email)) NOT IN (
+           SELECT LOWER(TRIM(to_email)) FROM sent_emails      WHERE success = 1                          AND to_email IS NOT NULL AND to_email != ''
+           UNION
+           SELECT LOWER(TRIM(to_email)) FROM scheduled_emails WHERE status IN ('scheduled','processing') AND to_email IS NOT NULL AND to_email != ''
+         )`
+    ).get() as { n: number }).n;
+    const followup = getFollowupConfig();
+    const scheduledPending = (db.prepare(`SELECT COUNT(*) n FROM scheduled_emails WHERE status IN ('scheduled','processing')`).get() as { n: number }).n;
+    return {
+      autosend_running: runningJobs.length > 0,
+      running_jobs: runningJobs.map(j => ({ id: j.id, name: j.name, sent: j.sent_count, target: j.total_target, note: j.note })),
+      sent_today: sentToday,
+      global_daily_cap: GLOBAL_DAILY_CAP,
+      calls_today: callsToday,
+      callable_open: callableOpen,
+      open_leads: openLeads,
+      followup_enabled: !!followup.enabled,
+      scheduled_pending: scheduledPending,
+      daily_engine_hint: /^(1|true|on|yes|ja)$/i.test((process.env.DAILY_ENGINE || '').trim()) ? 'on' : 'off',
+    };
+  });
+
   app.post<{ Body: { name?: string; verticalId?: string; totalTarget: number; dailyLimit?: number; templateIds?: string[]; windowStart?: number; windowEnd?: number; gapSeconds?: number; startAt?: string } }>(
     '/api/send-jobs',
     async (req, reply) => {

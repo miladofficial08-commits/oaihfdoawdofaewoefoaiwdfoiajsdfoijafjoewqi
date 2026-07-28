@@ -489,6 +489,18 @@
   .cl-btn { border: 1px solid var(--line2); background: var(--elev); color: var(--txt2); font-size: 11.5px; font-weight: 600; padding: 7px 12px; border-radius: 8px; cursor: pointer; }
   .cl-btn.done { background: var(--g); border-color: var(--g); color: #052012; }
   .cl-btn:hover { filter: brightness(.97); }
+  /* Live-Status-Leiste */
+  .live-strip { display: flex; align-items: center; gap: 22px; background: var(--surf); border: 1px solid var(--line); border-radius: 12px; padding: 12px 18px; margin-bottom: 14px; flex-wrap: wrap; }
+  .live-item { display: flex; align-items: center; gap: 10px; }
+  .live-ico { font-size: 17px; opacity: .85; }
+  .live-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--line2); flex-shrink: 0; }
+  .live-item.on .live-dot { background: var(--g); box-shadow: 0 0 0 4px rgba(34,209,124,.18); animation: livepulse 2s infinite; }
+  .live-item.off .live-dot { background: #cbd3e0; }
+  @keyframes livepulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
+  .live-lbl { font-size: 10.5px; color: var(--txt3); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .live-val { font-size: 14px; font-weight: 800; color: var(--txt); line-height: 1.2; }
+  .live-item.on .live-val { color: var(--g); }
+  .live-refreshed { font-size: 10.5px; color: var(--txt4); }
   /* CRM-Liste */
   .crm-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--txt2); font-weight: 600; cursor: pointer; user-select: none; }
   .crm-table td { vertical-align: middle; }
@@ -814,6 +826,18 @@
 
   <!-- ─── DASHBOARD ─── -->
   <div class="page active" id="p-dashboard">
+    <div class="live-strip" id="live-strip">
+      <div class="live-item" id="live-autosend">
+        <span class="live-dot"></span>
+        <div><div class="live-lbl">Auto-Versand</div><div class="live-val" id="live-as-val">…</div></div>
+      </div>
+      <div class="live-item"><span class="live-ico">✉</span><div><div class="live-lbl">Heute gesendet</div><div class="live-val" id="live-sent">—</div></div></div>
+      <div class="live-item"><span class="live-ico">📞</span><div><div class="live-lbl">Heute angerufen</div><div class="live-val" id="live-calls">—</div></div></div>
+      <div class="live-item"><span class="live-ico">📇</span><div><div class="live-lbl">Anrufliste offen</div><div class="live-val" id="live-callable">—</div></div></div>
+      <div class="live-item"><span class="live-ico">🔁</span><div><div class="live-lbl">Follow-up</div><div class="live-val" id="live-followup">—</div></div></div>
+      <div class="flex1"></div>
+      <div class="live-refreshed" id="live-refreshed"></div>
+    </div>
     <div class="kpi-row">
       <div class="kpi b"><div class="kpi-lbl">E-Mails versendet</div><div class="kpi-val" id="k-sent">—</div><div class="kpi-sub">heute: <span id="k-sent-today">—</span> · echte Zustellungen</div></div>
       <div class="kpi g"><div class="kpi-lbl">Leads offen</div><div class="kpi-val" id="k-open">—</div><div class="kpi-sub">mit E-Mail, noch nie angeschrieben</div></div>
@@ -1656,7 +1680,8 @@ function setPage(name) {
   if (name === 'inbox') { inboxTab==='in' ? loadInbox() : loadSentList(); }
   if (name === 'followup') loadFollowupLeads();
   if (name === 'outreach') loadOutreach();
-  if (name === 'dashboard') { renderDashboard(); hydrateTemplateEditors(); }
+  if (name === 'dashboard') { renderDashboard(); hydrateTemplateEditors(); startActivityAuto(); }
+  else stopActivityAuto();
 }
 
 // ════ DATA ════
@@ -1665,7 +1690,7 @@ async function reload() {
   refreshCallsBadge();
   if (currentPage === 'pipeline') loadLeads();
   if (currentPage === 'outreach') loadOutreach();
-  if (currentPage === 'dashboard') { renderDashboard(); hydrateTemplateEditors(); }
+  if (currentPage === 'dashboard') { renderDashboard(); hydrateTemplateEditors(); startActivityAuto(); }
   if (currentPage === 'inbox') loadInbox();
 }
 
@@ -2353,6 +2378,27 @@ async function crmOutcome(id, outcome) {
   if (r && r.ok) { toast('Lead aktualisiert'); loadCrmLeads(); refreshCallsBadge(); }
   else { toast('Konnte nicht speichern', true); }
 }
+
+// ════ LIVE-STATUS ════
+let activityTimer = null;
+async function loadActivity() {
+  const d = await fetchJSON('/api/activity').catch(()=>null);
+  if (!d) return;
+  const as = document.getElementById('live-autosend');
+  const running = d.autosend_running;
+  as.classList.toggle('on', running); as.classList.toggle('off', !running);
+  const job = (d.running_jobs||[])[0];
+  document.getElementById('live-as-val').textContent = running
+    ? ('Läuft' + (job ? ` · ${job.sent}/${job.target}` : ''))
+    : (d.daily_engine_hint === 'off' ? 'Gestoppt (DAILY_ENGINE=off)' : 'Gestoppt');
+  document.getElementById('live-sent').textContent = `${d.sent_today} / ${d.global_daily_cap}`;
+  document.getElementById('live-calls').textContent = d.calls_today;
+  document.getElementById('live-callable').textContent = d.callable_open;
+  document.getElementById('live-followup').textContent = d.followup_enabled ? 'aktiv' : 'aus';
+  document.getElementById('live-refreshed').textContent = 'aktualisiert ' + new Date().toLocaleTimeString('de-DE', {hour:'2-digit',minute:'2-digit'});
+}
+function startActivityAuto() { stopActivityAuto(); loadActivity(); activityTimer = setInterval(loadActivity, 20000); }
+function stopActivityAuto() { if (activityTimer) { clearInterval(activityTimer); activityTimer = null; } }
 
 // ════ ANGESCHRIEBEN & FOLLOW-UP ════
 let followupData = { leads: [], summary: {}, config: {} };
