@@ -39,6 +39,7 @@ export async function reanalyzeExistingLeads(): Promise<ReanalyzeResult> {
       hat_faq = @hat_faq,
       hat_notdienst_hinweis = @hat_notdienst_hinweis,
       email = @email,
+      geschaeftsfuehrer = @geschaeftsfuehrer,
       whatsapp = @whatsapp,
       kontaktformular_url = @kontaktformular_url,
       kontaktformular_typ = @kontaktformular_typ,
@@ -115,6 +116,8 @@ function buildUpdatedLead(lead: Lead, analysis: WebsiteAnalysis): Lead {
     hat_faq: analysis.hat_faq ? 1 : 0,
     hat_notdienst_hinweis: analysis.hat_notdienst_hinweis ? 1 : 0,
     email: analysis.email ?? undefined,
+    // Gefundene GF übernehmen, sonst bestehende behalten (nie mit NULL überschreiben).
+    geschaeftsfuehrer: analysis.geschaeftsfuehrer ?? lead.geschaeftsfuehrer ?? null,
     whatsapp: analysis.whatsapp ?? undefined,
     kontaktformular_url: analysis.kontaktformular_url ?? undefined,
     kontaktformular_typ: analysis.kontaktformular_typ ?? null,

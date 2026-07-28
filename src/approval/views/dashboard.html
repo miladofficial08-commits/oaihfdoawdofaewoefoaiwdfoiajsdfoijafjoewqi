@@ -506,6 +506,10 @@
   .crm-table td { vertical-align: middle; }
   .crm-firma { font-weight: 700; color: var(--txt); font-size: 13px; }
   .crm-sub { font-size: 11px; color: var(--txt3); margin-top: 2px; }
+  .crm-gf { font-size: 11.5px; color: var(--txt2); margin-top: 3px; cursor: pointer; font-weight: 600; }
+  .crm-gf:hover { color: var(--b); }
+  .crm-gf-add { color: var(--txt4); font-weight: 500; border: 1px dashed var(--line2); border-radius: 6px; padding: 1px 7px; }
+  .crm-gf-add:hover { color: var(--b); border-color: var(--b); }
   .crm-contact a { color: var(--b); text-decoration: none; font-weight: 600; font-size: 12.5px; display: block; }
   .crm-contact a:hover { text-decoration: underline; }
   .crm-contact .crm-mail { color: var(--txt2); font-weight: 500; font-size: 11.5px; }
@@ -901,7 +905,7 @@
       <p>Wähle eine Branche aus – das System sucht passende Betriebe im Internet und analysiert sie automatisch für dein Voice-Agent-Angebot.</p>
       <div class="ind-controls">
         <select id="ind-region"><option value="">Region wählen…</option></select>
-        <button class="ind-run-btn" id="backfill-btn" onclick="runBackfill()" title="Bereits gefundene Leads erneut prüfen und fehlende E-Mails aus Impressum/Kontakt nachtragen">✉ Kontakte nachtragen</button>
+        <button class="ind-run-btn" id="backfill-btn" onclick="runBackfill()" title="Bereits gefundene Leads erneut prüfen und fehlende E-Mails + Geschäftsführer aus dem Impressum nachtragen">✉ Kontakte + GF nachtragen</button>
       </div>
     </div>
     <div class="ind-cat-tabs" id="ind-cat-tabs"></div>
@@ -1884,7 +1888,7 @@ async function runIndustry(id) {
 }
 
 async function runBackfill() {
-  if (!confirm('Alle bereits gefundenen Leads erneut prüfen und fehlende E-Mails aus Impressum/Kontakt nachtragen?\n\nDas kann je nach Anzahl einige Minuten dauern.')) return;
+  if (!confirm('Alle bereits gefundenen Leads erneut prüfen und fehlende E-Mails UND Geschäftsführer aus dem Impressum nachtragen?\n\nDas kann je nach Anzahl einige Minuten dauern.')) return;
   const btn = document.getElementById('backfill-btn');
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Prüfe…';
   toast('Kontakte werden nachgetragen – bitte warten…');
@@ -1892,9 +1896,10 @@ async function runBackfill() {
     const r = await post('/api/reanalyze', {});
     const b = await r.json();
     if (!r.ok) { toast(b.error || 'Backfill fehlgeschlagen', true); return; }
-    toast('✓ ' + (b.analyzed||0) + ' geprüft · ' + (b.newEmails||0) + ' neue E-Mails gefunden');
+    toast('✓ ' + (b.analyzed||0) + ' geprüft · ' + (b.newEmails||0) + ' neue E-Mails · Geschäftsführer nachgetragen');
     await loadReport();
     loadLeads();
+    if (typeof loadCrmLeads === 'function') loadCrmLeads();
   } catch (e) {
     toast('Fehler beim Nachtragen', true);
   } finally {
@@ -2320,8 +2325,10 @@ async function loadCrmLeads(resetPage) {
   renderCrm(d);
 }
 
+let crmLastRows = [];
 function renderCrm(d) {
   const rows = d.leads || [];
+  crmLastRows = rows;
   const tb = document.getElementById('crm-tbody');
   const empty = document.getElementById('crm-empty');
   if (!rows.length) { tb.innerHTML=''; empty.style.display='block'; document.getElementById('crm-pager').innerHTML=''; return; }
@@ -2341,7 +2348,11 @@ function renderCrm(d) {
       l.email ? `<span class="crm-mail">${esc(l.email)}</span>` : '',
     ].filter(Boolean).join('') || '<span class="crm-sub">kein Kontakt</span>';
     return `<tr>
-      <td><div class="crm-firma">${esc(l.name)}</div>${l.adresse?`<div class="crm-sub">${esc(l.adresse)}</div>`:''}</td>
+      <td>
+        <div class="crm-firma">${esc(l.name)}</div>
+        <div class="crm-gf" onclick="crmEditGf('${l.id}')" title="Geschäftsführer bearbeiten">${l.geschaeftsfuehrer ? '👤 '+esc(l.geschaeftsfuehrer) : '<span class="crm-gf-add">+ GF ergänzen</span>'}</div>
+        ${l.adresse?`<div class="crm-sub">${esc(l.adresse)}</div>`:''}
+      </td>
       <td class="crm-contact">${contact}</td>
       <td>${esc(l.stadt||'—')}<div class="crm-sub">${esc(l.branche||'')}</div></td>
       <td>${signals||'<span class="crm-sub">—</span>'}</td>
@@ -2365,6 +2376,15 @@ function renderCrm(d) {
 }
 
 function crmGo(page) { crmState.page = page; loadCrmLeads(); }
+
+async function crmEditGf(id) {
+  const l = crmLastRows.find(x => x.id === id);
+  const v = prompt('Geschäftsführer / Inhaber (aus dem Impressum, editierbar):', (l && l.geschaeftsfuehrer) || '');
+  if (v === null) return;
+  const r = await post('/api/crm/lead-gf', { id, value: v });
+  if (r && r.ok) { toast('Geschäftsführer gespeichert'); loadCrmLeads(); }
+  else { toast('Konnte nicht speichern', true); }
+}
 
 async function crmOutcome(id, outcome) {
   if (!outcome) return;

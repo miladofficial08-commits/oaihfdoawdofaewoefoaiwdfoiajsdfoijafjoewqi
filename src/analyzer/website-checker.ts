@@ -48,14 +48,23 @@ export async function analyzeWebsite(url: string): Promise<WebsiteAnalysis> {
 
     const analysis = analyzeHtml(page.html, normalized, Date.now() - startedAt, page.finalUrl);
 
+    // Geschäftsführer steht praktisch immer im Impressum (§5 TMG: "vertreten durch …"),
+    // selten auf der Startseite – daher zuerst Startseite, dann Impressum-Unterseiten.
+    analysis.geschaeftsfuehrer = extractGeschaeftsfuehrer(page.html);
+
     // E-Mail-Nachfassen: Deutsche Firmen haben ihre E-Mail fast immer nur im Impressum
     // oder auf der Kontaktseite (Impressumspflicht §5 TMG), praktisch nie auf der Startseite.
     // Ohne diesen Schritt bleiben die meisten Leads ohne E-Mail und damit nicht anschreibbar.
-    if (!analysis.email) {
-      const found = await findEmailOnContactPages(page.html, page.finalUrl);
-      if (found) {
-        analysis.email = found.email;
-        analysis.evidence?.push(`Oeffentliche E-Mail auf Unterseite gefunden: ${found.email} (${found.source})`);
+    // Dieselben Unterseiten liefern auch den Geschäftsführer – daher in einem Durchgang.
+    if (!analysis.email || !analysis.geschaeftsfuehrer) {
+      const found = await scanContactPages(page.html, page.finalUrl, { needEmail: !analysis.email, needGf: !analysis.geschaeftsfuehrer });
+      if (found.email && !analysis.email) {
+        analysis.email = found.email.email;
+        analysis.evidence?.push(`Oeffentliche E-Mail auf Unterseite gefunden: ${found.email.email} (${found.email.source})`);
+      }
+      if (found.geschaeftsfuehrer && !analysis.geschaeftsfuehrer) {
+        analysis.geschaeftsfuehrer = found.geschaeftsfuehrer;
+        analysis.evidence?.push(`Geschaeftsfuehrer im Impressum gefunden: ${found.geschaeftsfuehrer}`);
       }
     }
 
@@ -88,17 +97,79 @@ async function fetchPage(url: string): Promise<FetchedPage> {
   }
 }
 
-// Folgt bis zu 3 Impressum-/Kontakt-Unterseiten (nur gleiche Domain) und sucht dort eine E-Mail.
-async function findEmailOnContactPages(homeHtml: string, base: string): Promise<{ email: string; source: string } | undefined> {
+// Folgt bis zu 3 Impressum-/Kontakt-Unterseiten (nur gleiche Domain) und sucht dort
+// E-Mail und/oder Geschäftsführer – in EINEM Durchgang, um Doppel-Fetches zu vermeiden.
+async function scanContactPages(
+  homeHtml: string,
+  base: string,
+  need: { needEmail: boolean; needGf: boolean }
+): Promise<{ email?: { email: string; source: string }; geschaeftsfuehrer?: string }> {
+  const out: { email?: { email: string; source: string }; geschaeftsfuehrer?: string } = {};
   for (const u of candidateContactUrls(homeHtml, base).slice(0, 3)) {
     try {
       const page = await fetchPage(u);
       if (!page.html) continue;
-      const email = extractEmail(page.html);
-      if (email) return { email, source: u };
+      if (need.needEmail && !out.email) {
+        const email = extractEmail(page.html);
+        if (email) out.email = { email, source: u };
+      }
+      if (need.needGf && !out.geschaeftsfuehrer) {
+        const gf = extractGeschaeftsfuehrer(page.html);
+        if (gf) out.geschaeftsfuehrer = gf;
+      }
+      const emailDone = !need.needEmail || out.email;
+      const gfDone = !need.needGf || out.geschaeftsfuehrer;
+      if (emailDone && gfDone) break;
     } catch { /* Unterseite nicht erreichbar – ignorieren */ }
   }
+  return out;
+}
+
+// Erkennt den Geschäftsführer/Inhaber aus dem (Impressum-)Text. Deutsche Impressen nutzen
+// feste Formulierungen ("Geschäftsführer:", "Vertreten durch:", "Inhaber:").
+const GF_LABELS = [
+  'gesch[äa]ftsf[üu]hrer(?:in)?',
+  'gesch[äa]ftsf[üu]hrung',
+  'vertretungsberechtigt[a-zäöüß]*(?:\\s+gesch[äa]ftsf[üu]hrer(?:in)?)?',
+  'vertreten durch',
+  'inhaber(?:in)?',
+];
+// Optionale Titel/Anrede + 2–4 großgeschriebene Namensteile.
+const NAME_PART = "[A-ZÄÖÜ][a-zäöüß]+(?:[-'][A-ZÄÖÜ][a-zäöüß]+)?";
+const NAME_RE = "(?:Herr |Frau |Dr\\.? |Prof\\.? |Dipl\\.-?[A-Za-zäöüß]+\\.? )*" + NAME_PART + "(?:\\s+" + NAME_PART + "){1,3}";
+// Wortgrenzen (\b) sind wichtig: sonst matcht z.B. "ust" (von USt) im Namen "Mustermann".
+const GF_BLOCKWORDS = /\b(gmbh|kg|ohg|gbr|mbh|ug|ag|handelsregister|registergericht|amtsgericht|gericht|umsatzsteuer|steuernummer|steuer|ust|hrb|hra|impressum|telefon|telefax|fax|e-?mail|vertreten|gesch[äa]ftsf[üu]hr\w*|inhaber\w*|adresse|stra[sß]e|platz|allee|weg)\b/i;
+const GF_TITLES = /^(Herr|Frau|Dr\.?|Prof\.?|Dipl\.?-?[A-Za-zäöüß]*\.?)$/i;
+// Nur zum ABSCHNEIDEN nachlaufender Wörter (Berufe/Rechtsform) – NICHT zum Verwerfen,
+// damit echte Nachnamen wie "Meister" erhalten bleiben.
+const GF_TRAILING_NOISE = /^(installateur|meister|elektromeister|handwerksmeister|klempnermeister|heizungsbaumeister|ingenieur|techniker|monteur|inhaber|gesch[äa]ftsf[üu]hr\w*|gmbh|kg|ohg|gbr|mbh|ug|ag|handelsregister|registergericht|amtsgericht|ust|hrb|hra|steuernummer|telefon|telefax|fax|impressum|adresse)$/i;
+
+export function extractGeschaeftsfuehrer(html: string): string | undefined {
+  const text = stripTags(decodeHtmlEntities(html))
+    .replace(/&auml;/g, 'ä').replace(/&ouml;/g, 'ö').replace(/&uuml;/g, 'ü').replace(/&szlig;/g, 'ß')
+    .replace(/&Auml;/g, 'Ä').replace(/&Ouml;/g, 'Ö').replace(/&Uuml;/g, 'Ü')
+    .replace(/\s+/g, ' ');
+  for (const label of GF_LABELS) {
+    const re = new RegExp(label + "\\s*[:\\-–—]?\\s*(" + NAME_RE + ")", 'i');
+    const m = text.match(re);
+    if (!m || !m[1]) continue;
+    let words = m[1].trim().replace(/\s+/g, ' ').split(' ');
+    // Nachlaufende Berufs-/Rechtsform-/Register-Wörter abschneiden (greedy-Match zieht z.B.
+    // "… Installateur" oder "… Handelsregister" mit rein).
+    while (words.length > 2 && GF_TRAILING_NOISE.test(words[words.length - 1])) words.pop();
+    // Führende Titel/Anrede entfernen (Herr, Frau, Dr., Prof., Dipl.-Ing.).
+    while (words.length > 2 && GF_TITLES.test(words[0])) words.shift();
+    const name = words.join(' ');
+    if (isPlausiblePersonName(name)) return name.slice(0, 60);
+  }
   return undefined;
+}
+
+function isPlausiblePersonName(name: string): boolean {
+  if (/\d/.test(name)) return false;
+  if (GF_BLOCKWORDS.test(name)) return false;
+  const words = name.split(/\s+/).filter(w => !GF_TITLES.test(w));
+  return words.length >= 2 && words.length <= 4 && words.every(w => /^[A-ZÄÖÜ]/.test(w));
 }
 
 function candidateContactUrls(html: string, base: string): string[] {

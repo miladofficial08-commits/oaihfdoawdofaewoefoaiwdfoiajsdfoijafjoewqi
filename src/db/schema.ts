@@ -185,6 +185,7 @@ function initSchema(db: Database.Database) {
     last_manual_call_at: 'TEXT',
     manual_call_note: 'TEXT',
     manual_call_done: 'INTEGER DEFAULT 0',
+    geschaeftsfuehrer: 'TEXT',
   });
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_leads_domain ON leads(website_domain);

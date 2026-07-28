@@ -62,6 +62,8 @@ export async function runPipeline(input: ScrapeInput, opts: PipelineOptions = {}
           hat_faq: analysis.hat_faq ? 1 : 0,
           hat_notdienst_hinweis: analysis.hat_notdienst_hinweis ? 1 : 0,
           email: analysis.email,
+          // Nur setzen wenn gefunden – sonst würde ein Re-Scrape eine bereits erkannte GF überschreiben.
+          ...(analysis.geschaeftsfuehrer ? { geschaeftsfuehrer: analysis.geschaeftsfuehrer } : {}),
           whatsapp: raw.website ? (analysis.whatsapp ?? undefined) : undefined,
           kontaktformular_url: analysis.kontaktformular_url,
           kontaktformular_typ: analysis.kontaktformular_typ,

@@ -35,6 +35,7 @@ export interface Lead {
   telefon?: string;
   website?: string;
   email?: string;
+  geschaeftsfuehrer?: string;
   whatsapp?: string;
   kontaktformular_url?: string;
   instagram_url?: string;
@@ -160,6 +161,7 @@ export interface WebsiteAnalysis {
   hat_notdienst_hinweis: boolean;
   website_alt: boolean;
   email?: string;
+  geschaeftsfuehrer?: string;
   whatsapp?: string;
   kontaktformular_url?: string;
   kontaktformular_typ?: string;

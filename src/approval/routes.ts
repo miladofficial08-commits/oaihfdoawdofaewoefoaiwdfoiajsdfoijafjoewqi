@@ -1696,7 +1696,7 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
       : `CASE l.prioritaet WHEN 'A' THEN 0 WHEN 'B' THEN 1 ELSE 2 END, l.score_gesamt DESC`;
 
     const rows = db.prepare(
-      `SELECT l.id, l.name, l.branche, l.stadt, l.adresse, l.telefon, l.email, l.website,
+      `SELECT l.id, l.name, l.branche, l.stadt, l.adresse, l.telefon, l.email, l.website, l.geschaeftsfuehrer,
               l.prioritaet, l.score_gesamt, l.score_telefon, l.google_bewertung, l.google_anzahl_reviews,
               l.hat_notdienst_hinweis, l.hat_website, l.status, l.manual_call_done, l.last_manual_call_at,
               l.manual_call_note, l.contacted_at, l.gesendet_at, l.created_at,
@@ -1716,6 +1716,15 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     for (const r of byStatus) { summary[stageOf(r.status)] = (summary[stageOf(r.status)] || 0) + r.n; summary.gesamt += r.n; }
 
     return { leads: rows, total, page, pageSize, pages: Math.ceil(total / pageSize), summary };
+  });
+
+  // Geschäftsführer manuell setzen/korrigieren (falls nicht automatisch aus dem Impressum gefunden).
+  app.post<{ Body: { id: string; value?: string } }>('/api/crm/lead-gf', async (req, reply) => {
+    if (!req.body?.id) return reply.status(400).send({ error: 'id fehlt' });
+    const value = (req.body.value || '').trim().slice(0, 80) || null;
+    getDb().prepare(`UPDATE leads SET geschaeftsfuehrer = @value, updated_at = @now WHERE id = @id`)
+      .run({ value, now: new Date().toISOString(), id: req.body.id });
+    return { ok: true, geschaeftsfuehrer: value };
   });
 
   // ── Lead-Bestand (Mini-CRM): wo haben wir noch Reserven? ──────────────────
