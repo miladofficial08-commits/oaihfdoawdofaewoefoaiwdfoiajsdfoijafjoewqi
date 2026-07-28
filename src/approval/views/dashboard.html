@@ -523,6 +523,8 @@
   .crm-stage.tot { background: rgba(239,68,68,.1); color: #dc2626; }
   .crm-stage.aussortiert { background: #eef1f5; color: var(--txt3); }
   .crm-outcome { border: 1px solid var(--line2); background: var(--elev); color: var(--txt2); border-radius: 8px; padding: 6px 9px; font-size: 11.5px; font-weight: 600; cursor: pointer; max-width: 160px; }
+  .crm-act { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .crm-note { margin-top: 5px; font-size: 11px; color: var(--txt3); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .crm-pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 14px; font-size: 12.5px; color: var(--txt2); }
   .crm-pager button { border: 1px solid var(--line2); background: var(--surf); color: var(--txt); border-radius: 8px; padding: 7px 13px; font-size: 12px; font-weight: 600; cursor: pointer; }
   .crm-pager button:disabled { opacity: .4; cursor: not-allowed; }
@@ -1253,6 +1255,26 @@ info@nur-eine-adresse.de"></textarea>
       </div>
       <div style="display:grid;gap:12px" id="as-jobs">
         <div class="empty-state" style="padding:48px 0"><div class="ei">⚡</div><div class="et">Noch keine Auto-Kampagnen</div><div class="es">Erstelle links deine erste – das System übernimmt den Rest</div></div>
+      </div>
+    </div>
+
+    <!-- ─── ZULETZT GESENDET (wer / wann angeschrieben) ─── -->
+    <div class="sender-panel" style="margin-top:14px">
+      <div class="sp-head" style="display:flex;align-items:flex-start;gap:14px">
+        <div style="flex:1">
+          <h3>📨 Zuletzt gesendet — wer & wann angeschrieben wurde</h3>
+          <p>Jede E-Mail, die der Auto-Versand tatsächlich rausgeschickt hat, mit Firma, Adresse, Betreff und Uhrzeit. So siehst du live, dass die Kampagne arbeitet.</p>
+        </div>
+        <button class="topbar-btn" onclick="loadSentLog()">↻ Aktualisieren</button>
+      </div>
+      <div class="sp-body">
+        <div class="fl-table-wrap">
+          <table class="fl-table">
+            <thead><tr><th>Wann</th><th>Firma</th><th>E-Mail</th><th>Betreff</th><th>Status</th></tr></thead>
+            <tbody id="as-sentlog"></tbody>
+          </table>
+          <div id="as-sentlog-empty" class="empty-state" style="display:none;padding:32px 0"><div class="ei">📭</div><div class="et">Noch nichts gesendet</div><div class="es">Sobald eine Kampagne läuft, erscheint hier jede rausgegangene E-Mail.</div></div>
+        </div>
       </div>
     </div>
   </div>
@@ -2358,14 +2380,18 @@ function renderCrm(d) {
       <td>${signals||'<span class="crm-sub">—</span>'}</td>
       <td><span class="crm-stage ${scls}">${esc(slabel)}</span></td>
       <td>
-        <select class="crm-outcome" onchange="crmOutcome('${l.id}', this.value); this.value='';">
-          <option value="">Ergebnis wählen…</option>
-          <option value="termin">✅ Termin gebucht</option>
-          <option value="interessiert">👍 Interessiert</option>
-          <option value="nicht_erreicht">📵 Nicht erreicht</option>
-          <option value="kein_interesse">✋ Kein Interesse</option>
-          <option value="tot">⛔ Tot / nicht anrufen</option>
-        </select>
+        <div class="crm-act">
+          <select class="crm-outcome" onchange="crmOutcome('${l.id}', this.value); this.value='';">
+            <option value="">Ergebnis wählen…</option>
+            <option value="termin">✅ Termin gebucht</option>
+            <option value="interessiert">👍 Interessiert</option>
+            <option value="nicht_erreicht">📵 Nicht erreicht</option>
+            <option value="kein_interesse">✋ Kein Interesse</option>
+            <option value="tot">⛔ Tot / nicht anrufen</option>
+          </select>
+          <button class="cl-btn" onclick="crmAddNote('${l.id}')" title="Freie Notiz eintippen">📝 Notiz</button>
+        </div>
+        ${l.notiz ? `<div class="crm-note" title="${esc(l.notiz)}">📝 ${esc(String(l.notiz).split('\n').pop())}</div>` : ''}
       </td>
     </tr>`;
   }).join('');
@@ -2376,6 +2402,14 @@ function renderCrm(d) {
 }
 
 function crmGo(page) { crmState.page = page; loadCrmLeads(); }
+
+async function crmAddNote(id) {
+  const t = prompt('Freie Notiz zu diesem Lead (wird mit Zeitstempel gespeichert):', '');
+  if (t === null || !t.trim()) return;
+  const r = await post('/api/crm/lead-note', { id, note: t.trim() });
+  if (r && r.ok) { toast('Notiz gespeichert'); loadCrmLeads(); }
+  else { toast('Konnte nicht speichern', true); }
+}
 
 async function crmEditGf(id) {
   const l = crmLastRows.find(x => x.id === id);
@@ -3134,10 +3168,31 @@ async function loadAutoSend() {
   updateEstimate();
   renderJobs();
   loadFollowup();
+  loadSentLog();
   // Nav-Badge: laufende Jobs
   const running = jobs.filter(j => j.status === 'running').length;
   const nb = document.getElementById('nb-autosend');
   nb.textContent = running; nb.classList.toggle('zero', !running);
+}
+
+async function loadSentLog() {
+  const rows = await fetchJSON('/api/sent-emails?limit=50').catch(()=>[]);
+  const tb = document.getElementById('as-sentlog');
+  const empty = document.getElementById('as-sentlog-empty');
+  if (!tb) return;
+  if (!Array.isArray(rows) || !rows.length) { tb.innerHTML=''; if(empty) empty.style.display='block'; return; }
+  if (empty) empty.style.display='none';
+  tb.innerHTML = rows.map(s => {
+    const when = s.sent_at ? new Date(String(s.sent_at).replace(' ','T')).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+    const ok = s.success ? '<span class="cl-tag rating">✓ zugestellt</span>' : `<span class="cl-tag notdienst" title="${esc(s.error||'')}">Fehler</span>`;
+    return `<tr>
+      <td style="white-space:nowrap">${esc(when)}</td>
+      <td>${esc(s.to_name||'—')}</td>
+      <td class="crm-mail">${esc(s.to_email||'')}</td>
+      <td>${esc(s.subject||'')}</td>
+      <td>${ok}</td>
+    </tr>`;
+  }).join('');
 }
 
 // ════ LEAD-BESTAND / IMPORT / DUPLIKATE ════

@@ -124,7 +124,7 @@ export interface ContactPoint {
 export interface OutreachEvent {
   id: string;
   lead_id: string;
-  event_type: 'draft_created' | 'message_edited' | 'approved' | 'sent_marked' | 'manual_contact' | 'manual_call' | 'status_changed' | 'archived' | 'email_sent' | 'followup_sent';
+  event_type: 'draft_created' | 'message_edited' | 'approved' | 'sent_marked' | 'manual_contact' | 'manual_call' | 'status_changed' | 'archived' | 'email_sent' | 'followup_sent' | 'note';
   channel?: string;
   message?: string;
   status?: LeadStatus;

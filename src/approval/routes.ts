@@ -1699,7 +1699,7 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
       `SELECT l.id, l.name, l.branche, l.stadt, l.adresse, l.telefon, l.email, l.website, l.geschaeftsfuehrer,
               l.prioritaet, l.score_gesamt, l.score_telefon, l.google_bewertung, l.google_anzahl_reviews,
               l.hat_notdienst_hinweis, l.hat_website, l.status, l.manual_call_done, l.last_manual_call_at,
-              l.manual_call_note, l.contacted_at, l.gesendet_at, l.created_at,
+              l.manual_call_note, l.notiz, l.contacted_at, l.gesendet_at, l.created_at,
               (${emailedExpr}) AS already_emailed
        FROM leads l ${whereSql}
        ORDER BY ${sort}
@@ -1725,6 +1725,41 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     getDb().prepare(`UPDATE leads SET geschaeftsfuehrer = @value, updated_at = @now WHERE id = @id`)
       .run({ value, now: new Date().toISOString(), id: req.body.id });
     return { ok: true, geschaeftsfuehrer: value };
+  });
+
+  // Freitext-Notiz zum Lead (hängt mit Zeitstempel an bestehende Notizen an).
+  app.post<{ Body: { id: string; note?: string } }>('/api/crm/lead-note', async (req, reply) => {
+    if (!req.body?.id || !req.body.note?.trim()) return reply.status(400).send({ error: 'id und Notiz nötig' });
+    const db = getDb();
+    const cur = (db.prepare(`SELECT notiz FROM leads WHERE id = ?`).get(req.body.id) as { notiz?: string } | undefined)?.notiz || '';
+    const stamp = new Date().toLocaleString('de-DE');
+    const next = (cur ? cur + '\n' : '') + `[${stamp}] ${req.body.note.trim()}`.slice(0, 4000);
+    db.prepare(`UPDATE leads SET notiz = @notiz, updated_at = @now WHERE id = @id`)
+      .run({ notiz: next.slice(0, 4000), now: new Date().toISOString(), id: req.body.id });
+    recordOutreachEvent({ lead_id: req.body.id, event_type: 'note', note: req.body.note.trim().slice(0, 500) });
+    return { ok: true, notiz: next };
+  });
+
+  // ── Migration/Bulk-Import: volle Lead-Datensätze übernehmen (z.B. lokal → Prod) ──
+  // Behält Kernfelder inkl. Status/Score/GF; dedupliziert über maps_place_id + upsertLead.
+  app.post<{ Body: { leads?: Array<Record<string, unknown>> } }>('/api/admin/bulk-import', async (req, reply) => {
+    const leads = Array.isArray(req.body?.leads) ? req.body!.leads! : [];
+    if (!leads.length) return reply.status(400).send({ error: 'Keine Leads im Body' });
+    if (leads.length > 1000) return reply.status(400).send({ error: 'Maximal 1000 Leads pro Batch' });
+    const COLS = ['maps_place_id', 'name', 'branche', 'stadt', 'stadtbezirk', 'adresse', 'telefon', 'website', 'email', 'geschaeftsfuehrer', 'google_bewertung', 'google_anzahl_reviews', 'hat_notdienst_hinweis', 'hat_website', 'prioritaet', 'score_gesamt', 'score_telefon', 'status', 'bester_kanal', 'kontakt_hinweis'];
+    let neu = 0, aktualisiert = 0, fehler = 0;
+    for (const raw of leads) {
+      try {
+        if (!raw || !raw['name'] || !raw['maps_place_id']) { fehler++; continue; }
+        const data: Record<string, unknown> = {};
+        for (const c of COLS) if (raw[c] !== undefined && raw[c] !== null) data[c] = raw[c];
+        data.branche = data.branche || 'Unbekannt';
+        data.stadt = data.stadt || 'Unbekannt';
+        const res = upsertLead(data as Parameters<typeof upsertLead>[0]);
+        res.inserted ? neu++ : aktualisiert++;
+      } catch { fehler++; }
+    }
+    return { ok: true, neu, aktualisiert, fehler, empfangen: leads.length };
   });
 
   // ── Lead-Bestand (Mini-CRM): wo haben wir noch Reserven? ──────────────────
