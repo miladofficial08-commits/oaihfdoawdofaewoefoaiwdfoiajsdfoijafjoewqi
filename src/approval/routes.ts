@@ -1783,7 +1783,7 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     const leads = Array.isArray(req.body?.leads) ? req.body!.leads! : [];
     if (!leads.length) return reply.status(400).send({ error: 'Keine Leads im Body' });
     if (leads.length > 1000) return reply.status(400).send({ error: 'Maximal 1000 Leads pro Batch' });
-    const COLS = ['maps_place_id', 'name', 'branche', 'stadt', 'stadtbezirk', 'adresse', 'telefon', 'website', 'email', 'geschaeftsfuehrer', 'google_bewertung', 'google_anzahl_reviews', 'hat_notdienst_hinweis', 'hat_website', 'prioritaet', 'score_gesamt', 'score_telefon', 'status', 'bester_kanal', 'kontakt_hinweis'];
+    const COLS = ['maps_place_id', 'name', 'branche', 'stadt', 'stadtbezirk', 'adresse', 'telefon', 'website', 'email', 'geschaeftsfuehrer', 'google_bewertung', 'google_anzahl_reviews', 'hat_notdienst_hinweis', 'hat_website', 'prioritaet', 'score_gesamt', 'score_telefon', 'status', 'bester_kanal', 'kontakt_hinweis', 'track'];
     let neu = 0, aktualisiert = 0, fehler = 0;
     for (const raw of leads) {
       try {
