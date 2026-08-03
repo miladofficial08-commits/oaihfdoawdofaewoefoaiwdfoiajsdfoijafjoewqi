@@ -305,13 +305,18 @@ export function getOutreachEventsBatch(leadIds: string[]): Record<string, Outrea
 }
 
 export function getAllLeads(
-  filter: Partial<{ stadt: string; branche: string; prioritaet: string; status: string; includeArchived: string }> = {}
+  filter: Partial<{ stadt: string; branche: string; prioritaet: string; status: string; includeArchived: string; track: string }> = {}
 ): Lead[] {
   const conditions: string[] = [];
   const params: Record<string, string> = {};
 
   if (filter.includeArchived !== '1' && filter.status !== 'archived') {
     conditions.push(`status != 'archived'`);
+  }
+  // Angebots-Track strikt trennen (Voice Agent vs. Consult). 'all' = keine Trennung.
+  if (filter.track && filter.track !== 'all') {
+    conditions.push(`COALESCE(track, 'voice_agent') = @track`);
+    params.track = filter.track;
   }
   if (filter.status) {
     conditions.push(`status = @status`);
@@ -350,37 +355,42 @@ export function finishScrapeRun(id: string, leadsFound: number, leadsNew: number
     .run(leadsFound, leadsNew, error ?? null, id);
 }
 
-export function getDailyReport() {
+export function getDailyReport(track?: string) {
   const db = getDb();
   const today = new Date().toISOString().slice(0, 10);
-  const leads = db.prepare(`SELECT branche, prioritaet, score_gesamt FROM leads WHERE status != 'archived'`).all() as Lead[];
+  // Track-Whitelist → sichere Literal-Interpolation (kein User-Injection möglich).
+  const t = track === 'consult' ? 'consult' : track === 'voice_agent' ? 'voice_agent' : null;
+  const tw = t ? ` AND COALESCE(track,'voice_agent') = '${t}'` : '';
+  const leads = db.prepare(`SELECT branche, prioritaet, score_gesamt FROM leads WHERE status != 'archived'${tw}`).all() as Lead[];
   const value = estimatePipelineValue(leads);
 
   // Echte Versandzahlen direkt aus sent_emails – keine Hochrechnung, keine Status-Zähler.
-  const emailsSentTotal = (db.prepare(`SELECT COUNT(*) as n FROM sent_emails WHERE success = 1`).get() as { n: number }).n;
+  const emailsSentTotal = (db.prepare(`SELECT COUNT(*) as n FROM sent_emails WHERE success = 1${tw}`).get() as { n: number }).n;
   const emailsSentToday = (db.prepare(
-    `SELECT COUNT(*) as n FROM sent_emails WHERE success = 1 AND sent_at >= datetime('now','start of day','localtime')`
+    `SELECT COUNT(*) as n FROM sent_emails WHERE success = 1 AND sent_at >= datetime('now','start of day','localtime')${tw}`
   ).get() as { n: number }).n;
 
   return {
     emails_sent_total: emailsSentTotal,
     emails_sent_today: emailsSentToday,
-    neue: (db.prepare(`SELECT COUNT(*) as n FROM leads WHERE date(created_at) = ?`).get(today) as { n: number }).n,
-    a_leads: (db.prepare(`SELECT COUNT(*) as n FROM leads WHERE prioritaet = 'A' AND status != 'archived'`).get() as { n: number }).n,
-    b_leads: (db.prepare(`SELECT COUNT(*) as n FROM leads WHERE prioritaet = 'B' AND status != 'archived'`).get() as { n: number }).n,
-    gesendet_heute: (db.prepare(`SELECT COUNT(*) as n FROM leads WHERE date(gesendet_at) = ?`).get(today) as { n: number }).n,
-    pending_approval: (db.prepare(`SELECT COUNT(*) as n FROM leads WHERE status = 'draft_ready'`).get() as { n: number }).n,
-    gesamt: (db.prepare(`SELECT COUNT(*) as n FROM leads WHERE status != 'archived'`).get() as { n: number }).n,
-    archived: (db.prepare(`SELECT COUNT(*) as n FROM leads WHERE status = 'archived'`).get() as { n: number }).n,
-    status_counts: getStatusCounts(),
+    neue: (db.prepare(`SELECT COUNT(*) as n FROM leads WHERE date(created_at) = ?${tw}`).get(today) as { n: number }).n,
+    a_leads: (db.prepare(`SELECT COUNT(*) as n FROM leads WHERE prioritaet = 'A' AND status != 'archived'${tw}`).get() as { n: number }).n,
+    b_leads: (db.prepare(`SELECT COUNT(*) as n FROM leads WHERE prioritaet = 'B' AND status != 'archived'${tw}`).get() as { n: number }).n,
+    gesendet_heute: (db.prepare(`SELECT COUNT(*) as n FROM leads WHERE date(gesendet_at) = ?${tw}`).get(today) as { n: number }).n,
+    pending_approval: (db.prepare(`SELECT COUNT(*) as n FROM leads WHERE status = 'draft_ready'${tw}`).get() as { n: number }).n,
+    gesamt: (db.prepare(`SELECT COUNT(*) as n FROM leads WHERE status != 'archived'${tw}`).get() as { n: number }).n,
+    archived: (db.prepare(`SELECT COUNT(*) as n FROM leads WHERE status = 'archived'${tw}`).get() as { n: number }).n,
+    status_counts: getStatusCounts(t),
     pipeline_value: value.pipelineValue,
     weighted_value: value.weightedValue,
     potential_mrr: value.potentialMrr,
   };
 }
 
-export function getStatusCounts(): Record<string, number> {
-  const rows = getDb().prepare('SELECT status, COUNT(*) as n FROM leads GROUP BY status').all() as Array<{ status: string; n: number }>;
+export function getStatusCounts(track?: string | null): Record<string, number> {
+  const t = track === 'consult' ? 'consult' : track === 'voice_agent' ? 'voice_agent' : null;
+  const tw = t ? ` WHERE COALESCE(track,'voice_agent') = '${t}'` : '';
+  const rows = getDb().prepare(`SELECT status, COUNT(*) as n FROM leads${tw} GROUP BY status`).all() as Array<{ status: string; n: number }>;
   return Object.fromEntries(rows.map(row => [row.status, row.n]));
 }
 

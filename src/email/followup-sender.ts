@@ -20,6 +20,14 @@ import { v4 as uuid } from 'uuid';
 const TICK_MS = 15_000;
 const MAX_STAGES = 2; // Anzahl Follow-ups nach der Erstmail (Stage 1 = Bump, Stage 2 = Break-up)
 
+// Der tatsächliche Follow-up-VERSAND geht bewusst NUR an den Voice-Agent-Track (Tawano).
+// Consult-Leads bekommen vorerst keine automatischen Nachfass-Mails – die werden persönlich
+// bearbeitet. WICHTIG: Nur das Senden ist gesperrt; Analyse, Statistik, Antwort-Erkennung und
+// Dashboard-Übersicht laufen für Consult unverändert weiter. Zum Erweitern: Track hier ergänzen.
+const FOLLOWUP_TRACK = 'voice_agent';
+// SQL-Baustein – wird ausschließlich in der Versand-Kandidatenauswahl verwendet.
+const FOLLOWUP_TRACK_SQL = `COALESCE(track,'voice_agent') = '${FOLLOWUP_TRACK}'`;
+
 export interface FollowupConfig {
   enabled: number;
   gap1_days: number;
@@ -179,6 +187,7 @@ export function dueFollowupCandidate(cfg: FollowupConfig = getFollowupConfig(), 
      WHERE status = 'contacted' AND email IS NOT NULL AND email != ''
        AND COALESCE(followup_stopped,0) = 0
        AND COALESCE(followup_stage,0) < @maxStages
+       AND ${FOLLOWUP_TRACK_SQL}
      ORDER BY COALESCE(followup_last_at, gesendet_at, contacted_at, updated_at) ASC
      LIMIT 40`
   ).all({ maxStages: MAX_STAGES }) as Lead[];

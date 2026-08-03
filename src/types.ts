@@ -45,6 +45,7 @@ export interface Lead {
   youtube_url?: string;
 
   source_url?: string;
+  track?: string; // 'voice_agent' (Tawano) | 'consult' (KI-Automatisierung) – strikte Trennung der Angebote
   maps_place_id?: string;
   normalized_name?: string;
   website_domain?: string;
@@ -124,7 +125,7 @@ export interface ContactPoint {
 export interface OutreachEvent {
   id: string;
   lead_id: string;
-  event_type: 'draft_created' | 'message_edited' | 'approved' | 'sent_marked' | 'manual_contact' | 'manual_call' | 'status_changed' | 'archived' | 'email_sent' | 'followup_sent' | 'note';
+  event_type: 'draft_created' | 'message_edited' | 'approved' | 'sent_marked' | 'manual_contact' | 'manual_call' | 'status_changed' | 'archived' | 'email_sent' | 'followup_sent' | 'reply_received' | 'note';
   channel?: string;
   message?: string;
   status?: LeadStatus;

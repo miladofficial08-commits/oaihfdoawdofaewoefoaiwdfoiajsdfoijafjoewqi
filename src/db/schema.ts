@@ -186,7 +186,11 @@ function initSchema(db: Database.Database) {
     manual_call_note: 'TEXT',
     manual_call_done: 'INTEGER DEFAULT 0',
     geschaeftsfuehrer: 'TEXT',
+    // Angebots-Track: trennt Voice-Agent-Leads (Tawano) strikt von Consult-Leads
+    // (KI-Prozessautomatisierung). Bestehende Leads = Voice Agent.
+    track: "TEXT DEFAULT 'voice_agent'",
   });
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_leads_track ON leads(track);`);
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_leads_domain ON leads(website_domain);
     CREATE INDEX IF NOT EXISTS idx_leads_phone ON leads(phone_normalized);
@@ -349,10 +353,64 @@ function initSchema(db: Database.Database) {
   ensureColumns(db, 'email_templates', {
     category: 'TEXT',
   });
+  ensureColumns(db, 'send_jobs', {
+    // Angebots-Track: ein Consult-Job schreibt NUR Consult-Leads an (keine Vermischung).
+    track: "TEXT DEFAULT 'voice_agent'",
+  });
   ensureColumns(db, 'sent_emails', {
     scheduled_id: 'TEXT',
     campaign: 'TEXT',
+    track: "TEXT DEFAULT 'voice_agent'",
+    // ── Brevo-verifizierter Zustellstatus (Quelle der Wahrheit statt Schätzung) ──
+    // delivery_status: 'sent' (an Brevo übergeben, noch kein Event)
+    //                | 'delivered' (Brevo bestätigt Zustellung)
+    //                | 'bounced'   (Hard-Bounce/ungültig – dauerhaft, Adresse gesperrt)
+    //                | 'soft_failed' (Soft-Bounce/deferred/blocked/error – vorübergehend, Re-Kontakt erlaubt)
+    //                | 'spam' (als Spam markiert)
+    delivery_status: "TEXT NOT NULL DEFAULT 'sent'",
+    delivered_at:    'TEXT',
+    bounced_at:      'TEXT',
+    bounce_reason:   'TEXT',
+    brevo_opened_at: 'TEXT',
+    brevo_clicked_at:'TEXT',
+    unsubscribed_at: 'TEXT',
+    brevo_event_at:  'TEXT',   // Zeitpunkt des zuletzt verarbeiteten Brevo-Events (Idempotenz/Debug)
   });
+
+  // Sperrliste: Adressen, die nie wieder angemailt werden dürfen (Abmeldung, Hard-Bounce, Spam-Beschwerde).
+  // Zentral per normalisierter E-Mail, damit dieselbe Adresse auch über mehrere Lead-Zeilen hinweg gesperrt bleibt.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS email_suppression (
+      email_normalized TEXT PRIMARY KEY,
+      reason           TEXT NOT NULL,
+      source           TEXT,
+      created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+
+  // Verarbeitete eingehende Antworten. Dient zwei Zwecken:
+  //  1) Idempotenz – dieselbe Postfach-Nachricht (uid) wird nie doppelt verarbeitet,
+  //     damit ein Lead nicht bei jedem Scan erneut umgestuft/geloggt wird.
+  //  2) Datenquelle fürs "Antworten"-Panel im Dashboard (Gruppierung nach Kategorie).
+  // category: 'not_interested' | 'interested' | 'question' | 'unknown' | 'auto_reply'
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS inbound_replies (
+      uid          INTEGER PRIMARY KEY,
+      lead_id      TEXT,
+      from_email   TEXT NOT NULL,
+      from_name    TEXT,
+      subject      TEXT,
+      snippet      TEXT,
+      category     TEXT NOT NULL,
+      confidence   INTEGER NOT NULL DEFAULT 0,
+      reason       TEXT,
+      followup_stopped INTEGER NOT NULL DEFAULT 0,
+      received_at  TEXT,
+      created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_inbound_replies_lead ON inbound_replies(lead_id);
+    CREATE INDEX IF NOT EXISTS idx_inbound_replies_cat  ON inbound_replies(category);
+  `);
   migrateStatuses(db);
   backfillLeadIdentity(db);
   backfillContactPoints(db);

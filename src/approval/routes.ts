@@ -21,9 +21,10 @@ import {
   upsertLead,
 } from '../db/leads-repo';
 import { Lead } from '../types';
-import { nrwRegions, verticalPresets } from '../config/markets';
+import { nrwRegions, verticalPresets, consultVerticals } from '../config/markets';
 import { runPipeline } from '../pipeline';
 import { reanalyzeExistingLeads } from '../reanalyze-existing';
+import { cleanStoredGf } from '../analyzer/website-checker';
 import { personalizeLead, getAiProvider } from '../ai/personalizer';
 import { exportToCsv } from '../export/csv-export';
 import OpenAI from 'openai';
@@ -34,13 +35,15 @@ import { generateAdVariants } from '../ai/ad-generator';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../db/schema';
 import { fetchInboxEmails, getImapStatus, markEmailSeen } from '../email/inbox';
-import { getEmailTemplate, updateEmailTemplate, renderTemplate, listEmailTemplates, createEmailTemplate, deleteEmailTemplate, getTemplateById, seedFollowupTemplates, seedOutreachTemplates } from '../email/template';
+import { startReplyScanner, scanReplies, listReplies } from '../email/reply-scanner';
+import { getEmailTemplate, updateEmailTemplate, renderTemplate, listEmailTemplates, createEmailTemplate, deleteEmailTemplate, getTemplateById, seedFollowupTemplates, seedOutreachTemplates, seedConsultTemplates } from '../email/template';
 import { startDailyEngine } from '../email/daily-engine';
 import { startAutoSender, recordSentEmail, sentTodayCount, GLOBAL_DAILY_CAP, ALLOWED_DAILY_LIMITS, SendJob } from '../email/auto-sender';
 import { startFollowupSender, getFollowupConfig, setFollowupConfig, followupStats } from '../email/followup-sender';
 import { classifyOpenEvent, isOpenLikeEvent, isReliableOpen, secondsBetween, countDistinctOpens, OPEN_DEDUP_WINDOW_SECONDS, classifyClickEvent, isRealClick, isClickLikeEvent, countDistinctClicks } from '../email/tracking';
 import { classifyEmailDelivery } from '../email/email-status';
 import { startScheduledSender } from '../email/scheduled-sender';
+import { startBrevoSync, applyBrevoWebhookBody, verifyWebhookSecret, verifiedSendCounts, getBrevoAggregateCached, refreshBrevoAggregate, ensureBrevoWebhook } from '../email/brevo-sync';
 
 const BERLIN_TZ = 'Europe/Berlin';
 
@@ -206,7 +209,7 @@ export async function registerRoutes(app: FastifyInstance) {
 
   app.get('/api/pending', async () => enrichLeads(getLeadsPendingApproval()));
 
-  app.get<{ Querystring: { stadt?: string; branche?: string; prioritaet?: string; status?: string; includeArchived?: string; excludeContacted?: string } }>(
+  app.get<{ Querystring: { stadt?: string; branche?: string; prioritaet?: string; status?: string; includeArchived?: string; excludeContacted?: string; track?: string } }>(
     '/api/leads',
     async (req) => {
       let leads = getAllLeads(req.query);
@@ -224,7 +227,7 @@ export async function registerRoutes(app: FastifyInstance) {
     }
   );
 
-  app.get('/api/report', async () => getDailyReport());
+  app.get<{ Querystring: { track?: string } }>('/api/report', async (req) => getDailyReport(req.query.track));
 
   app.get<{ Querystring: { stadt?: string; branche?: string; prioritaet?: string; status?: string; includeArchived?: string } }>(
     '/api/export',
@@ -238,8 +241,8 @@ export async function registerRoutes(app: FastifyInstance) {
     }
   );
 
-  app.get('/api/strategy', async () => ({
-    verticals: verticalPresets,
+  app.get<{ Querystring: { track?: string } }>('/api/strategy', async (req) => ({
+    verticals: req.query.track === 'consult' ? consultVerticals : verticalPresets,
     regions: nrwRegions,
     gaps: [
       'OpenAI API-Key eintragen und AI-Provider auf openai lassen',
@@ -652,6 +655,13 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     return { ok: true };
   });
 
+  // ── Antwort-Scanner: Antworten lesen, klassifizieren, Follow-ups sperren ────
+  app.post('/api/inbox/scan-replies', async () => scanReplies());
+  app.get<{ Querystring: { limit?: string } }>('/api/inbox/replies', async (req) => {
+    const limit = Math.min(200, Number(req.query.limit || 100));
+    return listReplies(limit);
+  });
+
   // ── Email Templates (mehrere) ─────────────────────────────────────────────
   app.get('/api/email-template', async () => getEmailTemplate());
 
@@ -686,8 +696,10 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
   );
 
   // ── Auto-Versand Jobs ─────────────────────────────────────────────────────
-  app.get('/api/send-jobs', async () => {
-    const jobs = getDb().prepare('SELECT * FROM send_jobs ORDER BY created_at DESC').all() as SendJob[];
+  app.get<{ Querystring: { track?: string } }>('/api/send-jobs', async (req) => {
+    const t = req.query.track;
+    const where = (t && t !== 'all') ? `WHERE COALESCE(track,'voice_agent') = @t` : '';
+    const jobs = getDb().prepare(`SELECT * FROM send_jobs ${where} ORDER BY created_at DESC`).all(t && t !== 'all' ? { t } : {}) as SendJob[];
     return jobs.map(j => ({
       ...j,
       template_ids: JSON.parse(j.template_ids || '[]'),
@@ -700,15 +712,20 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     sent_total: (getDb().prepare('SELECT COUNT(*) as n FROM sent_emails WHERE success = 1').get() as { n: number }).n,
     global_daily_cap: GLOBAL_DAILY_CAP,
     allowed_daily_limits: ALLOWED_DAILY_LIMITS,
+    // Brevo-verifizierte Zahlen (Quelle der Wahrheit) + Konto-Aggregat als Kreuzprobe.
+    verified: verifiedSendCounts(),
+    brevo: getBrevoAggregateCached(),
   }));
 
   // ── Live-Status fürs Dashboard: was läuft gerade, was ist heute passiert? ──
-  app.get('/api/activity', async () => {
+  app.get<{ Querystring: { track?: string } }>('/api/activity', async (req) => {
     const db = getDb();
-    const runningJobs = db.prepare(`SELECT id, name, sent_count, total_target, note FROM send_jobs WHERE status = 'running' ORDER BY created_at DESC`).all() as Array<{ id: string; name: string; sent_count: number; total_target: number; note: string | null }>;
+    const t = req.query.track === 'consult' ? 'consult' : req.query.track === 'voice_agent' ? 'voice_agent' : null;
+    const tw = t ? ` AND COALESCE(track,'voice_agent') = '${t}'` : '';
+    const runningJobs = db.prepare(`SELECT id, name, sent_count, total_target, note FROM send_jobs WHERE status = 'running'${tw} ORDER BY created_at DESC`).all() as Array<{ id: string; name: string; sent_count: number; total_target: number; note: string | null }>;
     const sentToday = sentTodayCount();
-    const callsToday = (db.prepare(`SELECT COUNT(*) n FROM leads WHERE manual_call_done = 1 AND date(last_manual_call_at) = date('now','localtime')`).get() as { n: number }).n;
-    const CALLABLE = `status IN ('new','checked','draft_ready','approved','manual_review','contacted') AND telefon IS NOT NULL AND length(TRIM(telefon)) > 5 AND COALESCE(manual_call_done,0) = 0`;
+    const callsToday = (db.prepare(`SELECT COUNT(*) n FROM leads WHERE manual_call_done = 1 AND date(last_manual_call_at) = date('now','localtime')${tw}`).get() as { n: number }).n;
+    const CALLABLE = `status IN ('new','checked','draft_ready','approved','manual_review','contacted') AND telefon IS NOT NULL AND length(TRIM(telefon)) > 5 AND COALESCE(manual_call_done,0) = 0${tw}`;
     const callableOpen = (db.prepare(`SELECT COUNT(*) n FROM leads WHERE ${CALLABLE}`).get() as { n: number }).n;
     const openLeads = (db.prepare(
       `SELECT COUNT(*) n FROM leads WHERE status IN ('new','checked','draft_ready','approved','manual_review')
@@ -717,7 +734,7 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
            SELECT LOWER(TRIM(to_email)) FROM sent_emails      WHERE success = 1                          AND to_email IS NOT NULL AND to_email != ''
            UNION
            SELECT LOWER(TRIM(to_email)) FROM scheduled_emails WHERE status IN ('scheduled','processing') AND to_email IS NOT NULL AND to_email != ''
-         )`
+         )${tw}`
     ).get() as { n: number }).n;
     const followup = getFollowupConfig();
     const scheduledPending = (db.prepare(`SELECT COUNT(*) n FROM scheduled_emails WHERE status IN ('scheduled','processing')`).get() as { n: number }).n;
@@ -735,10 +752,11 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     };
   });
 
-  app.post<{ Body: { name?: string; verticalId?: string; totalTarget: number; dailyLimit?: number; templateIds?: string[]; windowStart?: number; windowEnd?: number; gapSeconds?: number; startAt?: string } }>(
+  app.post<{ Body: { name?: string; verticalId?: string; totalTarget: number; dailyLimit?: number; templateIds?: string[]; windowStart?: number; windowEnd?: number; gapSeconds?: number; startAt?: string; track?: string } }>(
     '/api/send-jobs',
     async (req, reply) => {
       const { name, verticalId, totalTarget, dailyLimit = 100, templateIds = ['default'], windowStart = 8, windowEnd = 24, gapSeconds, startAt } = req.body;
+      const track = req.body.track === 'consult' ? 'consult' : 'voice_agent';
       if (!totalTarget || totalTarget < 1) return reply.status(400).send({ error: 'Anzahl E-Mails fehlt' });
       if (totalTarget > 5000) return reply.status(400).send({ error: 'Maximal 5000 E-Mails pro Job' });
       const safeDaily = ALLOWED_DAILY_LIMITS.includes(dailyLimit) ? dailyLimit : 100;
@@ -749,13 +767,14 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
       const maxGap = Math.max(gap + 10, Math.round(gap * 1.5));
       // Startzeit: leer = sofort (datetime('now')). Sonst als lokale Zeit vom Client übernehmen.
       const startProvided = typeof startAt === 'string' && startAt.trim() !== '' && !Number.isNaN(new Date(startAt).getTime());
-      const vertical = verticalPresets.find(v => v.id === verticalId);
+      const vertical = [...verticalPresets, ...consultVerticals].find(v => v.id === verticalId);
       const id = uuid();
       getDb().prepare(
-        `INSERT INTO send_jobs (id, name, vertical_id, branche_terms, template_ids, total_target, daily_limit, min_gap_s, max_gap_s, window_start, window_end, status, next_send_at)
-         VALUES (@id, @name, @vertical_id, @branche_terms, @template_ids, @total_target, @daily_limit, @min_gap_s, @max_gap_s, @window_start, @window_end, 'running', ${startProvided ? '@next_send_at' : "datetime('now')"})`
+        `INSERT INTO send_jobs (id, name, vertical_id, branche_terms, template_ids, total_target, daily_limit, min_gap_s, max_gap_s, window_start, window_end, track, status, next_send_at)
+         VALUES (@id, @name, @vertical_id, @branche_terms, @template_ids, @total_target, @daily_limit, @min_gap_s, @max_gap_s, @window_start, @window_end, @track, 'running', ${startProvided ? '@next_send_at' : "datetime('now')"})`
       ).run({
         id,
+        track,
         name: name || (vertical ? vertical.label : 'Alle Branchen') + ' – ' + totalTarget + ' E-Mails',
         vertical_id: verticalId ?? null,
         branche_terms: vertical ? JSON.stringify(vertical.searchTerms) : null,
@@ -1100,6 +1119,22 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     return { ok: true };
   });
 
+  // Brevo-Webhook: Echtzeit-Zustellstatus (delivered/bounce/open/click/unsubscribe).
+  // Öffentlich (Auth-Bypass in server.ts), daher per Secret in der Query geschützt.
+  app.post<{ Querystring: { secret?: string } }>('/webhook/brevo', async (req, reply) => {
+    if (!verifyWebhookSecret(req.query?.secret)) {
+      return reply.status(401).send({ ok: false, error: 'invalid_secret' });
+    }
+    const result = applyBrevoWebhookBody(req.body);
+    return { ok: true, ...result };
+  });
+
+  // Manuelle Kreuzprobe/Reparatur: Aggregat neu aus Brevo ziehen + Webhook-Registrierung sicherstellen.
+  app.post('/api/brevo-sync', async () => {
+    const [aggregate, webhook] = await Promise.all([refreshBrevoAggregate(), ensureBrevoWebhook()]);
+    return { ok: true, aggregate, webhook, verified: verifiedSendCounts() };
+  });
+
   app.get<{ Querystring: Record<string, string> }>('/api/analytics/email', async (req) => {
     const db = getDb();
     const q = req.query || {};
@@ -1127,6 +1162,7 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     if (toIso) { where.push(`s.sent_at <= @to`); params.to = toIso.replace('T', ' ').replace('Z', ''); }
     if (fTemplate) { where.push(`s.template_id = @tpl`); params.tpl = fTemplate; }
     if (fCampaign) { where.push(fCampaign === '__none__' ? `s.campaign IS NULL` : `s.campaign = @camp`); if (fCampaign !== '__none__') params.camp = fCampaign; }
+    if (q.track && q.track !== 'all') { where.push(`COALESCE(s.track,'voice_agent') = @track`); params.track = q.track; }
     // Datumsvergleich robust über parseDbTime unten nochmal; SQL-Grobfilter reicht als Vorauswahl.
     const rows = db.prepare(
       `SELECT s.id, s.to_email, s.to_name, s.subject, s.success, s.error, s.sent_at, s.job_id, s.scheduled_id, s.campaign, s.template_id
@@ -1610,12 +1646,12 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
       const db = getDb();
       const results: Array<{ id: string; name?: string; success: boolean; error?: string }> = [];
       for (const id of leadIds) {
-        const lead = db.prepare('SELECT id, name, branche, stadt, email, followup_stage FROM leads WHERE id = ?').get(id) as
-          { id: string; name: string; branche?: string; stadt?: string; email?: string; followup_stage?: number } | undefined;
+        const lead = db.prepare('SELECT id, name, branche, stadt, email, followup_stage, geschaeftsfuehrer FROM leads WHERE id = ?').get(id) as
+          { id: string; name: string; branche?: string; stadt?: string; email?: string; followup_stage?: number; geschaeftsfuehrer?: string } | undefined;
         if (!lead) { results.push({ id, success: false, error: 'Lead nicht gefunden' }); continue; }
         if (!lead.email) { results.push({ id, name: lead.name, success: false, error: 'Keine E-Mail' }); continue; }
         if (sentTodayCount() >= GLOBAL_DAILY_CAP) { results.push({ id, name: lead.name, success: false, error: `Globales Tageslimit (${GLOBAL_DAILY_CAP}) erreicht` }); continue; }
-        const rendered = renderTemplate(tpl, { name: lead.name, branche: lead.branche, stadt: lead.stadt });
+        const rendered = renderTemplate(tpl, { name: lead.name, branche: lead.branche, stadt: lead.stadt, ansprechpartner: lead.geschaeftsfuehrer });
         const trackingId = uuid();
         let res;
         try {
@@ -1649,7 +1685,7 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
   app.get<{ Querystring: {
     q?: string; branche?: string; stadt?: string; stage?: string;
     phone?: string; emailed?: string; called?: string;
-    sort?: string; page?: string; pageSize?: string;
+    sort?: string; page?: string; pageSize?: string; track?: string;
   } }>('/api/crm/leads', async (req) => {
     const db = getDb();
     const Q = req.query;
@@ -1666,6 +1702,7 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     };
     const where: string[] = [`l.status != 'archived'`];
     const params: Record<string, unknown> = {};
+    if (Q.track && Q.track !== 'all') { where.push(`COALESCE(l.track,'voice_agent') = @track`); params.track = Q.track; }
     if (Q.q && Q.q.trim()) {
       where.push(`(LOWER(l.name) LIKE @q OR LOWER(l.email) LIKE @q OR l.telefon LIKE @q OR LOWER(l.stadt) LIKE @q OR LOWER(l.branche) LIKE @q)`);
       params.q = '%' + Q.q.trim().toLowerCase() + '%';
@@ -1762,12 +1799,35 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     return { ok: true, neu, aktualisiert, fehler, empfangen: leads.length };
   });
 
+  // ── GF-Bereinigung: räumt bereits gespeicherte Geschäftsführer-Namen auf ───
+  // Alt-Daten enthalten angehängten Müll (Straße/Kammer/Navigation) aus einer früheren
+  // Extraktion. Diese String-Bereinigung braucht KEINEN Website-Neuabruf – schnell & sicher.
+  app.post('/api/admin/clean-gf', async () => {
+    const db = getDb();
+    const rows = db.prepare(`SELECT id, geschaeftsfuehrer FROM leads WHERE geschaeftsfuehrer IS NOT NULL AND TRIM(geschaeftsfuehrer) != ''`).all() as Array<{ id: string; geschaeftsfuehrer: string }>;
+    const upd = db.prepare(`UPDATE leads SET geschaeftsfuehrer = @gf, updated_at = @ts WHERE id = @id`);
+    let geprueft = 0, bereinigt = 0, geleert = 0, unveraendert = 0;
+    const tx = db.transaction(() => {
+      for (const r of rows) {
+        geprueft++;
+        const cleaned = cleanStoredGf(r.geschaeftsfuehrer);
+        if (cleaned === r.geschaeftsfuehrer) { unveraendert++; continue; }
+        upd.run({ gf: cleaned ?? null, ts: new Date().toISOString(), id: r.id });
+        if (cleaned) bereinigt++; else geleert++;
+      }
+    });
+    tx();
+    return { ok: true, geprueft, bereinigt, geleert, unveraendert };
+  });
+
   // ── Lead-Bestand (Mini-CRM): wo haben wir noch Reserven? ──────────────────
-  app.get('/api/lead-inventory', async () => {
+  app.get<{ Querystring: { track?: string } }>('/api/lead-inventory', async (req) => {
     const db = getDb();
     const blocked = contactedEmailSet();
+    const t = req.query.track === 'consult' ? 'consult' : req.query.track === 'voice_agent' ? 'voice_agent' : null;
+    const tw = t ? ` AND COALESCE(track,'voice_agent') = '${t}'` : '';
     const rows = db.prepare(
-      `SELECT branche, stadt, email, website, status FROM leads WHERE status != 'archived'`
+      `SELECT branche, stadt, email, website, status FROM leads WHERE status != 'archived'${tw}`
     ).all() as Array<{ branche: string; stadt?: string; email?: string; website?: string; status: string }>;
     const SENDABLE = ['new', 'checked', 'draft_ready', 'approved', 'manual_review'];
     const map = new Map<string, any>();
@@ -1877,46 +1937,64 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
   // der Gründer parallel zum Auto-Versand gezielt cold-callen kann. Bereits per
   // E-Mail kontaktierte Betriebe sind erlaubt (Mehrfach-Touch = höhere Conversion)
   // und werden als "bereits angeschrieben" markiert – ein starker Warm-Call-Anlass.
-  app.get<{ Querystring: { limit?: string } }>('/api/call-list', async (req) => {
+  app.get<{ Querystring: { limit?: string; q?: string; branche?: string; stadt?: string; prio?: string; emailed?: string; track?: string } }>('/api/call-list', async (req) => {
     const db = getDb();
-    const limit = Math.max(1, Math.min(100, Number(req.query.limit) || 20));
+    const Q = req.query;
+    const limit = Math.max(1, Math.min(200, Number(Q.limit) || 50));
+    const where: string[] = [
+      `l.telefon IS NOT NULL AND length(TRIM(l.telefon)) > 5`,
+      `l.status IN ('new','checked','draft_ready','approved','manual_review','contacted')`,
+      `COALESCE(l.manual_call_done, 0) = 0`,
+    ];
+    const params: Record<string, unknown> = {};
+    if (Q.q && Q.q.trim()) {
+      where.push(`(LOWER(l.name) LIKE @q OR LOWER(l.branche) LIKE @q OR LOWER(l.stadt) LIKE @q OR l.telefon LIKE @q)`);
+      params.q = '%' + Q.q.trim().toLowerCase() + '%';
+    }
+    if (Q.branche && Q.branche.trim()) { where.push(`LOWER(l.branche) = @branche`); params.branche = Q.branche.trim().toLowerCase(); }
+    if (Q.stadt && Q.stadt.trim()) { where.push(`LOWER(l.stadt) = @stadt`); params.stadt = Q.stadt.trim().toLowerCase(); }
+    if (Q.prio && /^[ABC]$/.test(Q.prio)) { where.push(`l.prioritaet = @prio`); params.prio = Q.prio; }
+    if (Q.track && Q.track !== 'all') { where.push(`COALESCE(l.track,'voice_agent') = @track`); params.track = Q.track; }
+    const emailedExpr = `CASE WHEN l.email IS NOT NULL AND LOWER(TRIM(l.email)) IN (
+      SELECT LOWER(TRIM(to_email)) FROM sent_emails WHERE success = 1 AND to_email IS NOT NULL AND to_email != ''
+    ) THEN 1 ELSE 0 END`;
+    if (Q.emailed === '1') where.push(`l.email IS NOT NULL AND LOWER(TRIM(l.email)) IN (SELECT LOWER(TRIM(to_email)) FROM sent_emails WHERE success=1 AND to_email IS NOT NULL AND to_email!='')`);
+    if (Q.emailed === '0') where.push(`(l.email IS NULL OR LOWER(TRIM(l.email)) NOT IN (SELECT LOWER(TRIM(to_email)) FROM sent_emails WHERE success=1 AND to_email IS NOT NULL AND to_email!=''))`);
+    const whereSql = where.join(' AND ');
     const rows = db.prepare(
-      `SELECT l.id, l.name, l.branche, l.stadt, l.telefon, l.email, l.website, l.adresse,
+      `SELECT l.id, l.name, l.branche, l.stadt, l.telefon, l.email, l.website, l.adresse, l.geschaeftsfuehrer,
               l.prioritaet, l.score_gesamt, l.score_telefon, l.google_bewertung, l.google_anzahl_reviews,
               l.hat_notdienst_hinweis, l.status, l.kontakt_hinweis, l.manual_call_note,
-              CASE WHEN l.email IS NOT NULL AND LOWER(TRIM(l.email)) IN (
-                     SELECT LOWER(TRIM(to_email)) FROM sent_emails WHERE success = 1 AND to_email IS NOT NULL AND to_email != ''
-                   ) THEN 1 ELSE 0 END AS already_emailed
+              (${emailedExpr}) AS already_emailed
        FROM leads l
-       WHERE l.telefon IS NOT NULL AND length(TRIM(l.telefon)) > 5
-         AND l.status IN ('new','checked','draft_ready','approved','manual_review','contacted')
-         AND COALESCE(l.manual_call_done, 0) = 0
+       WHERE ${whereSql}
        ORDER BY CASE l.prioritaet WHEN 'A' THEN 0 WHEN 'B' THEN 1 ELSE 2 END,
                 l.hat_notdienst_hinweis DESC, l.score_telefon DESC, l.score_gesamt DESC
-       LIMIT ?`
-    ).all(limit) as any[];
-    const openTotal = (db.prepare(
-      `SELECT COUNT(*) n FROM leads
-       WHERE telefon IS NOT NULL AND length(TRIM(telefon)) > 5
-         AND status IN ('new','checked','draft_ready','approved','manual_review','contacted')
-         AND COALESCE(manual_call_done, 0) = 0`
-    ).get() as { n: number }).n;
+       LIMIT @limit`
+    ).all({ ...params, limit }) as any[];
+    const openTotal = (db.prepare(`SELECT COUNT(*) n FROM leads l WHERE ${whereSql}`).get(params) as { n: number }).n;
     const calledToday = (db.prepare(
       `SELECT COUNT(*) n FROM leads WHERE manual_call_done = 1 AND date(last_manual_call_at) = date('now','localtime')`
     ).get() as { n: number }).n;
-    return { leads: rows, summary: { open_total: openTotal, shown: rows.length, called_today: calledToday } };
+    // Distinct branchen + städte für Filter-Dropdowns
+    const branchen = db.prepare(`SELECT DISTINCT branche FROM leads WHERE telefon IS NOT NULL AND length(TRIM(telefon))>5 AND branche IS NOT NULL ORDER BY branche`).all() as Array<{branche:string}>;
+    const staedte = db.prepare(`SELECT DISTINCT stadt FROM leads WHERE telefon IS NOT NULL AND length(TRIM(telefon))>5 AND stadt IS NOT NULL ORDER BY stadt`).all() as Array<{stadt:string}>;
+    return { leads: rows, summary: { open_total: openTotal, shown: rows.length, called_today: calledToday }, branchen: branchen.map(r=>r.branche), staedte: staedte.map(r=>r.stadt) };
   });
 
   // Fertige Follow-up- + Erstkontakt-Vorlagen bereitstellen (idempotent).
   // seedOutreachTemplates repariert zusätzlich die beschädigte Standard-Vorlage.
   seedFollowupTemplates();
   seedOutreachTemplates();
+  seedConsultTemplates();
 
   // Hintergrund-Worker starten
   startAutoSender();
   startScheduledSender();
   startFollowupSender();
   startDailyEngine();
+  startBrevoSync();
+  startReplyScanner();
 }
 
 function enrichLeads(leads: Lead[]) {

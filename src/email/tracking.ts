@@ -105,7 +105,15 @@ export function isMachineOpenUserAgent(userAgent?: string | null): boolean {
   return MACHINE_USER_AGENT_PATTERNS.some(pattern => pattern.test(ua));
 }
 
+// Events, die direkt von Brevo bestätigt wurden, gelten IMMER als echt – sie kommen
+// vom Versanddienst selbst, nicht von unserem Pixel, und unterliegen daher weder der
+// Maschinen-User-Agent- noch der Mindestzeit-Prüfung.
+export function isBrevoVerified(userAgent?: string | null): boolean {
+  return String(userAgent || '').trim().toLowerCase() === 'brevo:verified';
+}
+
 export function classifyOpenEvent(input: { userAgent?: string | null; secondsSinceSent?: number | null }): EmailOpenEventType {
+  if (isBrevoVerified(input.userAgent)) return 'open';
   if (isMachineOpenUserAgent(input.userAgent)) return 'open_machine';
   const seconds = input.secondsSinceSent;
   if (typeof seconds === 'number' && Number.isFinite(seconds) && seconds >= 0 && seconds < MIN_SECONDS_FOR_RELIABLE_OPEN) {

@@ -105,7 +105,7 @@ async function scanContactPages(
   need: { needEmail: boolean; needGf: boolean }
 ): Promise<{ email?: { email: string; source: string }; geschaeftsfuehrer?: string }> {
   const out: { email?: { email: string; source: string }; geschaeftsfuehrer?: string } = {};
-  for (const u of candidateContactUrls(homeHtml, base).slice(0, 3)) {
+  for (const u of candidateContactUrls(homeHtml, base).slice(0, 5)) {
     try {
       const page = await fetchPage(u);
       if (!page.html) continue;
@@ -140,36 +140,69 @@ const NAME_RE = "(?:Herr |Frau |Dr\\.? |Prof\\.? |Dipl\\.-?[A-Za-zäöüß]+\\.?
 // Wortgrenzen (\b) sind wichtig: sonst matcht z.B. "ust" (von USt) im Namen "Mustermann".
 const GF_BLOCKWORDS = /\b(gmbh|kg|ohg|gbr|mbh|ug|ag|handelsregister|registergericht|amtsgericht|gericht|umsatzsteuer|steuernummer|steuer|ust|hrb|hra|impressum|telefon|telefax|fax|e-?mail|vertreten|gesch[äa]ftsf[üu]hr\w*|inhaber\w*|adresse|stra[sß]e|platz|allee|weg)\b/i;
 const GF_TITLES = /^(Herr|Frau|Dr\.?|Prof\.?|Dipl\.?-?[A-Za-zäöüß]*\.?)$/i;
-// Nur zum ABSCHNEIDEN nachlaufender Wörter (Berufe/Rechtsform) – NICHT zum Verwerfen,
-// damit echte Nachnamen wie "Meister" erhalten bleiben.
-const GF_TRAILING_NOISE = /^(installateur|meister|elektromeister|handwerksmeister|klempnermeister|heizungsbaumeister|ingenieur|techniker|monteur|inhaber|gesch[äa]ftsf[üu]hr\w*|gmbh|kg|ohg|gbr|mbh|ug|ag|handelsregister|registergericht|amtsgericht|ust|hrb|hra|steuernummer|telefon|telefax|fax|impressum|adresse)$/i;
+// Nur zum ABSCHNEIDEN nachlaufender Wörter (Berufe/Rechtsform/Adresse/Navigation) – NICHT zum
+// Verwerfen, damit echte Nachnamen wie "Meister" erhalten bleiben. Deckt die real beobachteten
+// Bleed-in-Muster ab: Kammer/Innung, Straßennamen, Navigations- und Füllwörter.
+const GF_TRAILING_NOISE = /^(installateur|meister|elektromeister|handwerksmeister|klempnermeister|heizungsbaumeister|ingenieur|techniker|monteur|inhaber|gesch[äa]ftsf[üu]hr\w*|gmbh|kg|ohg|gbr|mbh|ug|ag|co|handelsregister|registergericht|amtsgericht|ust|hrb|hra|steuernummer|telefon|telefax|fax|impressum|datenschutz|adresse|kontakt|home|start|menu|men[üu]|handwerkskammer|kammer|innung|mitglied|streitschlichtung|verbraucherschlichtungsstelle|die|der|das|und|[a-zäöüß]*(?:stra[sß]e|str\.?|weg|platz|allee|ring|gasse))$/i;
+
+// Wandelt HTML in Text um, behält aber Block-Grenzen als "|" – so kann der Namens-Regex
+// nicht über eine Zeilen-/Absatzgrenze hinweg greifen und zieht keine Adresse ("… Kraspothstr"),
+// Navigation ("… START KONTAKT") oder Zusätze ("… Handwerkskammer Düsseldorf") in den Namen.
+function stripTagsWithBoundaries(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<(?:br|\/p|\/div|\/li|\/td|\/tr|\/h[1-6]|\/span|\/a|\/strong|\/b)\b[^>]*>/gi, ' | ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[ \t]+/g, ' ');
+}
 
 export function extractGeschaeftsfuehrer(html: string): string | undefined {
-  const text = stripTags(decodeHtmlEntities(html))
+  const text = stripTagsWithBoundaries(decodeHtmlEntities(html))
     .replace(/&auml;/g, 'ä').replace(/&ouml;/g, 'ö').replace(/&uuml;/g, 'ü').replace(/&szlig;/g, 'ß')
     .replace(/&Auml;/g, 'Ä').replace(/&Ouml;/g, 'Ö').replace(/&Uuml;/g, 'Ü')
-    .replace(/\s+/g, ' ');
+    .replace(/[ \t]*\|[ \t]*/g, ' | ');
   for (const label of GF_LABELS) {
-    const re = new RegExp(label + "\\s*[:\\-–—]?\\s*(" + NAME_RE + ")", 'i');
+    // Separator Label→Name darf auch die eingefügte Block-Grenze "|" enthalten
+    // (z.B. Impressum-Tabelle <td>Geschäftsführer</td><td>Name</td>), der Name selbst nicht.
+    const re = new RegExp(label + "\\s*[:\\-–—|]*\\s*(" + NAME_RE + ")", 'i');
     const m = text.match(re);
     if (!m || !m[1]) continue;
-    let words = m[1].trim().replace(/\s+/g, ' ').split(' ');
-    // Nachlaufende Berufs-/Rechtsform-/Register-Wörter abschneiden (greedy-Match zieht z.B.
-    // "… Installateur" oder "… Handelsregister" mit rein).
-    while (words.length > 2 && GF_TRAILING_NOISE.test(words[words.length - 1])) words.pop();
-    // Führende Titel/Anrede entfernen (Herr, Frau, Dr., Prof., Dipl.-Ing.).
-    while (words.length > 2 && GF_TITLES.test(words[0])) words.shift();
-    const name = words.join(' ');
-    if (isPlausiblePersonName(name)) return name.slice(0, 60);
+    const name = refineNameWords(m[1].trim().replace(/\s+/g, ' ').split(' '));
+    if (name && isPlausiblePersonName(name)) return name.slice(0, 60);
   }
   return undefined;
+}
+
+// Formt aus rohen Wortteilen einen sauberen Personennamen:
+//  1. führende Titel + Berufs-/Füllwörter weg ("Handwerksmeister Klaus …" → "Klaus …")
+//  2. nur der führende Block großgeschriebener Wörter (schneidet "und"/"von"/Kleingeschriebenes ab)
+//  3. auf max. 3 Wörter kappen (Bleed-in aus Folgezeilen ohne HTML-Grenzen)
+//  4. nachlaufende Berufs-/Adress-/Navigations-Wörter abschneiden
+function refineNameWords(input: string[]): string {
+  let words = input.slice();
+  while (words.length > 1 && (GF_TITLES.test(words[0]) || GF_TRAILING_NOISE.test(words[0]))) words.shift();
+  const cut = words.findIndex(w => !/^[A-ZÄÖÜ]/.test(w));
+  if (cut > 0) words = words.slice(0, cut);
+  if (words.length > 3) words = words.slice(0, 3);
+  while (words.length > 2 && GF_TRAILING_NOISE.test(words[words.length - 1])) words.pop();
+  return words.join(' ');
+}
+
+// Bereinigt EINEN bereits gespeicherten GF-String (ohne Website neu zu laden). Für Alt-Daten,
+// die vor der verbesserten Extraktion mit angehängtem Müll (Straße, Kammer, Navigation) gespeichert
+// wurden. Gibt den bereinigten Namen zurück oder undefined, wenn kein plausibler Name übrig bleibt.
+export function cleanStoredGf(raw: string | null | undefined): string | undefined {
+  if (!raw || !raw.trim()) return undefined;
+  const name = refineNameWords(raw.trim().replace(/\s+/g, ' ').split(' '));
+  return name && isPlausiblePersonName(name) ? name.slice(0, 60) : undefined;
 }
 
 function isPlausiblePersonName(name: string): boolean {
   if (/\d/.test(name)) return false;
   if (GF_BLOCKWORDS.test(name)) return false;
   const words = name.split(/\s+/).filter(w => !GF_TITLES.test(w));
-  return words.length >= 2 && words.length <= 4 && words.every(w => /^[A-ZÄÖÜ]/.test(w));
+  return words.length >= 2 && words.length <= 3 && words.every(w => /^[A-ZÄÖÜ]/.test(w));
 }
 
 function candidateContactUrls(html: string, base: string): string[] {
@@ -189,11 +222,16 @@ function candidateContactUrls(html: string, base: string): string[] {
   while ((m = re.exec(html))) {
     const href = m[1];
     if (href.toLowerCase().startsWith('mailto:')) continue;
-    if (!/impressum|imprint|kontakt|contact/i.test(href)) continue;
+    if (!/impressum|imprint|kontakt|contact|datenschutz/i.test(href)) continue;
     try { add(new URL(href, base).toString()); } catch { /* ungültiger href */ }
   }
-  // 2. Standard-Pfade als Fallback, falls kein Link im HTML steht
-  for (const p of ['/impressum', '/impressum/', '/kontakt', '/kontakt/', '/contact', '/imprint']) {
+  // 2. Standard-Pfade als Fallback, falls kein Link im HTML steht.
+  //    Datenschutz/-erklärung nennt nach DSGVO Art. 13 fast immer die Verantwortlichen-E-Mail.
+  for (const p of [
+    '/impressum', '/impressum/', '/impressum.html', '/impressum.php',
+    '/kontakt', '/kontakt/', '/contact', '/imprint',
+    '/datenschutz', '/datenschutz/', '/datenschutzerklaerung',
+  ]) {
     try { add(new URL(p, base).toString()); } catch { /* ignore */ }
   }
   return out;
@@ -278,18 +316,51 @@ function collectEmailCandidates(html: string): string[] {
     const e = raw.trim().replace(/^mailto:/i, '').split('?')[0].toLowerCase();
     if (isLikelyBusinessEmail(e) && !found.includes(e)) found.push(e);
   };
+  // 0. Cloudflare Email Protection zuerst – sehr verbreitet, sonst bleibt die Mail unsichtbar.
+  for (const e of decodeCloudflareEmails(html)) push(e);
+  // 1. data-email/data-mail-Attribute (JS-Seiten setzen die Adresse oft nur dort).
+  for (const m of html.matchAll(/data-(?:email|mail)=["']([^"']+@[^"']+)["']/gi)) push(m[1]);
   // Viele deutsche Seiten kodieren die Adresse als HTML-Entities gegen Spam-Bots
   // (z.B. &#105;&#x6E;&#102;&#x6F;&#64;… = info@…). Deshalb zusätzlich dekodiert durchsuchen.
+  // Zusätzlich HTML-Kommentare entfernen – "info<!-- -->@firma.de" ist eine gängige Verschleierung.
   const decoded = decodeHtmlEntities(html);
-  for (const source of decoded === html ? [html] : [html, decoded]) {
-    // 1. mailto:-Links – zuverlässigste Quelle
+  const noComments = decoded.replace(/<!--[\s\S]*?-->/g, '');
+  const sources = new Set([html, decoded, noComments]);
+  for (const source of sources) {
+    // mailto:-Links – zuverlässigste Quelle
     for (const m of source.matchAll(/mailto:([^"'?\s>]+)/gi)) push(m[1]);
-    // 2. Klartext-E-Mails im HTML
+    // Klartext-E-Mails im HTML
     for (const m of source.match(EMAIL_RE) ?? []) push(m);
   }
-  // 3. Verschleierungen aufloesen: info(at)firma.de, info [at] firma [dot] de
-  for (const m of deobfuscateEmails(decoded).match(EMAIL_RE) ?? []) push(m);
+  // Verschleierungen aufloesen: info(at)firma.de, info [at] firma [dot] de
+  for (const m of deobfuscateEmails(noComments).match(EMAIL_RE) ?? []) push(m);
   return found;
+}
+
+/**
+ * Cloudflare "Email Address Protection" verschlüsselt Mail-Adressen client-seitig:
+ * <a href="/cdn-cgi/l/email-protection#HEX"> bzw. <span data-cfemail="HEX">.
+ * Das erste Byte ist der XOR-Schlüssel, der Rest die XOR-verschlüsselte Adresse.
+ * Ohne dieses Decoding bleiben solche Seiten (sehr viele) fälschlich "ohne E-Mail".
+ */
+export function decodeCloudflareEmails(html: string): string[] {
+  const out: string[] = [];
+  const decode = (hex: string): string | undefined => {
+    if (hex.length < 4 || hex.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(hex)) return undefined;
+    const key = parseInt(hex.slice(0, 2), 16);
+    let email = '';
+    for (let i = 2; i < hex.length; i += 2) {
+      email += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16) ^ key);
+    }
+    return /^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(email) ? email : undefined;
+  };
+  for (const m of html.matchAll(/data-cfemail=["']([0-9a-fA-F]+)["']/gi)) {
+    const e = decode(m[1]); if (e) out.push(e);
+  }
+  for (const m of html.matchAll(/\/cdn-cgi\/l\/email-protection#([0-9a-fA-F]+)/gi)) {
+    const e = decode(m[1]); if (e) out.push(e);
+  }
+  return out;
 }
 
 /** Wandelt numerische HTML-Entities (&#105; dezimal und &#x6E; hex) zurueck in Zeichen. */

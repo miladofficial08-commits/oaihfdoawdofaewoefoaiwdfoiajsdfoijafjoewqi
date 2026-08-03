@@ -9,25 +9,20 @@ export interface EmailTemplate {
   updated_at: string;
 }
 
-const DEFAULT_SUBJECT = 'Kurze Idee für {name} – KI-Telefonassistent von Tawano';
+const DEFAULT_SUBJECT = 'Nehmen Sie jeden Anruf an, {name}?';
 
-const DEFAULT_BODY = `Guten Tag {name}-Team,
+const DEFAULT_BODY = `{gruss},
 
-ich melde mich vom Team Tawano, weil viele {branche}-Betriebe täglich Anrufe verpassen – besonders abends und am Wochenende.
+kurz und ehrlich: Die meisten {branche}-Betriebe verlieren jede Woche Aufträge, weil das Telefon klingelt, während alle im Einsatz sind – der Anrufer legt auf und ruft beim Nächsten an.
 
-Bei Tawano entwickeln wir KI-Voice-Agenten, die Ihr Telefon rund um die Uhr betreuen:
+Ich baue KI-Telefonassistenten, die genau das verhindern: Sie nehmen jeden Anruf rund um die Uhr an, notieren Anliegen und Rückrufwunsch und leiten nur die wichtigen Gespräche live an Sie weiter.
 
-• Terminanfragen & Rückrufwünsche automatisch aufnehmen
-• Häufige Fragen sofort beantworten – ohne Wartezeit
-• Nur wichtige Gespräche live an Sie weiterleiten
+Hören Sie einfach selbst, wie natürlich das klingt – rufen Sie unsere Demo an: +49 211 86943411
 
-Testen Sie es gleich selbst – rufen Sie unsere Demo-KI an:
-📞 +49 211 86943411
-
-Wäre ein kurzes Gespräch (10 Min.) diese Woche möglich?
+Wenn das interessant für Sie ist, antworten Sie einfach mit „Ja" – ich schicke Ihnen zwei Terminvorschläge für ein kurzes Gespräch (10 Min.). Falls nicht, kein Problem.
 
 Mit freundlichen Grüßen
-Tawano – KI-Telefonassistent
+Tawano
 www.tawano.de | info@tawano.de`;
 
 export function getEmailTemplate(id = 'default'): EmailTemplate {
@@ -91,38 +86,48 @@ const FOLLOWUP_TEMPLATES: Array<{ id: string; name: string; subject: string; bod
     id: 'fu-bump',
     name: 'Follow-up 1 – Nachfrage',
     subject: 'Kurze Nachfrage, {name}',
-    body: `Guten Tag {name}-Team,
+    body: `{gruss},
 
 ich wollte kurz nachhaken, ob meine letzte Nachricht bei Ihnen angekommen ist.
 
-Viele {branche}-Betriebe verpassen täglich Anrufe – unser KI-Telefonassistent nimmt sie rund um die Uhr entgegen, bucht Termine und leitet nur die wichtigen Gespräche an Sie weiter.
+Kurz zur Erinnerung: Unser KI-Telefonassistent nimmt verpasste Anrufe rund um die Uhr an, bucht Termine und leitet nur die wichtigen Gespräche an Sie weiter – ohne Mehraufwand für Sie.
 
-Testen Sie die Demo-KI direkt: +49 211 86943411
+Selbst anhören: +49 211 86943411
 
-Reicht Ihnen ein kurzer Anruf (10 Min.) diese Woche? Antworten Sie einfach auf diese E-Mail.
+Wenn ein kurzes Gespräch (10 Min.) für Sie passt, antworten Sie einfach mit „Ja" – ich schicke Ihnen zwei Terminvorschläge. Falls nicht, kein Problem.
 
 Mit freundlichen Grüßen
-Tawano – KI-Telefonassistent
+Tawano
 www.tawano.de | info@tawano.de`,
   },
   {
     id: 'fu-breakup',
     name: 'Follow-up 2 – Letzter Versuch',
     subject: 'Letzter Versuch – {name}',
-    body: `Guten Tag {name}-Team,
+    body: `{gruss},
 
 ich möchte Ihnen nicht weiter schreiben, wenn das Thema gerade nicht passt – das ist völlig in Ordnung.
 
 Falls verpasste Anrufe bei Ihnen aber ein Thema sind: Unser KI-Assistent nimmt sie 24/7 an, bucht Termine und beantwortet Standardfragen. Schon ein paar zusätzlich angenommene Anrufe pro Woche rechnen sich.
 
-Wenn ich Ihnen die 3 wichtigsten Vorteile in 10 Minuten zeigen darf, antworten Sie einfach mit „Ja".
-Andernfalls wünsche ich Ihnen weiterhin viel Erfolg.
+Wenn ich Ihnen die 3 wichtigsten Vorteile in 10 Minuten zeigen darf, antworten Sie einfach mit „Ja". Andernfalls wünsche ich Ihnen weiterhin viel Erfolg.
 
 Mit freundlichen Grüßen
-Tawano – KI-Telefonassistent
+Tawano
 www.tawano.de | info@tawano.de`,
   },
 ];
+
+// Hebt eine systemeigene Vorlage auf die neue Copy – aber nur solange die Zeile
+// noch die alte, unbearbeitete Begrüßung "{name}-Team" enthält. So bekommen
+// bestehende Installationen die verbesserten Texte automatisch, während vom
+// Nutzer im Dashboard bearbeitete Vorlagen unangetastet bleiben. Idempotent.
+function upgradeStaleTemplate(id: string, subject: string, body: string, now: string): void {
+  getDb().prepare(
+    `UPDATE email_templates SET subject = @subject, body = @body, updated_at = @now
+     WHERE id = @id AND body LIKE '%{name}-Team%'`
+  ).run({ id, subject, body, now });
+}
 
 export function seedFollowupTemplates(): void {
   const db = getDb();
@@ -130,7 +135,10 @@ export function seedFollowupTemplates(): void {
     `INSERT OR IGNORE INTO email_templates (id, name, subject, body, category, updated_at) VALUES (?, ?, ?, ?, 'Follow-up', ?)`
   );
   const now = new Date().toISOString();
-  for (const t of FOLLOWUP_TEMPLATES) insert.run(t.id, t.name, t.subject, t.body, now);
+  for (const t of FOLLOWUP_TEMPLATES) {
+    insert.run(t.id, t.name, t.subject, t.body, now);
+    upgradeStaleTemplate(t.id, t.subject, t.body, now);
+  }
 }
 
 // Kanonische Demo-Nummer (an einer Stelle, damit alle Vorlagen konsistent bleiben).
@@ -146,36 +154,36 @@ const OUTREACH_VARIANTS: Array<{ id: string; name: string; subject: string; body
     id: 'outreach-b',
     name: 'Erstkontakt B – Umsatz-Winkel',
     subject: 'Verpasste Anrufe = verlorene Aufträge, {name}?',
-    body: `Guten Tag {name}-Team,
+    body: `{gruss},
 
 bei {branche}-Betrieben in {stadt} ist es oft dasselbe Bild: Das Telefon klingelt, alle sind im Einsatz, der Anrufer legt nach ein paar Klingeln auf – und ruft beim Nächsten an. Der Auftrag ist weg.
 
-Ich baue automatische Telefonassistenten, die genau das auffangen: jeden Anruf entgegennehmen, Anliegen und Rückrufwunsch aufnehmen und Sie sofort informieren – auch abends und am Wochenende.
+Ich baue KI-Telefonassistenten, die genau das auffangen: jeden Anruf annehmen, Anliegen und Rückrufwunsch aufnehmen und Sie sofort informieren – auch abends und am Wochenende.
 
-Sie können einmal selbst hören, wie natürlich das klingt: ${DEMO_PHONE}
+Hören Sie einmal selbst, wie natürlich das klingt: ${DEMO_PHONE}
 
-Wäre ein kurzer Austausch (10 Min.) diese Woche einen Blick wert?
+Klingt das interessant? Dann antworten Sie einfach mit „Ja" – ich melde mich mit zwei Terminvorschlägen (10 Min.). Falls nicht, kein Problem.
 
 Viele Grüße
-Max – Tawano
+Tawano
 www.tawano.de | info@tawano.de`,
   },
   {
     id: 'outreach-c',
     name: 'Erstkontakt C – Kurz & direkt',
     subject: 'Kurze Frage zu Ihrer Erreichbarkeit, {name}',
-    body: `Guten Tag {name}-Team,
+    body: `{gruss},
 
-kurze Frage: Wie viele Anrufe gehen bei Ihnen täglich verloren, weil gerade niemand rangehen kann?
+kurze Frage: Wie viele Anrufe gehen bei Ihnen pro Woche verloren, weil gerade niemand rangehen kann?
 
-Ich baue automatische Telefonassistenten für {branche}-Betriebe in {stadt} – der Assistent geht jederzeit ran, nimmt das Anliegen auf und benachrichtigt Sie sofort. Klingt wie ein echtes Gespräch, nicht wie ein Roboter.
+Ich baue KI-Telefonassistenten für {branche}-Betriebe in {stadt} – der Assistent geht jederzeit ran, nimmt das Anliegen auf und benachrichtigt Sie sofort. Klingt wie ein echtes Gespräch, nicht wie ein Roboter.
 
 Einmal selbst testen: ${DEMO_PHONE}
 
-Passt ein kurzes Gespräch (10 Min.) diese Woche?
+Wenn Sie das kurz besprechen möchten, antworten Sie einfach mit „Ja". Falls nicht, kein Problem.
 
 Viele Grüße
-Max – Tawano
+Tawano
 www.tawano.de | info@tawano.de`,
   },
 ];
@@ -199,11 +207,15 @@ export function seedOutreachTemplates(): void {
       .run({ s: DEFAULT_SUBJECT, b: DEFAULT_BODY, now });
   }
 
+  // Standard-Vorlage von der alten "{name}-Team"-Copy auf die neue heben.
+  upgradeStaleTemplate('default', DEFAULT_SUBJECT, DEFAULT_BODY, now);
+
   const insert = db.prepare(
     `INSERT OR IGNORE INTO email_templates (id, name, subject, body, category, updated_at) VALUES (?, ?, ?, ?, 'Erstkontakt', ?)`
   );
   for (const t of OUTREACH_VARIANTS) {
     insert.run(t.id, t.name, t.subject, t.body, now);
+    upgradeStaleTemplate(t.id, t.subject, t.body, now);
   }
 
   // Demo-Nummer in ALLEN Vorlagen auf die kanonische Nummer normalisieren – fängt
@@ -220,13 +232,122 @@ export function seedOutreachTemplates(): void {
   }
 }
 
+// Persönliche Anrede aus dem Geschäftsführer bauen. Nur nutzen, wenn es
+// plausibel ein Name ist (keine Ziffern/@/URL, sinnvolle Länge) – sonst sauberer
+// Fallback auf "Guten Tag", damit nie "Guten Tag ," oder Impressum-Müll rausgeht.
+function buildGruss(ansprechpartner?: string): string {
+  const raw = (ansprechpartner || '').trim();
+  const plausible =
+    raw.length >= 3 &&
+    raw.length <= 40 &&
+    /^[A-Za-zÄÖÜäöüß.\- ]+$/.test(raw) &&
+    /\p{L}\p{L}/u.test(raw);
+  return plausible ? `Guten Tag ${raw}` : 'Guten Tag';
+}
+
 export function renderTemplate(
   tmpl: EmailTemplate,
-  vars: { name: string; branche?: string; stadt?: string }
+  vars: { name: string; branche?: string; stadt?: string; ansprechpartner?: string }
 ): { subject: string; body: string } {
+  const gruss = buildGruss(vars.ansprechpartner);
   const r = (s: string) =>
-    s.replace(/\{name\}/g, vars.name || '')
+    s.replace(/\{gruss\}/g, gruss)
+     .replace(/\{name\}/g, vars.name || '')
      .replace(/\{branche\}/g, vars.branche || '')
      .replace(/\{stadt\}/g, vars.stadt || '');
   return { subject: r(tmpl.subject), body: r(tmpl.body) };
+}
+
+// ── CONSULT-Outreach ─────────────────────────────────────────────────────────
+// Anderes Angebot als der Tawano-Voice-Agent: hier positioniert sich Tawano als
+// KI-Automatisierer, der wiederkehrende Büroarbeit wegautomatisiert. Aufhänger ist
+// bewusst generischer Social Proof (mehrere Betriebe, kein konkretes Beispiel und
+// keine Preiszahl) – das vermeidet „passt nicht zu meiner Branche" und erzeugt eine
+// Neugier-Lücke, die im Gespräch nachgefragt wird. Absender = Marke Tawano, Link auf
+// die Startseite (NICHT die Voice-Agent-Seite). Zielbranchen: Immobilienmakler,
+// Autohäuser, Steuerberater. Kategorie 'Consult' → separat filterbar, eigener Send-Job.
+const CONSULT_VARIANTS: Array<{ id: string; name: string; subject: string; body: string }> = [
+  {
+    id: 'consult-immo',
+    name: 'Consult – Immobilienmakler',
+    subject: 'Mehr Zeit fürs Verkaufen, {name}?',
+    body: `{gruss},
+
+in fast jedem Maklerbüro frisst wiederkehrende Handarbeit täglich Stunden – Zeit, die für Verkauf und Kunden fehlt.
+
+Genau da komme ich ins Spiel: Ich finde die Abläufe, die Sie jeden Monat unnötig Zeit und Geld kosten, und automatisiere sie mit KI – Schritt für Schritt, messbar und ohne Ihren laufenden Betrieb zu stören.
+
+Für bereits vier Betriebe habe ich Abläufe, die vorher richtig viel Zeit gefressen haben, komplett automatisiert – und Prozesse aufgesetzt, die es dort vorher gar nicht gab. Gezielt auf den jeweiligen Betrieb zugeschnitten; andere verlangen dafür ein Vielfaches.
+
+Mein Vorschlag: In 15 Minuten schaue ich mir Ihre Abläufe an und baue die erste Automatisierung kostenlos. Spart sie Ihnen messbar Zeit, reden wir weiter.
+
+Falls Sie selbst schon konkrete Abläufe im Kopf haben, die Sie gern automatisieren würden, sprechen wir direkt darüber.
+
+Passt das? Dann antworten Sie einfach mit „Ja" – ich schicke Ihnen zwei Terminvorschläge. Falls nicht, kein Problem.
+
+Mit freundlichen Grüßen
+Tawano
+www.tawano.de`,
+  },
+  {
+    id: 'consult-auto',
+    name: 'Consult – Autohäuser',
+    subject: 'Weniger Handarbeit im Autohaus, {name}?',
+    body: `{gruss},
+
+in vielen Autohäusern läuft ein großer Teil des Tagesgeschäfts noch von Hand – das kostet jeden Monat Zeit und Umsatz.
+
+Genau da komme ich ins Spiel: Ich finde die Abläufe, die Sie jeden Monat unnötig Zeit und Geld kosten, und automatisiere sie mit KI – Schritt für Schritt, messbar und ohne Ihren laufenden Betrieb zu stören.
+
+Für bereits vier Betriebe habe ich Abläufe, die vorher richtig viel Zeit gefressen haben, komplett automatisiert – und Prozesse aufgesetzt, die es dort vorher gar nicht gab. Gezielt auf den jeweiligen Betrieb zugeschnitten; andere verlangen dafür ein Vielfaches.
+
+Mein Vorschlag: In 15 Minuten schaue ich mir Ihre Abläufe an und baue die erste Automatisierung kostenlos. Spart sie Ihnen messbar Zeit, reden wir weiter.
+
+Falls Sie selbst schon konkrete Abläufe im Kopf haben, die Sie gern automatisieren würden, sprechen wir direkt darüber.
+
+Passt das? Dann antworten Sie einfach mit „Ja" – ich schicke Ihnen zwei Terminvorschläge. Falls nicht, kein Problem.
+
+Mit freundlichen Grüßen
+Tawano
+www.tawano.de`,
+  },
+  {
+    id: 'consult-steuer',
+    name: 'Consult – Steuerberater',
+    subject: 'Weniger Papierkram in der Kanzlei, {name}?',
+    body: `{gruss},
+
+in vielen Kanzleien bindet wiederkehrende Handarbeit jeden Monat wertvolle Stunden – Belege nachfassen, Fristen im Blick behalten, immer dieselben E-Mails.
+
+Genau da komme ich ins Spiel: Ich finde die Abläufe, die Ihrer Kanzlei jeden Monat unnötig Zeit und Geld kosten, und automatisiere sie mit KI – Schritt für Schritt, messbar und ohne Ihren laufenden Betrieb zu stören.
+
+Für bereits vier Betriebe habe ich Abläufe, die vorher richtig viel Zeit gefressen haben, komplett automatisiert – und Prozesse aufgesetzt, die es dort vorher gar nicht gab. Gezielt auf den jeweiligen Betrieb zugeschnitten; andere verlangen dafür ein Vielfaches.
+
+Mein Vorschlag: In 15 Minuten schaue ich mir Ihre Abläufe an und baue die erste Automatisierung kostenlos. Spart sie Ihnen messbar Zeit, reden wir weiter.
+
+Falls Sie selbst schon konkrete Abläufe im Kopf haben, die Sie gern automatisieren würden, sprechen wir direkt darüber.
+
+Passt das? Dann antworten Sie einfach mit „Ja" – ich schicke Ihnen zwei Terminvorschläge. Falls nicht, kein Problem.
+
+Mit freundlichen Grüßen
+Tawano
+www.tawano.de`,
+  },
+];
+
+/**
+ * Legt die Consult-Outreach-Vorlagen an (Kategorie 'Consult'). INSERT OR IGNORE:
+ * überschreibt vom Nutzer bearbeitete Vorlagen nicht. Wird beim Serverstart neben
+ * seedOutreachTemplates aufgerufen.
+ */
+export function seedConsultTemplates(): void {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const insert = db.prepare(
+    `INSERT OR IGNORE INTO email_templates (id, name, subject, body, category, updated_at) VALUES (?, ?, ?, ?, 'Consult', ?)`
+  );
+  for (const t of CONSULT_VARIANTS) {
+    insert.run(t.id, t.name, t.subject, t.body, now);
+    upgradeStaleTemplate(t.id, t.subject, t.body, now);
+  }
 }

@@ -51,6 +51,7 @@ export interface SendJob {
   next_send_at: string | null;
   created_at: string;
   finished_at: string | null;
+  track: string | null; // 'voice_agent' | 'consult' – Job schreibt nur diesen Track an
 }
 
 export function recordSentEmail(entry: {
@@ -67,10 +68,19 @@ export function recordSentEmail(entry: {
   success: boolean;
   error?: string | null;
   message_id?: string | null;
+  track?: string | null;
 }) {
-  getDb().prepare(
-    `INSERT INTO sent_emails (id, job_id, lead_id, scheduled_id, campaign, to_email, to_name, subject, body, template_id, success, error, message_id)
-     VALUES (@id, @job_id, @lead_id, @scheduled_id, @campaign, @to_email, @to_name, @subject, @body, @template_id, @success, @error, @message_id)`
+  // Track wird – falls nicht mitgegeben – automatisch vom Lead abgeleitet. So bekommt
+  // JEDE Versand-Stelle (Auto-Versand, Bulk, geplant) den richtigen Track ohne Extra-Code.
+  const db = getDb();
+  let track = entry.track ?? null;
+  if (!track && entry.lead_id) {
+    const row = db.prepare('SELECT track FROM leads WHERE id = ?').get(entry.lead_id) as { track?: string } | undefined;
+    track = row?.track ?? null;
+  }
+  db.prepare(
+    `INSERT INTO sent_emails (id, job_id, lead_id, scheduled_id, campaign, to_email, to_name, subject, body, template_id, success, error, message_id, track)
+     VALUES (@id, @job_id, @lead_id, @scheduled_id, @campaign, @to_email, @to_name, @subject, @body, @template_id, @success, @error, @message_id, @track)`
   ).run({
     id: entry.id ?? uuid(),
     job_id: entry.job_id ?? null,
@@ -85,6 +95,7 @@ export function recordSentEmail(entry: {
     success: entry.success ? 1 : 0,
     error: entry.error ?? null,
     message_id: entry.message_id ?? null,
+    track: track ?? 'voice_agent',
   });
 }
 
@@ -114,6 +125,8 @@ const ALREADY_CONTACTED_SQL = `LOWER(TRIM(email)) NOT IN (
     SELECT LOWER(TRIM(to_email)) FROM sent_emails      WHERE success = 1                          AND to_email IS NOT NULL AND to_email != ''
     UNION
     SELECT LOWER(TRIM(to_email)) FROM scheduled_emails WHERE status IN ('scheduled','processing') AND to_email IS NOT NULL AND to_email != ''
+    UNION
+    SELECT email_normalized FROM email_suppression     WHERE email_normalized IS NOT NULL AND email_normalized != ''
   )`;
 
 function brancheClause(terms: string[], params: Record<string, unknown>): string {
@@ -128,9 +141,10 @@ function pickNextLead(job: SendJob): Lead | undefined {
   const terms = brancheTermsForJob(job);
   // Nur unkontaktierte, sichere Status; nie DNC/archiviert; Lead braucht E-Mail.
   const statusOk = `status IN ('new','checked','draft_ready','approved','manual_review')`;
-  const params: Record<string, unknown> = {};
+  const params: Record<string, unknown> = { jobTrack: job.track || 'voice_agent' };
   const sql = `SELECT * FROM leads
-               WHERE email IS NOT NULL AND email != '' AND ${statusOk} AND ${ALREADY_CONTACTED_SQL}`
+               WHERE email IS NOT NULL AND email != '' AND ${statusOk} AND ${ALREADY_CONTACTED_SQL}
+                 AND COALESCE(track,'voice_agent') = @jobTrack`
     + brancheClause(terms, params)
     + ` ORDER BY CASE prioritaet WHEN 'A' THEN 0 WHEN 'B' THEN 1 ELSE 2 END, score_gesamt DESC LIMIT 1`;
   return db.prepare(sql).get(params) as Lead | undefined;
@@ -140,9 +154,11 @@ function pickNextLead(job: SendJob): Lead | undefined {
 function availableLeadCounts(job: SendJob): { branche: number; total: number } {
   const db = getDb();
   const statusOk = `status IN ('new','checked','draft_ready','approved','manual_review')`;
-  const base = `SELECT COUNT(*) as n FROM leads WHERE email IS NOT NULL AND email != '' AND ${statusOk} AND ${ALREADY_CONTACTED_SQL}`;
-  const total = (db.prepare(base).get() as { n: number }).n;
-  const params: Record<string, unknown> = {};
+  const trackClause = ` AND COALESCE(track,'voice_agent') = @jobTrack`;
+  const base = `SELECT COUNT(*) as n FROM leads WHERE email IS NOT NULL AND email != '' AND ${statusOk} AND ${ALREADY_CONTACTED_SQL}${trackClause}`;
+  const jobTrack = job.track || 'voice_agent';
+  const total = (db.prepare(base).get({ jobTrack }) as { n: number }).n;
+  const params: Record<string, unknown> = { jobTrack };
   const branche = (db.prepare(base + brancheClause(brancheTermsForJob(job), params)).get(params) as { n: number }).n;
   return { branche, total };
 }
@@ -206,7 +222,7 @@ async function processJob(job: SendJob): Promise<void> {
   const tpl = getTemplateById(tplId) ?? getTemplateById('default');
   if (!tpl) { setJob(job.id, { status: 'paused', note: 'Vorlage nicht gefunden – Job pausiert' }); return; }
 
-  const rendered = renderTemplate(tpl, { name: lead.name, branche: lead.branche, stadt: lead.stadt });
+  const rendered = renderTemplate(tpl, { name: lead.name, branche: lead.branche, stadt: lead.stadt, ansprechpartner: lead.geschaeftsfuehrer });
   const trackingId = uuid();
   const result = await sendLeadEmail({ leadId: lead.id, to: lead.email!, toName: lead.name, subject: rendered.subject, body: rendered.body, trackingId });
 

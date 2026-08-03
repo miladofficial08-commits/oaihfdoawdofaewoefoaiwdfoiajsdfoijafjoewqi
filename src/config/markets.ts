@@ -8,7 +8,7 @@ export interface VerticalPreset {
   monthlyRetainer: number;
   closeRate: number;
   whyNow: string;
-  category: 'handwerk' | 'medizin' | 'recht' | 'beauty' | 'service';
+  category: 'handwerk' | 'medizin' | 'recht' | 'beauty' | 'service' | 'consult';
 }
 
 export interface RegionPreset {
@@ -225,6 +225,48 @@ export const verticalPresets: VerticalPreset[] = [
     closeRate: 0.048,
     whyNow: 'Angebotsanfragen dominieren – Voice Agent nimmt Details auf und leitet qualifizierte Anfragen weiter.',
     category: 'service',
+  },
+];
+
+// ── CONSULT-Track ────────────────────────────────────────────────────────────
+// Eigene Branchen fürs KI-Automatisierungs-Consulting (NICHT Voice Agent).
+// searchTerms müssen zu den branche-Labels der OSM-Leads passen (osm.ts).
+export const consultVerticals: VerticalPreset[] = [
+  {
+    id: 'immobilien',
+    label: 'Immobilienmakler',
+    icon: '🏠',
+    searchTerms: ['Immobilienmakler', 'Immobilien'],
+    offerFocus: ['telefon', 'website'],
+    avgDealValue: 6000,
+    monthlyRetainer: 800,
+    closeRate: 0.03,
+    whyNow: 'Exposés, Nachfassen und Terminkoordination fressen Zeit – ideal für KI-Automatisierung.',
+    category: 'consult',
+  },
+  {
+    id: 'autohaus',
+    label: 'Autohäuser',
+    icon: '🚗',
+    searchTerms: ['Autohäuser', 'Autohaus'],
+    offerFocus: ['telefon', 'website'],
+    avgDealValue: 8000,
+    monthlyRetainer: 1000,
+    closeRate: 0.03,
+    whyNow: 'Termin-Erinnerungen, Angebots-Nachfass und Portal-Anfragen laufen oft manuell.',
+    category: 'consult',
+  },
+  {
+    id: 'steuer',
+    label: 'Steuerberater',
+    icon: '📊',
+    searchTerms: ['Steuerberater'],
+    offerFocus: ['telefon', 'website'],
+    avgDealValue: 7000,
+    monthlyRetainer: 900,
+    closeRate: 0.025,
+    whyNow: 'Beleg-Nachfassen und wiederkehrende Mandanten-Kommunikation sind hoch automatisierbar.',
+    category: 'consult',
   },
 ];
 

@@ -58,6 +58,12 @@
   .logo-name { font-size: 16px; font-weight: 800; color: var(--txt); letter-spacing: -.4px; line-height: 1; }
   .logo-name span { color: var(--g); }
   .logo-sub { font-size: 9px; color: var(--txt4); margin-top: 3px; text-transform: uppercase; letter-spacing: .1em; }
+  /* Track-Umschalter: strikte Trennung Voice Agent (grün) ↔ Consult (blau) */
+  .track-switch { display: flex; gap: 5px; padding: 10px 12px 6px; }
+  .trk-btn { flex: 1; padding: 8px 6px; border: 1px solid var(--line); background: #fff; border-radius: 8px; font-size: 11px; font-weight: 700; cursor: pointer; color: var(--txt3); transition: all .14s; white-space: nowrap; }
+  .trk-btn:hover { background: #eef1f5; color: var(--txt); }
+  #trk-voice.active { background: var(--g); color: #052012; border-color: var(--g); }
+  #trk-consult.active { background: var(--b); color: #fff; border-color: var(--b); }
   .nav { padding: 14px 12px; flex: 1; display: flex; flex-direction: column; gap: 3px; overflow-y: auto; }
   .nav-sec { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--txt4); padding: 12px 12px 6px; }
   .nav-item { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: 9px; color: var(--txt2); font-size: 12.5px; font-weight: 600; cursor: pointer; transition: all .14s cubic-bezier(.4,0,.2,1); user-select: none; position: relative; }
@@ -394,6 +400,30 @@
   .inbox-body { padding: 22px; overflow-y: auto; flex: 1; font-size: 13px; line-height: 1.7; color: #c8d3e5; white-space: pre-wrap; word-break: break-word; }
   .inbox-reply { padding: 16px 22px; border-top: 1px solid var(--line); display: flex; gap: 10px; }
   .inbox-empty { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--txt3); font-size: 13px; text-align: center; }
+  /* ── Antworten-Ansicht ── */
+  .rp-toolbar { display: flex; align-items: center; gap: 10px; margin: 14px 0; flex-wrap: wrap; }
+  .rp-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .rp-chip { font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 8px; background: var(--surf2); border: 1px solid var(--line); color: var(--txt2); }
+  .rp-chip b { font-size: 14px; }
+  .rp-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; align-items: start; }
+  .rp-col { background: var(--surf); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .rp-col-head { padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: space-between; }
+  .rp-col.neg .rp-col-head { color: var(--r); border-bottom-color: rgba(240,90,90,.25); }
+  .rp-col.pos .rp-col-head { color: var(--g); border-bottom-color: rgba(34,209,124,.25); }
+  .rp-col.q   .rp-col-head { color: var(--b); border-bottom-color: rgba(59,140,246,.25); }
+  .rp-col-body { padding: 8px; display: flex; flex-direction: column; gap: 8px; max-height: calc(100vh - 320px); overflow-y: auto; }
+  .rp-card { background: var(--surf2); border: 1px solid var(--line); border-radius: 9px; padding: 11px 12px; }
+  .rp-card-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+  .rp-name { font-size: 13px; font-weight: 700; color: var(--txt); }
+  .rp-time { font-size: 10px; color: var(--txt4); white-space: nowrap; }
+  .rp-mail { font-size: 11px; color: var(--txt3); margin-bottom: 6px; word-break: break-all; }
+  .rp-snip { font-size: 12px; color: #c8d3e5; line-height: 1.5; }
+  .rp-meta { display: flex; align-items: center; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .rp-tag { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 6px; }
+  .rp-tag.stopped { background: rgba(240,90,90,.12); color: var(--r); }
+  .rp-tag.conf { background: var(--surf); color: var(--txt3); border: 1px solid var(--line); }
+  .rp-empty { text-align: center; padding: 26px 10px; color: var(--txt4); font-size: 12px; }
+  @media (max-width: 1100px) { .rp-cols { grid-template-columns: 1fr; } }
 
   /* ── EMAIL SENDER PAGE ── */
   .sender-grid { display: grid; grid-template-columns: 1fr 420px; gap: 18px; align-items: start; }
@@ -450,6 +480,9 @@
   .job-nums b { color: var(--txt); font-variant-numeric: tabular-nums; }
   .job-note { font-size: 11px; color: var(--txt3); font-style: italic; }
   .job-actions { display: flex; gap: 7px; flex-wrap: wrap; }
+  .camp-overview { background: linear-gradient(180deg,rgba(34,209,124,.07),var(--surf)); border: 1px solid rgba(34,209,124,.28); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 14px; display: grid; gap: 12px; }
+  .camp-ov-head { font-size: 12.5px; font-weight: 700; color: var(--txt); }
+  .camp-ov-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
   .as-today { display: flex; align-items: center; gap: 10px; background: var(--surf); border: 1px solid var(--line); border-radius: var(--radius); padding: 13px 18px; margin-bottom: 14px; font-size: 12px; color: var(--txt2); }
   .fu-switch { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: var(--txt2); white-space: nowrap; cursor: pointer; }
   .fu-switch input { width: 18px; height: 18px; accent-color: #2563eb; cursor: pointer; }
@@ -759,9 +792,13 @@
   <div class="logo-wrap">
     <div class="logo-icon">T</div>
     <div>
-      <div class="logo-name">Tawano <span>Engine</span></div>
+      <div class="logo-name">Tawano <span id="logo-track">Engine</span></div>
       <div class="logo-sub">Revenue System v3</div>
     </div>
+  </div>
+  <div class="track-switch">
+    <button id="trk-voice" class="trk-btn active" onclick="setTrack('voice_agent')">🎙 Voice Agent</button>
+    <button id="trk-consult" class="trk-btn" onclick="setTrack('consult')">🤖 Consult</button>
   </div>
   <nav class="nav">
     <div class="nav-item active" id="nav-dashboard" onclick="setPage('dashboard')">
@@ -885,7 +922,7 @@
               <label>Nachricht</label>
               <textarea id="dtmpl-body" rows="12"></textarea>
             </div>
-            <div class="tmpl-hint">Platzhalter: <code>{name}</code> · <code>{branche}</code> · <code>{stadt}</code> werden pro Firma automatisch ersetzt.</div>
+            <div class="tmpl-hint">Platzhalter: <code>{gruss}</code> (wird zu „Guten Tag [Geschäftsführer]" bzw. „Guten Tag") · <code>{name}</code> · <code>{branche}</code> · <code>{stadt}</code> werden pro Firma automatisch ersetzt.</div>
             <div><button class="btn btn-solid" onclick="saveDashTemplate()">Vorlage speichern</button></div>
           </div>
           <div>
@@ -1179,6 +1216,13 @@ info@nur-eine-adresse.de"></textarea>
       <div class="flex1"></div>
       <button class="topbar-btn" onclick="loadAutoSend()">↻ Aktualisieren</button>
     </div>
+    <div class="as-today" id="as-verified" style="font-size:13px;color:#4a5a74" title="Direkt von Brevo bestätigt – nicht geschätzt">
+      Brevo-verifiziert: <b style="color:var(--g)" id="as-v-delivered">–</b> zugestellt ·
+      <b style="color:var(--r)" id="as-v-bounced">–</b> Bounces ·
+      <b id="as-v-await">–</b> wartet auf Bestätigung ·
+      <b id="as-v-suppressed">–</b> gesperrt
+      <span id="as-v-brevo" style="margin-left:8px;color:#8a97ab"></span>
+    </div>
 
     <!-- ─── FOLLOW-UP-SEQUENZ ─── -->
     <div class="sender-panel" style="margin-bottom:14px">
@@ -1289,7 +1333,7 @@ info@nur-eine-adresse.de"></textarea>
       <div class="sender-panel">
         <div class="sp-head">
           <h3 id="tpl-edit-title">Vorlage bearbeiten</h3>
-          <p>Platzhalter <code style="color:var(--g)">{name}</code> <code style="color:var(--g)">{branche}</code> <code style="color:var(--g)">{stadt}</code> werden pro Firma automatisch ersetzt. Diese Vorlagen stehen überall zur Verfügung: Auto-Versand, Leads finden, E-Mail Sender.</p>
+          <p>Platzhalter <code style="color:var(--g)">{gruss}</code> <code style="color:var(--g)">{name}</code> <code style="color:var(--g)">{branche}</code> <code style="color:var(--g)">{stadt}</code> werden pro Firma automatisch ersetzt. <code style="color:var(--g)">{gruss}</code> wird zur persönlichen Anrede („Guten Tag [Geschäftsführer]") bzw. „Guten Tag", wenn kein Name bekannt ist. Diese Vorlagen stehen überall zur Verfügung: Auto-Versand, Leads finden, E-Mail Sender.</p>
         </div>
         <div class="sp-body">
           <div class="sched-row">
@@ -1490,13 +1534,16 @@ info@nur-eine-adresse.de"></textarea>
 
   <!-- ─── POSTEINGANG ─── -->
   <div class="page" id="p-inbox">
-    <div class="inbox-wrap">
+    <div class="inbox-tabs" style="margin-bottom:14px">
+      <button class="inbox-tab active" id="itab-in" onclick="switchInboxTab('in')">📥 Eingang</button>
+      <button class="inbox-tab" id="itab-out" onclick="switchInboxTab('out')">↗ Gesendet</button>
+      <button class="inbox-tab" id="itab-replies" onclick="switchInboxTab('replies')">💬 Antworten</button>
+    </div>
+
+    <div class="inbox-wrap" id="inbox-mail-view">
       <div class="inbox-list">
         <div class="inbox-list-head">
-          <div class="inbox-tabs">
-            <button class="inbox-tab active" id="itab-in" onclick="switchInboxTab('in')">📥 Eingang</button>
-            <button class="inbox-tab" id="itab-out" onclick="switchInboxTab('out')">↗ Gesendet</button>
-          </div>
+          <div style="font-size:12px;font-weight:700;color:var(--txt2)" id="inbox-list-title">Posteingang</div>
           <button class="topbar-btn" style="padding:5px 10px" onclick="inboxTab==='in'?loadInbox():loadSentList()">↻</button>
         </div>
         <div class="inbox-list-scroll" id="inbox-list">
@@ -1510,6 +1557,23 @@ info@nur-eine-adresse.de"></textarea>
             <div>Wähle eine E-Mail aus, um sie zu lesen</div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- ── Antworten: automatisch gelesen & klassifiziert ── -->
+    <div id="inbox-replies-view" style="display:none">
+      <div class="fl-note">
+        <b>Automatisch verarbeitet:</b> Jede eingehende Antwort wird gelesen und einer Gruppe zugeordnet.
+        <b>Jeder, der antwortet, wird sofort aus dem Follow-up gesperrt</b> – niemand bekommt nach einer Reaktion noch eine Nachfass-Mail.
+        „Kein Interesse" wird zusätzlich global gesperrt (auch der Auto-Versand meidet die Adresse).
+      </div>
+      <div class="rp-toolbar">
+        <div class="rp-chips" id="rp-chips"></div>
+        <div class="flex1"></div>
+        <button class="btn btn-solid" style="padding:8px 14px;font-size:12px" onclick="scanReplies()">↻ Antworten jetzt scannen</button>
+      </div>
+      <div class="rp-cols" id="rp-cols">
+        <div style="text-align:center;padding:40px;color:var(--txt4);font-size:12px;grid-column:1/-1">Lade Antworten…</div>
       </div>
     </div>
   </div>
@@ -1561,7 +1625,15 @@ info@nur-eine-adresse.de"></textarea>
     </div>
     <div class="cl-summary" id="cl-summary"></div>
     <div class="fl-toolbar">
-      <input type="text" id="cl-search" class="an-filter" placeholder="🔍 Firma / Ort / Branche…" oninput="renderCallList()">
+      <input type="text" id="cl-search" class="an-filter" placeholder="🔍 Firma / Ort / Branche / Telefon…" oninput="clDebouncedSearch()">
+      <select id="cl-branche" class="an-filter" onchange="loadCallList()" style="max-width:180px"><option value="">Branche: alle</option></select>
+      <select id="cl-stadt" class="an-filter" onchange="loadCallList()" style="max-width:160px"><option value="">Stadt: alle</option></select>
+      <select id="cl-prio" class="an-filter" onchange="loadCallList()" style="max-width:130px">
+        <option value="">Priorität: alle</option><option value="A">A</option><option value="B">B</option><option value="C">C</option>
+      </select>
+      <select id="cl-emailed" class="an-filter" onchange="loadCallList()" style="max-width:170px">
+        <option value="">E-Mail: alle</option><option value="1">bereits angeschrieben</option><option value="0">noch nicht</option>
+      </select>
       <div class="flex1"></div>
       <button class="topbar-btn" onclick="loadCallList()">↻ Aktualisieren</button>
     </div>
@@ -1647,6 +1719,9 @@ info@nur-eine-adresse.de"></textarea>
 <script>
 // ════ STATE ════
 let currentPage = 'dashboard';
+// Angebots-Track: strikte Trennung Voice Agent (Tawano) ↔ Consult (KI-Automatisierung).
+// Wird an alle Lead-Listen-Fetches angehängt, sodass jede Ansicht nur den aktiven Track zeigt.
+let currentTrack = localStorage.getItem('track') || 'voice_agent';
 let strategy = { verticals: [], regions: [] };
 let reportCache = {};
 let selectedLeads = new Set();
@@ -1674,7 +1749,7 @@ const EL = { status_changed:'Status geändert', approved:'Freigegeben', sent_mar
   manual_contact:'Kontaktiert', manual_call:'Anruf notiert', draft_created:'Entwurf erstellt',
   message_edited:'Nachricht bearbeitet', archived:'Archiviert' };
 
-const CATLABELS = { all:'Alle', handwerk:'🔧 Handwerk', medizin:'⚕️ Medizin', recht:'⚖️ Recht & Finanzen', beauty:'💅 Beauty', service:'🧹 Service' };
+const CATLABELS = { all:'Alle', handwerk:'🔧 Handwerk', medizin:'⚕️ Medizin', recht:'⚖️ Recht & Finanzen', beauty:'💅 Beauty', service:'🧹 Service', consult:'💼 Consulting' };
 
 const KCOLS = [
   { s:'contacted',     label:'Kontaktiert',  color:'#2563eb', next:'replied',       nLabel:'Geantwortet ✓' },
@@ -1779,6 +1854,17 @@ async function loadImapStatus() {
 async function loadStrategy() {
   strategy = await fetchJSON('/api/strategy');
   renderIndustryPicker();
+  renderVerticalDropdown();
+  if (document.getElementById('branchePanelBody')) renderBrancheFilter();
+}
+// Auto-Versand-Branchen-Dropdown track-abhängig neu befüllen (Consult ≠ Voice Agent).
+function renderVerticalDropdown() {
+  const sel = document.getElementById('as-vertical');
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">Alle Branchen</option>' +
+    (strategy.verticals||[]).map(vt => `<option value="${vt.id}">${vt.icon||''} ${esc(vt.label)}</option>`).join('');
+  sel.value = [...sel.options].some(o => o.value === cur) ? cur : '';
 }
 
 // ════ DASHBOARD ════
@@ -2238,8 +2324,19 @@ function quickSend(id) { openSinglePreview(id); }
 // ════ ANRUFLISTE (Telefon-Bereitschaft) ════
 let callListData = { leads: [], summary: {} };
 
+let clSearchTimer = null;
+function clDebouncedSearch() { clearTimeout(clSearchTimer); clSearchTimer = setTimeout(loadCallList, 300); }
+
 async function loadCallList() {
-  const d = await fetchJSON('/api/call-list').catch(()=>null);
+  const p = new URLSearchParams();
+  p.set('limit', '50');
+  const q = (document.getElementById('cl-search')?.value||'').trim();
+  if (q) p.set('q', q);
+  const br = document.getElementById('cl-branche')?.value; if (br) p.set('branche', br);
+  const st = document.getElementById('cl-stadt')?.value; if (st) p.set('stadt', st);
+  const pr = document.getElementById('cl-prio')?.value; if (pr) p.set('prio', pr);
+  const em = document.getElementById('cl-emailed')?.value; if (em) p.set('emailed', em);
+  const d = await fetchJSON('/api/call-list?' + p.toString()).catch(()=>null);
   if (!d) return;
   callListData = d;
   const s = d.summary || {};
@@ -2248,6 +2345,15 @@ async function loadCallList() {
     ['Heute angerufen', s.called_today||0, 'g', 'als angerufen markiert'],
     ['In dieser Liste', s.shown||0, '', 'Top-Priorität zuerst'],
   ].map(([l,v,cls,t]) => `<div class="fl-kpi ${cls}" title="${esc(t)}"><div class="fl-kpi-v">${v}</div><div class="fl-kpi-l">${esc(l)}</div></div>`).join('');
+  // Filter-Dropdowns befüllen (einmalig)
+  const bSel = document.getElementById('cl-branche');
+  if (bSel && bSel.options.length <= 1 && d.branchen?.length) {
+    bSel.innerHTML = '<option value="">Branche: alle</option>' + d.branchen.map(b => `<option value="${esc(b)}">${esc(b)}</option>`).join('');
+  }
+  const sSel = document.getElementById('cl-stadt');
+  if (sSel && sSel.options.length <= 1 && d.staedte?.length) {
+    sSel.innerHTML = '<option value="">Stadt: alle</option>' + d.staedte.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+  }
   refreshCallsBadge(s.open_total);
   renderCallList();
 }
@@ -2279,9 +2385,11 @@ function renderCallList() {
       rating,
     ].filter(Boolean).join('');
     const hint = l.kontakt_hinweis ? `<div class="cl-meta">${esc(l.kontakt_hinweis)}</div>` : '';
+    const gf = l.geschaeftsfuehrer ? `<div class="cl-meta" style="font-weight:600">👤 ${esc(l.geschaeftsfuehrer)}</div>` : '';
     return `<div class="cl-card ${l.prioritaet==='A'?'prio-A':''}">
       <div class="cl-main">
         <div class="cl-name">${esc(l.name)}</div>
+        ${gf}
         <div class="cl-meta">${esc(l.branche||'')} · ${esc(l.stadt||'')}${l.adresse?' · '+esc(l.adresse):''}</div>
         <div class="cl-tags">${tags||'<span class="cl-tag">—</span>'}</div>
         ${hint}
@@ -3152,12 +3260,17 @@ async function loadAutoSend() {
   jobsCache = jobs; templatesCache = tpls;
   set('as-today-n', stats.sent_today_total ?? 0);
   set('as-today-cap', stats.global_daily_cap ?? 200);
-  // Branchen-Select
-  const sel = document.getElementById('as-vertical');
-  if (sel && sel.options.length <= 1 && strategy.verticals?.length) {
-    sel.innerHTML = '<option value="">Alle Branchen</option>' +
-      strategy.verticals.map(vt => `<option value="${vt.id}">${vt.icon||''} ${esc(vt.label)}</option>`).join('');
-  }
+  const v = stats.verified || {};
+  set('as-v-delivered', v.delivered ?? 0);
+  set('as-v-bounced', (v.bounced ?? 0) + (v.soft_failed ?? 0));
+  set('as-v-await', v.awaiting ?? 0);
+  set('as-v-suppressed', v.suppressed ?? 0);
+  const bx = document.getElementById('as-v-brevo');
+  if (bx) bx.textContent = stats.brevo
+    ? `(Brevo-Konto: ${stats.brevo.delivered} zugestellt, ${stats.brevo.uniqueOpens} geöffnet)`
+    : '';
+  // Branchen-Select (track-abhängig: Consult- vs. Voice-Agent-Branchen)
+  renderVerticalDropdown();
   // Vorlagen-Checkboxen
   const tl = document.getElementById('as-tpl-list');
   const prevChecked = new Set([...document.querySelectorAll('#as-tpl-list input:checked')].map(i=>i.value));
@@ -3175,6 +3288,16 @@ async function loadAutoSend() {
   nb.textContent = running; nb.classList.toggle('zero', !running);
 }
 
+// Ehrliches Zustell-Label: nur Brevo-Bestätigung heißt "zugestellt".
+function deliveryTag(s) {
+  if (!s.success) return `<span class="cl-tag notdienst" title="${esc(s.error||'')}">Fehler</span>`;
+  switch (s.delivery_status) {
+    case 'delivered':   return '<span class="cl-tag rating">✓ zugestellt</span>';
+    case 'bounced':     return `<span class="cl-tag notdienst" title="${esc(s.bounce_reason||'Hard-Bounce')}">⚠ Bounce</span>`;
+    case 'soft_failed': return `<span class="cl-tag" style="background:#fff3e0;color:#b26a00" title="${esc(s.bounce_reason||'')}">↻ Fehlversuch</span>`;
+    default:            return '<span class="cl-tag" style="background:#eef2f8;color:#5a6b85" title="An Brevo übergeben – Zustellbestätigung ausstehend">→ versendet</span>';
+  }
+}
 async function loadSentLog() {
   const rows = await fetchJSON('/api/sent-emails?limit=50').catch(()=>[]);
   const tb = document.getElementById('as-sentlog');
@@ -3184,7 +3307,7 @@ async function loadSentLog() {
   if (empty) empty.style.display='none';
   tb.innerHTML = rows.map(s => {
     const when = s.sent_at ? new Date(String(s.sent_at).replace(' ','T')).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
-    const ok = s.success ? '<span class="cl-tag rating">✓ zugestellt</span>' : `<span class="cl-tag notdienst" title="${esc(s.error||'')}">Fehler</span>`;
+    const ok = deliveryTag(s);
     return `<tr>
       <td style="white-space:nowrap">${esc(when)}</td>
       <td>${esc(s.to_name||'—')}</td>
@@ -3360,7 +3483,7 @@ async function createSendJob() {
   if (!confirm(`Auto-Versand starten?\n\n${totalTarget} E-Mails · ${dailyLimit}/Tag · ca. ${days} Tag(e)\nPause ~${gapLabel(gapSeconds)} zwischen Mails\n${templateIds.length} Vorlage(n) im Wechsel\n${startTxt}`)) return;
   const btn = document.getElementById('as-create-btn');
   btn.disabled = true;
-  const r = await post('/api/send-jobs', { totalTarget, dailyLimit, verticalId, templateIds, gapSeconds, startAt: startAtRaw || undefined });
+  const r = await post('/api/send-jobs', { totalTarget, dailyLimit, verticalId, templateIds, gapSeconds, startAt: startAtRaw || undefined, track: currentTrack });
   const d = await r.json().catch(()=>({}));
   btn.disabled = false;
   if (!r.ok) { toast(d.error||'Fehler beim Starten', true); return; }
@@ -3374,7 +3497,22 @@ function renderJobs() {
     return;
   }
   const stLabel = { running:'Läuft', paused:'Pausiert', done:'Fertig', stopped:'Gestoppt' };
-  el.innerHTML = jobsCache.map(j => {
+  const running = jobsCache.filter(j => j.status === 'running');
+  const sum = (fn) => running.reduce((s,j)=> s + fn(j), 0);
+  const todaySent      = sum(j => j.sent_today || 0);
+  const todayRemaining = sum(j => Math.max(0, Math.min((j.daily_limit||0) - (j.sent_today||0), (j.total_target||0) - (j.sent_count||0))));
+  const tomorrowPlan   = sum(j => Math.min(j.daily_limit||0, Math.max(0, (j.total_target||0) - (j.sent_count||0) - (j.sent_today||0))));
+  const totalRemaining = sum(j => Math.max(0, (j.total_target||0) - (j.sent_count||0)));
+  const overview = running.length ? `<div class="camp-overview">
+    <div class="camp-ov-head">📊 Kampagnen-Übersicht · <b>${running.length}</b> ${running.length===1?'Kampagne läuft':'Kampagnen laufen'}${running.length?': '+running.map(j=>esc(j.name)).join(' · '):''}</div>
+    <div class="camp-ov-kpis">
+      <div class="fl-kpi g" title="Heute bereits versendete E-Mails über alle laufenden Kampagnen"><div class="fl-kpi-v">${todaySent}</div><div class="fl-kpi-l">Heute raus</div></div>
+      <div class="fl-kpi b" title="Was heute noch rausgeht (Tageslimit minus heute gesendet)"><div class="fl-kpi-v">${todayRemaining}</div><div class="fl-kpi-l">Heute noch geplant</div></div>
+      <div class="fl-kpi" title="Voraussichtlicher Versand morgen"><div class="fl-kpi-v">${tomorrowPlan}</div><div class="fl-kpi-l">Morgen geplant</div></div>
+      <div class="fl-kpi" title="Noch offene E-Mails über alle laufenden Kampagnen bis zum Ziel"><div class="fl-kpi-v">${totalRemaining}</div><div class="fl-kpi-l">Gesamt offen</div></div>
+    </div>
+  </div>` : '';
+  el.innerHTML = overview + jobsCache.map(j => {
     const pctN = Math.min(100, Math.round(j.sent_count / Math.max(1, j.total_target) * 100));
     const tplNames = (j.template_ids||[]).map(id => templatesCache.find(t=>t.id===id)?.name || id).join(', ');
     const gapTxt = j.min_gap_s ? ` · ~${gapLabel(j.min_gap_s)} Pause` : '';
@@ -3491,7 +3629,81 @@ function switchInboxTab(tab) {
   inboxTab = tab;
   document.getElementById('itab-in').classList.toggle('active', tab==='in');
   document.getElementById('itab-out').classList.toggle('active', tab==='out');
+  document.getElementById('itab-replies').classList.toggle('active', tab==='replies');
+  const mailView = document.getElementById('inbox-mail-view');
+  const replyView = document.getElementById('inbox-replies-view');
+  const isReplies = tab === 'replies';
+  mailView.style.display = isReplies ? 'none' : '';
+  replyView.style.display = isReplies ? '' : 'none';
+  if (isReplies) { loadReplies(); return; }
+  document.getElementById('inbox-list-title').textContent = tab==='in' ? 'Posteingang' : 'Gesendet';
   if (tab === 'in') loadInbox(); else loadSentList();
+}
+
+const RP_GROUPS = [
+  { key: 'not_interested', cats: ['not_interested'],        cls: 'neg', icon: '🚫', label: 'Kein Interesse' },
+  { key: 'interested',     cats: ['interested'],            cls: 'pos', icon: '✅', label: 'Interesse' },
+  { key: 'question',       cats: ['question', 'unknown'],   cls: 'q',   icon: '❓', label: 'Rückfrage / Prüfen' },
+];
+const RP_CATLABEL = { not_interested:'Kein Interesse', interested:'Interesse', question:'Rückfrage', unknown:'Unklar', auto_reply:'Auto-Antwort' };
+
+async function loadReplies() {
+  const cols = document.getElementById('rp-cols');
+  cols.innerHTML = '<div style="text-align:center;padding:40px;color:var(--txt4);font-size:12px;grid-column:1/-1">Lade Antworten…</div>';
+  try {
+    const data = await fetchJSON('/api/inbox/replies?limit=200');
+    renderReplies(data);
+  } catch {
+    cols.innerHTML = '<div style="text-align:center;padding:40px;color:var(--r);font-size:12px;grid-column:1/-1">Antworten nicht ladbar.</div>';
+  }
+}
+
+function renderReplies(data) {
+  const replies = (data && data.replies) || [];
+  const s = (data && data.summary) || {};
+  document.getElementById('rp-chips').innerHTML = [
+    `<span class="rp-chip">Antworten gesamt <b>${s.total||0}</b></span>`,
+    `<span class="rp-chip" style="color:var(--r)">🚫 Kein Interesse <b>${s.not_interested||0}</b></span>`,
+    `<span class="rp-chip" style="color:var(--g)">✅ Interesse <b>${s.interested||0}</b></span>`,
+    `<span class="rp-chip" style="color:var(--b)">❓ Rückfrage <b>${(s.question||0)+(s.unknown||0)}</b></span>`,
+    `<span class="rp-chip">🔒 Follow-up gesperrt <b>${s.stopped||0}</b></span>`,
+    `<span class="rp-chip" style="color:var(--txt3)">💤 Auto-Antwort <b>${s.auto_reply||0}</b></span>`,
+  ].join('');
+
+  const byCat = {};
+  for (const r of replies) { (byCat[r.category] = byCat[r.category] || []).push(r); }
+
+  const cols = document.getElementById('rp-cols');
+  cols.innerHTML = RP_GROUPS.map(g => {
+    const items = g.cats.flatMap(c => byCat[c] || []);
+    const body = items.length
+      ? items.map(rpCard).join('')
+      : '<div class="rp-empty">Noch keine</div>';
+    return `<div class="rp-col ${g.cls}">
+      <div class="rp-col-head"><span>${g.icon} ${g.label}</span><span>${items.length}</span></div>
+      <div class="rp-col-body">${body}</div>
+    </div>`;
+  }).join('');
+}
+
+function rpCard(r) {
+  const name = esc(r.lead_name || r.from_name || r.from_email);
+  const stopped = r.followup_stopped ? '<span class="rp-tag stopped">🔒 Follow-up gestoppt</span>' : '';
+  return `<div class="rp-card">
+    <div class="rp-card-top"><div class="rp-name">${name}</div><div class="rp-time">${fmtShort(r.received_at||r.created_at)}</div></div>
+    <div class="rp-mail">${esc(r.from_email)}</div>
+    <div class="rp-snip">${esc(r.snippet || r.subject || '')}</div>
+    <div class="rp-meta">${stopped}<span class="rp-tag conf">${r.confidence||0}% sicher</span></div>
+  </div>`;
+}
+
+async function scanReplies() {
+  toast('Lese Posteingang und klassifiziere Antworten…');
+  const r = await post('/api/inbox/scan-replies', {});
+  const d = await r.json().catch(()=>({}));
+  if (d.error) { toast(d.error, true); return; }
+  toast(`✓ ${d.scanned} Mails geprüft · ${d.processed} neue Antworten · ${d.stopped} Follow-ups gestoppt`);
+  loadReplies();
 }
 async function loadSentList() {
   const list = document.getElementById('inbox-list');
@@ -4156,7 +4368,33 @@ function countUp(id, target, isEur) {
   }
   requestAnimationFrame(step);
 }
-async function fetchJSON(url) { const r=await fetch(url); return r.json(); }
+async function fetchJSON(url) {
+  // Track-Trennung: an Lead-Listen (leads / call-list / crm-leads) automatisch den
+  // aktiven Track hängen. Detail-Routen wie /api/leads/:id/... bleiben unberührt.
+  if (/^\/api\/(leads(\?|$)|call-list|crm\/leads|report|send-jobs|analytics\/email|lead-inventory|activity|strategy)/.test(url) && currentTrack && currentTrack !== 'all') {
+    url += (url.includes('?') ? '&' : '?') + 'track=' + encodeURIComponent(currentTrack);
+  }
+  const r=await fetch(url); return r.json();
+}
+function setTrack(t) {
+  currentTrack = t;
+  localStorage.setItem('track', t);
+  applyTrackUI();
+  // Branchen/Verticals sind pro Track unterschiedlich → alte Auswahl verwerfen und
+  // Strategie (Consult- vs. Voice-Agent-Branchen) neu laden.
+  selectedVerticals.clear();
+  activeCat = 'all';
+  loadStrategy();
+  setPage(currentPage); // aktuelle Seite mit neuem Track neu laden
+  loadReport();
+}
+function applyTrackUI() {
+  const v = document.getElementById('trk-voice'), c = document.getElementById('trk-consult');
+  if (v) v.classList.toggle('active', currentTrack === 'voice_agent');
+  if (c) c.classList.toggle('active', currentTrack === 'consult');
+  const logo = document.getElementById('logo-track');
+  if (logo) logo.textContent = currentTrack === 'consult' ? 'Consult' : 'Engine';
+}
 async function post(url, body) { return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); }
 function toast(msg, isErr) {
   const el=document.getElementById('toast');
@@ -4166,6 +4404,7 @@ function toast(msg, isErr) {
 }
 
 // ════ INIT ════
+applyTrackUI();
 reload();
 setInterval(loadReport, 30000);
 setInterval(loadImapStatus, 60000);

@@ -5,6 +5,7 @@ import { getAllLeads, getDailyReport } from './db/leads-repo';
 import { Prioritaet } from './types';
 import { nrwRegions, verticalPresets } from './config/markets';
 import { reanalyzeExistingLeads } from './reanalyze-existing';
+import { discoverSegments, DACH_SEGMENTS } from './scraper/apollo';
 
 type Args = Record<string, string | boolean>;
 
@@ -67,6 +68,29 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       }
     }
     console.log(`\nBatch fertig: ${total} Leads gesamt | ${inserted} neu | ${errors} Städte mit Fehler`);
+    return;
+  }
+
+  if (command === 'apollo') {
+    const sample = readNumber(args, 'sample') ?? readNumber(args, 'max') ?? 25;
+    console.log(`\nApollo Discovery (DACH) – suche aktiv nach Empfang/Rezeption suchende Firmen…`);
+    console.log(`Segmente: ${DACH_SEGMENTS.map(s => s.label).join(' · ')}\n`);
+    const rows = await discoverSegments({ samplePerSegment: sample });
+    console.table(rows.map(r => ({
+      Segment: r.label,
+      'Aktiv suchend': r.totalHiring,
+      Sample: r.sampled,
+      Neu: r.inserted,
+      'mit Tel': r.withPhone,
+      'mit Web': r.withWebsite,
+      Fehler: r.error ? r.error.slice(0, 40) : '',
+    })));
+    const ranked = [...rows].filter(r => !r.error).sort((a, b) => b.totalHiring - a.totalHiring);
+    if (ranked.length) {
+      const winner = ranked[0];
+      console.log(`\n➡  Größtes Segment: "${winner.label}" mit ${winner.totalHiring} aktiv suchenden Firmen in DACH.`);
+      console.log(`   Nächster Schritt: darauf fokussieren und Entscheider + E-Mails anreichern.`);
+    }
     return;
   }
 
@@ -173,6 +197,7 @@ Commands:
   npm run leadgen:list -- --status draft_ready
   npm run leadgen -- reanalyze
   npm run leadgen -- presets
+  npm run leadgen -- apollo --sample 25   (DACH-Discovery: welches Segment sucht am meisten Empfang?)
   npm run dev
 `);
 }
