@@ -520,6 +520,12 @@
   .cl-tag.warn { background: rgba(234,179,8,.18);  color: #a16207; }
   .cl-tag.neu  { background: rgba(46,110,232,.14); color: #1d5ad0; }
   .cl-note { margin-top: 6px; font-size: 12px; color: var(--txt2); background: var(--elev); border: 1px solid var(--line); padding: 4px 8px; border-radius: 6px; max-width: 520px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Firmenname → Website-Link. Bewusst dezent: kein Blau, damit die Karte
+     nicht wie ein Feld voller Hyperlinks aussieht. Erst beim Hover deutlich. */
+  .lead-web-link { color: inherit; text-decoration: none; border-bottom: 1px dashed rgba(46,110,232,.35); }
+  .lead-web-link:hover { color: #1d5ad0; border-bottom-color: #1d5ad0; }
+  .lead-web-ext { font-size: 0.75em; opacity: .55; margin-left: 3px; }
+  .lead-web-link:hover .lead-web-ext { opacity: 1; }
   .cl-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; }
   .cl-phone { font-size: 16px; font-weight: 800; color: var(--txt); text-decoration: none; letter-spacing: .3px; }
   .cl-phone:hover { color: var(--b); }
@@ -2432,7 +2438,7 @@ function renderCallList() {
     const noteLine = l.notiz ? `<div class="cl-note" title="${esc(l.notiz)}">📝 ${esc(String(l.notiz).split('\n').pop())}</div>` : '';
     return `<div class="cl-card ${l.prioritaet==='A'?'prio-A':''}">
       <div class="cl-main">
-        <div class="cl-name">${esc(l.name)}</div>
+        <div class="cl-name">${nameWithWebsiteLink(l.name, l.website)}</div>
         ${gf}
         <div class="cl-meta">${esc(l.branche||'')} · ${esc(l.stadt||'')}${l.adresse?' · '+esc(l.adresse):''}</div>
         <div class="cl-tags">${tags||'<span class="cl-tag">—</span>'}</div>
@@ -2552,7 +2558,7 @@ function renderCrm(d) {
     ].filter(Boolean).join('') || '<span class="crm-sub">kein Kontakt</span>';
     return `<tr>
       <td>
-        <div class="crm-firma">${esc(l.name)}</div>
+        <div class="crm-firma">${nameWithWebsiteLink(l.name, l.website)}</div>
         <div class="crm-gf" onclick="crmEditGf('${l.id}')" title="Geschäftsführer bearbeiten">${l.geschaeftsfuehrer ? '👤 '+esc(l.geschaeftsfuehrer) : '<span class="crm-gf-add">+ GF ergänzen</span>'}</div>
         ${l.adresse?`<div class="crm-sub">${esc(l.adresse)}</div>`:''}
       </td>
@@ -4410,6 +4416,28 @@ function v(id) { return document.getElementById(id)?.value??''; }
 function set(id, val) { const el=document.getElementById(id); if (el) el.textContent=val; }
 function eur(n) { return new Intl.NumberFormat('de-DE',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(n); }
 function esc(s) { return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'):''; }
+// Website-URL für <a href=""> aufbereiten: nur http/https zulassen, Schema
+// ergänzen wenn nur "example.de" gespeichert ist. Blockiert javascript:/data:-Payloads.
+function safeWebsiteUrl(raw) {
+  if (!raw) return null;
+  const v = String(raw).trim();
+  if (!v) return null;
+  const withScheme = /^https?:\/\//i.test(v) ? v : ('https://' + v.replace(/^\/+/, ''));
+  try {
+    const u = new URL(withScheme);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+    if (!u.hostname || !u.hostname.includes('.')) return null;
+    return u.toString();
+  } catch { return null; }
+}
+// Firmenname als Link zur Firmenwebsite rendern, falls vorhanden.
+// Fällt sonst auf reinen Text zurück, damit die Layouts unverändert bleiben.
+function nameWithWebsiteLink(name, website, extraClass) {
+  const url = safeWebsiteUrl(website);
+  const cls = extraClass ? ' ' + extraClass : '';
+  if (!url) return esc(name);
+  return `<a class="lead-web-link${cls}" href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="Website öffnen: ${esc(url)}">${esc(name)} <span class="lead-web-ext" aria-hidden="true">↗</span></a>`;
+}
 function fmtDate(iso) {
   if (!iso||iso==='-') return '-';
   try {
