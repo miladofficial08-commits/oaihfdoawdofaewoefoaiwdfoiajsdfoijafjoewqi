@@ -1764,6 +1764,21 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     return { ok: true, geschaeftsfuehrer: value };
   });
 
+  // Lead-E-Mail manuell setzen/korrigieren. Wird vom Mailer-Modal genutzt, wenn der
+  // Gründer beim Anruf gesagt bekommt „schreiben Sie mir an X" und die Adresse
+  // noch nicht am Lead hängt. Speichert nur, wenn @-Zeichen erkennbar ist.
+  app.post<{ Body: { id: string; value?: string } }>('/api/crm/lead-email', async (req, reply) => {
+    if (!req.body?.id) return reply.status(400).send({ error: 'id fehlt' });
+    const raw = (req.body.value || '').trim().slice(0, 160);
+    if (raw && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)) {
+      return reply.status(400).send({ error: 'Ungültige E-Mail-Adresse' });
+    }
+    const value = raw || null;
+    getDb().prepare(`UPDATE leads SET email = @value, email_normalized = @norm, updated_at = @now WHERE id = @id`)
+      .run({ value, norm: value ? value.toLowerCase() : null, now: new Date().toISOString(), id: req.body.id });
+    return { ok: true, email: value };
+  });
+
   // Freitext-Notiz zum Lead (hängt mit Zeitstempel an bestehende Notizen an).
   app.post<{ Body: { id: string; note?: string } }>('/api/crm/lead-note', async (req, reply) => {
     if (!req.body?.id || !req.body.note?.trim()) return reply.status(400).send({ error: 'id und Notiz nötig' });

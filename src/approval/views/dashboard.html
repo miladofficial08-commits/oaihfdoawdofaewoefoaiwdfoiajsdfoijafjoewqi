@@ -526,6 +526,15 @@
   .lead-web-link:hover { color: #1d5ad0; border-bottom-color: #1d5ad0; }
   .lead-web-ext { font-size: 0.75em; opacity: .55; margin-left: 3px; }
   .lead-web-link:hover .lead-web-ext { opacity: 1; }
+  /* Mailer-Modal */
+  .cl-btn.mailer { background: #1d5ad0; border-color: #1d5ad0; color: #fff; }
+  .cl-btn.mailer:hover { background: #1748aa; border-color: #1748aa; }
+  .mailer-hint { font-weight: 500; font-size: 11px; color: var(--txt2); margin-left: 6px; }
+  .mailer-hint.warn { color: #a16207; }
+  .mailer-hint.ok { color: #15803d; }
+  .mailer-preview-toggle { margin-top: 6px; font-size: 12px; color: var(--txt2); display: flex; align-items: center; gap: 6px; }
+  #mailerOverlay .modal { max-width: min(720px, 96vw); }
+  #mailerOverlay textarea { font-family: inherit; }
   .cl-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; }
   .cl-phone { font-size: 16px; font-weight: 800; color: var(--txt); text-decoration: none; letter-spacing: .3px; }
   .cl-phone:hover { color: var(--b); }
@@ -1734,6 +1743,51 @@ info@nur-eine-adresse.de"></textarea>
   </div>
 </div>
 
+<!-- ─── SCHNELL-MAILER (aus Anrufliste / CRM) ─── -->
+<!-- Vollwertiger Ad-hoc-Versand: Vorlage wählen, Adresse notfalls einkleben,
+     senden. Speichert eine neu getippte Adresse zurück in den Lead und
+     stellt den Status auf „kontaktiert", damit der Follow-up-Zyklus greift. -->
+<div class="modal-overlay" id="mailerOverlay" onclick="if(event.target===this)closeMailer()">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="mailer-title">E-Mail versenden</div>
+      <button class="modal-x" onclick="closeMailer()">×</button>
+    </div>
+    <div class="modal-sub" id="mailer-sub"></div>
+    <div class="modal-body">
+      <div class="sp-body" style="padding:14px 0">
+        <div class="field">
+          <label>Vorlage</label>
+          <select id="mailer-tpl" onchange="applyMailerTemplate()"></select>
+        </div>
+        <div class="field">
+          <label>An (E-Mail-Adresse) <span id="mailer-email-hint" class="mailer-hint"></span></label>
+          <input id="mailer-to" type="email" placeholder="Falls leer: hier eintippen oder einfügen" autocomplete="off">
+        </div>
+        <div class="field">
+          <label>Betreff</label>
+          <input id="mailer-subject" type="text">
+        </div>
+        <div class="field">
+          <label>Nachricht</label>
+          <textarea id="mailer-body" rows="12"></textarea>
+        </div>
+        <div class="mailer-preview-toggle">
+          <label><input type="checkbox" id="mailer-preview-cb" onchange="renderMailerPreview()"> Vorschau anzeigen</label>
+        </div>
+        <div id="mailer-preview" class="preview-box" style="display:none">
+          <div class="preview-subj" id="mailer-prev-subj"></div>
+          <div id="mailer-prev-body"></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeMailer()">Abbrechen</button>
+      <button class="btn btn-solid" id="mailer-send-btn" onclick="mailerSend()">✉ Jetzt senden</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"><span class="t-dot"></span><span id="toast-msg"></span></div>
 
 <script>
@@ -2456,6 +2510,7 @@ function renderCallList() {
             <option value="kein_interesse">✋ Kein Interesse</option>
             <option value="nicht_anrufen">⛔ Nicht mehr anrufen</option>
           </select>
+          <button class="cl-btn mailer" onclick="openMailer('${l.id}')" title="E-Mail versenden (Vorlage wählen)">✉ E-Mail</button>
           <button class="cl-btn" onclick="clAddNote('${l.id}')" title="Freie Notiz eintippen">📝 Notiz</button>
         </div>
       </div>
@@ -2484,6 +2539,135 @@ async function clAddNote(id) {
   const r = await post('/api/crm/lead-note', { id, note: t.trim() });
   if (r && r.ok) { toast('Notiz gespeichert'); loadCallList(); }
   else { toast('Konnte nicht speichern', true); }
+}
+
+// ════ SCHNELL-MAILER (Anrufliste + CRM) ════
+// Ziel: Beim Kaltakquise-Anruf sagt der Kontakt „schreiben Sie mir eine Mail".
+// Der Gründer klickt „✉ E-Mail", wählt eine Vorlage, tippt notfalls die
+// Adresse ein, sendet — alles in einem Modal. Der Lead wird auf „kontaktiert"
+// gesetzt, damit Follow-up + Reply-Scanner greifen.
+let mailerCtx = null; // { lead, templates: [...] }
+let mailerTemplatesCache = null;
+
+function findLeadFromCaches(id) {
+  return (callListData?.leads || []).find(l => l.id === id)
+    || (crmLastRows || []).find(l => l.id === id)
+    || null;
+}
+
+// Muss exakt mit renderTemplate() in src/email/template.ts synchron sein, damit
+// die Vorschau/das gesendete Ergebnis identisch mit dem Auto-Versand aussieht.
+function buildGruss(ansprechpartner) {
+  const raw = String(ansprechpartner || '').trim();
+  if (!raw) return 'Guten Tag';
+  const plausible = raw.length >= 3 && raw.length <= 40 && /^[A-Za-zÄÖÜäöüß.\- ]+$/.test(raw) && /\p{L}\p{L}/u.test(raw);
+  return plausible ? 'Guten Tag ' + raw : 'Guten Tag';
+}
+function renderMailerVars(str, lead) {
+  const gruss = buildGruss(lead.geschaeftsfuehrer);
+  return String(str || '')
+    .replace(/\{gruss\}/g, gruss)
+    .replace(/\{name\}/g, lead.name || '')
+    .replace(/\{branche\}/g, lead.branche || '')
+    .replace(/\{stadt\}/g, lead.stadt || '')
+    .replace(/\{geschaeftsfuehrer\}/g, lead.geschaeftsfuehrer || '');
+}
+
+async function openMailer(id) {
+  const lead = findLeadFromCaches(id);
+  if (!lead) { toast('Lead nicht gefunden', true); return; }
+  // Vorlagen einmalig laden und cachen
+  if (!mailerTemplatesCache) {
+    mailerTemplatesCache = await fetchJSON('/api/email-templates').catch(()=>[]);
+  }
+  const tpls = Array.isArray(mailerTemplatesCache) ? mailerTemplatesCache : [];
+  mailerCtx = { lead, templates: tpls };
+  // UI initialisieren
+  document.getElementById('mailer-title').textContent = 'E-Mail an ' + (lead.name || '—');
+  document.getElementById('mailer-sub').textContent = [lead.branche, lead.stadt].filter(Boolean).join(' · ');
+  const to = document.getElementById('mailer-to');
+  to.value = lead.email || '';
+  const hint = document.getElementById('mailer-email-hint');
+  hint.textContent = lead.email ? '· gespeichert am Lead' : '· keine gespeicherte Adresse — bitte eintippen';
+  hint.className = 'mailer-hint ' + (lead.email ? 'ok' : 'warn');
+  const sel = document.getElementById('mailer-tpl');
+  sel.innerHTML = '<option value="">— Vorlage wählen —</option>' + tpls.map(t =>
+    `<option value="${esc(t.id)}">${esc(t.name || 'Ohne Namen')}${t.category ? ' · ' + esc(t.category) : ''}</option>`
+  ).join('');
+  // Erste Vorlage automatisch anwenden, damit der Betreff/Body sofort steht
+  if (tpls.length) { sel.value = tpls[0].id; applyMailerTemplate(); }
+  else {
+    document.getElementById('mailer-subject').value = '';
+    document.getElementById('mailer-body').value = '';
+  }
+  document.getElementById('mailer-preview-cb').checked = false;
+  document.getElementById('mailer-preview').style.display = 'none';
+  document.getElementById('mailerOverlay').classList.add('show');
+  setTimeout(() => (lead.email ? document.getElementById('mailer-subject') : document.getElementById('mailer-to')).focus(), 50);
+}
+
+function closeMailer() {
+  document.getElementById('mailerOverlay').classList.remove('show');
+  mailerCtx = null;
+}
+
+function applyMailerTemplate() {
+  if (!mailerCtx) return;
+  const id = document.getElementById('mailer-tpl').value;
+  const tpl = (mailerCtx.templates || []).find(t => t.id === id);
+  if (!tpl) return;
+  document.getElementById('mailer-subject').value = renderMailerVars(tpl.subject, mailerCtx.lead);
+  document.getElementById('mailer-body').value = renderMailerVars(tpl.body, mailerCtx.lead);
+  renderMailerPreview();
+}
+
+function renderMailerPreview() {
+  const wrap = document.getElementById('mailer-preview');
+  if (!document.getElementById('mailer-preview-cb').checked) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+  document.getElementById('mailer-prev-subj').textContent = document.getElementById('mailer-subject').value;
+  document.getElementById('mailer-prev-body').innerHTML = renderPreviewBodyHtml(document.getElementById('mailer-body').value);
+}
+
+async function mailerSend() {
+  if (!mailerCtx) return;
+  const lead = mailerCtx.lead;
+  const to = (document.getElementById('mailer-to').value || '').trim();
+  const subject = (document.getElementById('mailer-subject').value || '').trim();
+  const body = (document.getElementById('mailer-body').value || '').trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) { toast('Bitte gültige E-Mail-Adresse eintragen', true); return; }
+  if (!subject || !body) { toast('Betreff und Nachricht sind Pflicht', true); return; }
+  const btn = document.getElementById('mailer-send-btn');
+  const label = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Sende…';
+  try {
+    // 1) Neu eingetippte Adresse zurück in den Lead schreiben — damit der nächste
+    //    Anruf-Follow-up nicht wieder ins Leere läuft und der Reply-Scanner den
+    //    Absender einem Lead zuordnen kann.
+    if (to && to.toLowerCase() !== String(lead.email || '').toLowerCase()) {
+      await post('/api/crm/lead-email', { id: lead.id, value: to }).catch(()=>{});
+      lead.email = to;
+    }
+    // 2) E-Mail rausschicken
+    const r = await fetch('/api/send-email', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: lead.id, to, subject, body }),
+    });
+    const d = await r.json().catch(()=>({}));
+    if (!r.ok || d.success === false) {
+      toast(d.error || 'Versand fehlgeschlagen', true);
+      return;
+    }
+    // 3) Lead auf „contacted" heben, damit Pipeline + Follow-ups greifen.
+    await post('/api/status', { id: lead.id, status: 'contacted', notiz: 'E-Mail versendet (Schnell-Mailer)' }).catch(()=>{});
+    toast('✓ E-Mail gesendet an ' + to);
+    closeMailer();
+    // Aktive Ansicht auffrischen
+    if (currentPage === 'calls' && typeof loadCallList === 'function') loadCallList();
+    if (currentPage === 'leads' && typeof loadCrmLeads === 'function') loadCrmLeads();
+  } finally {
+    btn.disabled = false; btn.innerHTML = label;
+  }
 }
 
 // Legacy-Alias: wird nirgends mehr aus der UI aufgerufen, aber alte Bookmarks/Tests
@@ -2576,6 +2760,7 @@ function renderCrm(d) {
             <option value="kein_interesse">✋ Kein Interesse</option>
             <option value="tot">⛔ Tot / nicht anrufen</option>
           </select>
+          <button class="cl-btn mailer" onclick="openMailer('${l.id}')" title="E-Mail versenden (Vorlage wählen)">✉ E-Mail</button>
           <button class="cl-btn" onclick="crmAddNote('${l.id}')" title="Freie Notiz eintippen">📝 Notiz</button>
         </div>
         ${l.notiz ? `<div class="crm-note" title="${esc(l.notiz)}">📝 ${esc(String(l.notiz).split('\n').pop())}</div>` : ''}
