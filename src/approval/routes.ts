@@ -1937,15 +1937,36 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
   // der Gründer parallel zum Auto-Versand gezielt cold-callen kann. Bereits per
   // E-Mail kontaktierte Betriebe sind erlaubt (Mehrfach-Touch = höhere Conversion)
   // und werden als "bereits angeschrieben" markiert – ein starker Warm-Call-Anlass.
-  app.get<{ Querystring: { limit?: string; q?: string; branche?: string; stadt?: string; prio?: string; emailed?: string; track?: string } }>('/api/call-list', async (req) => {
+  app.get<{ Querystring: { limit?: string; q?: string; branche?: string; stadt?: string; prio?: string; emailed?: string; track?: string; state?: string } }>('/api/call-list', async (req) => {
     const db = getDb();
     const Q = req.query;
     const limit = Math.max(1, Math.min(200, Number(Q.limit) || 50));
+    // ── State-Filter: Anrufliste ist jetzt ein Mini-CRM. „open" = klassische Arbeitsliste
+    // (Telefon vorhanden, noch nicht angerufen). Alle anderen Werte zeigen bereits bearbeitete
+    // Leads mit dem entsprechenden Outcome — damit man tagsüber filtern kann, wen man wirklich
+    // erreicht/gebucht/verloren hat.
+    const STATE = (Q.state || 'open').toLowerCase();
     const where: string[] = [
       `l.telefon IS NOT NULL AND length(TRIM(l.telefon)) > 5`,
-      `l.status IN ('new','checked','draft_ready','approved','manual_review','contacted')`,
-      `COALESCE(l.manual_call_done, 0) = 0`,
+      `l.status != 'archived'`,
     ];
+    if (STATE === 'open') {
+      where.push(`l.status IN ('new','checked','draft_ready','approved','manual_review','contacted')`);
+      where.push(`COALESCE(l.manual_call_done, 0) = 0`);
+    } else if (STATE === 'nicht_erreicht') {
+      // recordManualCall setzt status='manual_review' + manual_call_done=1 als „nicht erreicht" markiert.
+      where.push(`l.manual_call_done = 1`);
+      where.push(`l.status = 'manual_review'`);
+    } else if (STATE === 'interessiert') {
+      where.push(`l.status = 'replied'`);
+    } else if (STATE === 'termin') {
+      where.push(`l.status = 'demo_booked'`);
+    } else if (STATE === 'kein_interesse') {
+      where.push(`l.status IN ('no_interest','lost')`);
+    } else if (STATE === 'nicht_anrufen') {
+      where.push(`l.status = 'do_not_contact'`);
+    }
+    // state === 'all' → keine zusätzliche Einschränkung
     const params: Record<string, unknown> = {};
     if (Q.q && Q.q.trim()) {
       where.push(`(LOWER(l.name) LIKE @q OR LOWER(l.branche) LIKE @q OR LOWER(l.stadt) LIKE @q OR l.telefon LIKE @q)`);
@@ -1961,25 +1982,68 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     if (Q.emailed === '1') where.push(`l.email IS NOT NULL AND LOWER(TRIM(l.email)) IN (SELECT LOWER(TRIM(to_email)) FROM sent_emails WHERE success=1 AND to_email IS NOT NULL AND to_email!='')`);
     if (Q.emailed === '0') where.push(`(l.email IS NULL OR LOWER(TRIM(l.email)) NOT IN (SELECT LOWER(TRIM(to_email)) FROM sent_emails WHERE success=1 AND to_email IS NOT NULL AND to_email!=''))`);
     const whereSql = where.join(' AND ');
+    // Sortierung: bei „open" Priorität → Notdienst; sonst zuletzt bearbeitete zuerst.
+    const orderSql = STATE === 'open'
+      ? `CASE l.prioritaet WHEN 'A' THEN 0 WHEN 'B' THEN 1 ELSE 2 END,
+         l.hat_notdienst_hinweis DESC, l.score_telefon DESC, l.score_gesamt DESC`
+      : `COALESCE(l.last_manual_call_at, l.updated_at) DESC`;
     const rows = db.prepare(
       `SELECT l.id, l.name, l.branche, l.stadt, l.telefon, l.email, l.website, l.adresse, l.geschaeftsfuehrer,
               l.prioritaet, l.score_gesamt, l.score_telefon, l.google_bewertung, l.google_anzahl_reviews,
               l.hat_notdienst_hinweis, l.status, l.kontakt_hinweis, l.manual_call_note,
+              l.last_manual_call_at, l.notiz,
               (${emailedExpr}) AS already_emailed
        FROM leads l
        WHERE ${whereSql}
-       ORDER BY CASE l.prioritaet WHEN 'A' THEN 0 WHEN 'B' THEN 1 ELSE 2 END,
-                l.hat_notdienst_hinweis DESC, l.score_telefon DESC, l.score_gesamt DESC
+       ORDER BY ${orderSql}
        LIMIT @limit`
     ).all({ ...params, limit }) as any[];
-    const openTotal = (db.prepare(`SELECT COUNT(*) n FROM leads l WHERE ${whereSql}`).get(params) as { n: number }).n;
+    const shownTotal = (db.prepare(`SELECT COUNT(*) n FROM leads l WHERE ${whereSql}`).get(params) as { n: number }).n;
+    // Immer die klassische „offen"-Zahl für Badge + KPI-Header bereitstellen, unabhängig vom Filter.
+    const openTotal = (db.prepare(
+      `SELECT COUNT(*) n FROM leads l
+       WHERE l.telefon IS NOT NULL AND length(TRIM(l.telefon)) > 5
+         AND l.status IN ('new','checked','draft_ready','approved','manual_review','contacted')
+         AND COALESCE(l.manual_call_done, 0) = 0`
+    ).get() as { n: number }).n;
     const calledToday = (db.prepare(
       `SELECT COUNT(*) n FROM leads WHERE manual_call_done = 1 AND date(last_manual_call_at) = date('now','localtime')`
+    ).get() as { n: number }).n;
+    // Tages-Outcomes (aus outreach_events): zeigt was HEUTE tatsächlich passiert ist,
+    // nicht was insgesamt in dem Status hängt. updateLeadStatus schreibt event_type='status_changed'
+    // mit dem Zielstatus in die status-Spalte.
+    const statusCountToday = (statuses: string[]) => (db.prepare(
+      `SELECT COUNT(DISTINCT lead_id) n FROM outreach_events
+       WHERE event_type = 'status_changed'
+         AND status IN (${statuses.map((_, i) => '@s' + i).join(',')})
+         AND date(created_at) = date('now','localtime')`
+    ).get(Object.fromEntries(statuses.map((s, i) => ['s' + i, s]))) as { n: number }).n;
+    const interessiertHeute = statusCountToday(['replied']);
+    const terminHeute = statusCountToday(['demo_booked']);
+    const keinInteresseHeute = statusCountToday(['no_interest', 'lost', 'do_not_contact']);
+    const nichtErreichtHeute = (db.prepare(
+      `SELECT COUNT(DISTINCT lead_id) n FROM outreach_events
+       WHERE event_type = 'manual_call' AND date(created_at) = date('now','localtime')`
     ).get() as { n: number }).n;
     // Distinct branchen + städte für Filter-Dropdowns
     const branchen = db.prepare(`SELECT DISTINCT branche FROM leads WHERE telefon IS NOT NULL AND length(TRIM(telefon))>5 AND branche IS NOT NULL ORDER BY branche`).all() as Array<{branche:string}>;
     const staedte = db.prepare(`SELECT DISTINCT stadt FROM leads WHERE telefon IS NOT NULL AND length(TRIM(telefon))>5 AND stadt IS NOT NULL ORDER BY stadt`).all() as Array<{stadt:string}>;
-    return { leads: rows, summary: { open_total: openTotal, shown: rows.length, called_today: calledToday }, branchen: branchen.map(r=>r.branche), staedte: staedte.map(r=>r.stadt) };
+    return {
+      leads: rows,
+      summary: {
+        open_total: openTotal,
+        shown: rows.length,
+        shown_total: shownTotal,
+        called_today: calledToday,
+        interessiert_today: interessiertHeute,
+        termin_today: terminHeute,
+        kein_interesse_today: keinInteresseHeute,
+        nicht_erreicht_today: nichtErreichtHeute,
+        state: STATE,
+      },
+      branchen: branchen.map(r=>r.branche),
+      staedte: staedte.map(r=>r.stadt),
+    };
   });
 
   // Fertige Follow-up- + Erstkontakt-Vorlagen bereitstellen (idempotent).

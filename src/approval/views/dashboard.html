@@ -515,6 +515,11 @@
   .cl-tag.notdienst { background: rgba(239,68,68,.12); color: #dc2626; }
   .cl-tag.emailed { background: rgba(46,110,232,.12); color: #1d5ad0; }
   .cl-tag.rating { background: rgba(34,209,124,.12); color: #15803d; }
+  .cl-tag.ok   { background: rgba(34,209,124,.16); color: #15803d; }
+  .cl-tag.bad  { background: rgba(107,114,128,.16); color: #4b5563; }
+  .cl-tag.warn { background: rgba(234,179,8,.18);  color: #a16207; }
+  .cl-tag.neu  { background: rgba(46,110,232,.14); color: #1d5ad0; }
+  .cl-note { margin-top: 6px; font-size: 12px; color: var(--txt2); background: var(--elev); border: 1px solid var(--line); padding: 4px 8px; border-radius: 6px; max-width: 520px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cl-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; }
   .cl-phone { font-size: 16px; font-weight: 800; color: var(--txt); text-decoration: none; letter-spacing: .3px; }
   .cl-phone:hover { color: var(--b); }
@@ -1634,6 +1639,15 @@ info@nur-eine-adresse.de"></textarea>
       <select id="cl-emailed" class="an-filter" onchange="loadCallList()" style="max-width:170px">
         <option value="">E-Mail: alle</option><option value="1">bereits angeschrieben</option><option value="0">noch nicht</option>
       </select>
+      <select id="cl-state" class="an-filter" onchange="loadCallList()" style="max-width:200px" title="Status-Filter">
+        <option value="open">Status: offen (noch nicht angerufen)</option>
+        <option value="all">Status: alle (inkl. bearbeitet)</option>
+        <option value="nicht_erreicht">Nur „nicht erreicht"</option>
+        <option value="interessiert">Nur „interessiert"</option>
+        <option value="termin">Nur „Termin gebucht"</option>
+        <option value="kein_interesse">Nur „kein Interesse"</option>
+        <option value="nicht_anrufen">Nur „nicht mehr anrufen"</option>
+      </select>
       <div class="flex1"></div>
       <button class="topbar-btn" onclick="loadCallList()">↻ Aktualisieren</button>
     </div>
@@ -2336,14 +2350,26 @@ async function loadCallList() {
   const st = document.getElementById('cl-stadt')?.value; if (st) p.set('stadt', st);
   const pr = document.getElementById('cl-prio')?.value; if (pr) p.set('prio', pr);
   const em = document.getElementById('cl-emailed')?.value; if (em) p.set('emailed', em);
+  const state = document.getElementById('cl-state')?.value || 'open';
+  p.set('state', state);
   const d = await fetchJSON('/api/call-list?' + p.toString()).catch(()=>null);
   if (!d) return;
   callListData = d;
   const s = d.summary || {};
+  const listLabel = state === 'open' ? 'In dieser Liste'
+    : state === 'nicht_erreicht' ? 'Nicht erreicht (gefiltert)'
+    : state === 'interessiert' ? 'Interessiert (gefiltert)'
+    : state === 'termin' ? 'Termine (gefiltert)'
+    : state === 'kein_interesse' ? 'Kein Interesse (gefiltert)'
+    : state === 'nicht_anrufen' ? 'Nicht anrufen (gefiltert)'
+    : 'Alle mit Telefon';
   document.getElementById('cl-summary').innerHTML = [
     ['Offen zum Anrufen', s.open_total||0, 'b', 'Leads mit Telefon, noch nicht angerufen'],
-    ['Heute angerufen', s.called_today||0, 'g', 'als angerufen markiert'],
-    ['In dieser Liste', s.shown||0, '', 'Top-Priorität zuerst'],
+    ['Heute angerufen', s.called_today||0, 'g', 'insgesamt als angerufen markiert (heute)'],
+    ['Heute interessiert', s.interessiert_today||0, 'p', 'Leads, die heute auf „Interessiert" gesetzt wurden'],
+    ['Heute Termin', s.termin_today||0, 'g', 'Leads, die heute auf „Termin gebucht" gesetzt wurden'],
+    ['Heute kein Interesse', s.kein_interesse_today||0, '', 'Kein Interesse / Verloren / Nicht anrufen (heute)'],
+    [listLabel, s.shown_total ?? s.shown ?? 0, '', 'Treffer im aktuellen Filter'],
   ].map(([l,v,cls,t]) => `<div class="fl-kpi ${cls}" title="${esc(t)}"><div class="fl-kpi-v">${v}</div><div class="fl-kpi-l">${esc(l)}</div></div>`).join('');
   // Filter-Dropdowns befüllen (einmalig)
   const bSel = document.getElementById('cl-branche');
@@ -2365,6 +2391,20 @@ function refreshCallsBadge(n) {
   else { fetchJSON('/api/call-list?limit=1').then(d => { const t=d?.summary?.open_total||0; nb.textContent=t; nb.classList.toggle('zero', !(t>0)); }).catch(()=>{}); }
 }
 
+// Sichtbare Status-Chips auf der Karte, damit man beim Scrollen sofort sieht,
+// was mit einem Lead schon passiert ist (nur relevant, wenn Filter „alle"/Outcome ist).
+const CL_STATUS_CHIP = {
+  replied:      ['ok',   '👍 Interessiert'],
+  demo_booked:  ['ok',   '✅ Termin gebucht'],
+  proposal_sent:['ok',   '📄 Angebot'],
+  won:          ['ok',   '🏆 Gewonnen'],
+  no_interest:  ['bad',  '✋ Kein Interesse'],
+  lost:         ['bad',  '❌ Verloren'],
+  do_not_contact:['bad', '⛔ Nicht anrufen'],
+  manual_review:['warn', '📵 Nicht erreicht'],
+  contacted:    ['neu',  '✉️ Angeschrieben'],
+};
+
 function renderCallList() {
   const q = (document.getElementById('cl-search')?.value||'').toLowerCase().trim();
   let rows = callListData.leads || [];
@@ -2378,14 +2418,18 @@ function renderCallList() {
     const telHref = tel.replace(/[^0-9+]/g,'');
     const rating = (l.google_bewertung!=null && l.google_bewertung>0)
       ? `<span class="cl-tag rating" title="${l.google_anzahl_reviews||0} Bewertungen">★ ${Number(l.google_bewertung).toFixed(1)}</span>` : '';
+    const statusChip = CL_STATUS_CHIP[l.status] ? `<span class="cl-tag ${CL_STATUS_CHIP[l.status][0]}">${CL_STATUS_CHIP[l.status][1]}</span>` : '';
     const tags = [
       l.prioritaet==='A' ? '<span class="cl-tag prioA">A-Priorität</span>' : '',
       l.hat_notdienst_hinweis ? '<span class="cl-tag notdienst">Notdienst</span>' : '',
       l.already_emailed ? '<span class="cl-tag emailed">bereits angeschrieben</span>' : '',
+      statusChip,
       rating,
     ].filter(Boolean).join('');
     const hint = l.kontakt_hinweis ? `<div class="cl-meta">${esc(l.kontakt_hinweis)}</div>` : '';
     const gf = l.geschaeftsfuehrer ? `<div class="cl-meta" style="font-weight:600">👤 ${esc(l.geschaeftsfuehrer)}</div>` : '';
+    // Letzte Notizzeile (aus l.notiz — Freitext-Notizen sind newline-getrennt, jüngste steht hinten).
+    const noteLine = l.notiz ? `<div class="cl-note" title="${esc(l.notiz)}">📝 ${esc(String(l.notiz).split('\n').pop())}</div>` : '';
     return `<div class="cl-card ${l.prioritaet==='A'?'prio-A':''}">
       <div class="cl-main">
         <div class="cl-name">${esc(l.name)}</div>
@@ -2393,24 +2437,53 @@ function renderCallList() {
         <div class="cl-meta">${esc(l.branche||'')} · ${esc(l.stadt||'')}${l.adresse?' · '+esc(l.adresse):''}</div>
         <div class="cl-tags">${tags||'<span class="cl-tag">—</span>'}</div>
         ${hint}
+        ${noteLine}
       </div>
       <div class="cl-actions">
         <a class="cl-phone" href="tel:${esc(telHref)}">📞 ${esc(tel)}</a>
         <div class="cl-btns">
-          <button class="cl-btn done" onclick="markCalled('${l.id}')">✓ Angerufen</button>
+          <select class="crm-outcome" onchange="clOutcome('${l.id}', this.value); this.value='';" title="Ergebnis des Anrufs">
+            <option value="">Ergebnis wählen…</option>
+            <option value="termin">✅ Termin gebucht</option>
+            <option value="interessiert">👍 Interessiert</option>
+            <option value="nicht_erreicht">📵 Nicht erreicht</option>
+            <option value="kein_interesse">✋ Kein Interesse</option>
+            <option value="nicht_anrufen">⛔ Nicht mehr anrufen</option>
+          </select>
+          <button class="cl-btn" onclick="clAddNote('${l.id}')" title="Freie Notiz eintippen">📝 Notiz</button>
         </div>
       </div>
     </div>`;
   }).join('');
 }
 
-async function markCalled(id) {
-  const input = prompt('Kurze Notiz zum Anruf (z. B. „nicht erreicht", „Demo-Termin Di 10 Uhr"):', '');
-  if (input === null) return; // abgebrochen
-  const note = input.trim() || ('Angerufen am ' + new Date().toLocaleString('de-DE'));
-  const r = await post('/api/manual-call', { id, note });
-  if (r && r.ok) { toast('Als angerufen markiert'); loadCallList(); }
+// Anruf-Outcome zentral verbuchen. Same-mapping wie im CRM (siehe crmOutcome), aber
+// aktualisiert die Anrufliste + Badge statt der Leads-Tabelle.
+async function clOutcome(id, outcome) {
+  if (!outcome) return;
+  const statusMap = { termin: 'demo_booked', interessiert: 'replied', kein_interesse: 'no_interest', nicht_anrufen: 'do_not_contact' };
+  let r;
+  if (outcome === 'nicht_erreicht') {
+    r = await post('/api/manual-call', { id, note: 'Nicht erreicht (' + new Date().toLocaleDateString('de-DE') + ')' });
+  } else {
+    r = await post('/api/status', { id, status: statusMap[outcome], notiz: 'Anrufliste: ' + outcome });
+  }
+  if (r && r.ok) { toast('Ergebnis gespeichert'); loadCallList(); refreshCallsBadge(); }
   else { toast('Konnte nicht speichern', true); }
+}
+
+async function clAddNote(id) {
+  const t = prompt('Freie Notiz zu diesem Lead (wird mit Zeitstempel gespeichert):', '');
+  if (t === null || !t.trim()) return;
+  const r = await post('/api/crm/lead-note', { id, note: t.trim() });
+  if (r && r.ok) { toast('Notiz gespeichert'); loadCallList(); }
+  else { toast('Konnte nicht speichern', true); }
+}
+
+// Legacy-Alias: wird nirgends mehr aus der UI aufgerufen, aber alte Bookmarks/Tests
+// könnten markCalled(...) referenzieren. Leitet auf „Nicht erreicht" weiter.
+async function markCalled(id) {
+  return clOutcome(id, 'nicht_erreicht');
 }
 
 // ════ CRM: ALLE LEADS ════
