@@ -1662,6 +1662,7 @@ info@nur-eine-adresse.de"></textarea>
         <option value="termin">Nur „Termin gebucht"</option>
         <option value="kein_interesse">Nur „kein Interesse"</option>
         <option value="nicht_anrufen">Nur „nicht mehr anrufen"</option>
+        <option value="kontaktiert">Nur bereits angeschrieben (E-Mail raus)</option>
       </select>
       <div class="flex1"></div>
       <button class="topbar-btn" onclick="loadCallList()">↻ Aktualisieren</button>
@@ -2422,10 +2423,12 @@ async function loadCallList() {
     : state === 'termin' ? 'Termine (gefiltert)'
     : state === 'kein_interesse' ? 'Kein Interesse (gefiltert)'
     : state === 'nicht_anrufen' ? 'Nicht anrufen (gefiltert)'
+    : state === 'kontaktiert' ? 'Bereits angeschrieben (gefiltert)'
     : 'Alle mit Telefon';
   document.getElementById('cl-summary').innerHTML = [
     ['Offen zum Anrufen', s.open_total||0, 'b', 'Leads mit Telefon, noch nicht angerufen'],
-    ['Heute angerufen', s.called_today||0, 'g', 'insgesamt als angerufen markiert (heute)'],
+    ['Heute kontaktiert', s.contacted_today||0, 'g', 'Distinkte Leads mit heutigem Touch – Anruf, Notiz, Status-Wechsel oder gesendete E-Mail'],
+    ['Heute E-Mails', s.emails_sent_today||0, 'b', 'Erfolgreich versendete E-Mails heute (alle Wege: Schnell-Mailer + Auto-Versand)'],
     ['Heute interessiert', s.interessiert_today||0, 'p', 'Leads, die heute auf „Interessiert" gesetzt wurden'],
     ['Heute Termin', s.termin_today||0, 'g', 'Leads, die heute auf „Termin gebucht" gesetzt wurden'],
     ['Heute kein Interesse', s.kein_interesse_today||0, '', 'Kein Interesse / Verloren / Nicht anrufen (heute)'],
@@ -2479,10 +2482,13 @@ function renderCallList() {
     const rating = (l.google_bewertung!=null && l.google_bewertung>0)
       ? `<span class="cl-tag rating" title="${l.google_anzahl_reviews||0} Bewertungen">★ ${Number(l.google_bewertung).toFixed(1)}</span>` : '';
     const statusChip = CL_STATUS_CHIP[l.status] ? `<span class="cl-tag ${CL_STATUS_CHIP[l.status][0]}">${CL_STATUS_CHIP[l.status][1]}</span>` : '';
+    // Sichtbare Mail-Historie: „✉ 3 Mails" macht Follow-up-Kandidaten sofort erkennbar.
+    const nMails = Number(l.emails_sent_count || 0);
+    const mailsChip = nMails > 0 ? `<span class="cl-tag emailed" title="Bereits ${nMails} E-Mail${nMails===1?'':'s'} an diesen Lead versendet">✉ ${nMails} Mail${nMails===1?'':'s'}</span>` : '';
     const tags = [
       l.prioritaet==='A' ? '<span class="cl-tag prioA">A-Priorität</span>' : '',
       l.hat_notdienst_hinweis ? '<span class="cl-tag notdienst">Notdienst</span>' : '',
-      l.already_emailed ? '<span class="cl-tag emailed">bereits angeschrieben</span>' : '',
+      mailsChip || (l.already_emailed ? '<span class="cl-tag emailed">bereits angeschrieben</span>' : ''),
       statusChip,
       rating,
     ].filter(Boolean).join('');
@@ -2584,7 +2590,12 @@ async function openMailer(id) {
   mailerCtx = { lead, templates: tpls };
   // UI initialisieren
   document.getElementById('mailer-title').textContent = 'E-Mail an ' + (lead.name || '—');
-  document.getElementById('mailer-sub').textContent = [lead.branche, lead.stadt].filter(Boolean).join(' · ');
+  // Zeigt Follow-up-Kontext (X E-Mails bereits versendet) direkt unter dem Titel,
+  // damit man weiß ob das ein Erstkontakt oder ein Nachfassen wird.
+  const nMails = Number(lead.emails_sent_count || 0);
+  const baseSub = [lead.branche, lead.stadt].filter(Boolean).join(' · ');
+  const mailsSub = nMails > 0 ? `Bereits ${nMails} E-Mail${nMails===1?'':'s'} an diesen Lead versendet — dies wird ein Follow-up.` : 'Erstkontakt.';
+  document.getElementById('mailer-sub').innerHTML = esc(baseSub) + (baseSub ? ' · ' : '') + `<span style="color:${nMails>0?'#1d5ad0':'var(--txt2)'}">${esc(mailsSub)}</span>`;
   const to = document.getElementById('mailer-to');
   to.value = lead.email || '';
   const hint = document.getElementById('mailer-email-hint');

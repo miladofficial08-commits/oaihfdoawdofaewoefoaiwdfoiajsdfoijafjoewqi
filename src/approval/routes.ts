@@ -1980,6 +1980,16 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
       where.push(`l.status IN ('no_interest','lost')`);
     } else if (STATE === 'nicht_anrufen') {
       where.push(`l.status = 'do_not_contact'`);
+    } else if (STATE === 'kontaktiert') {
+      // „Bereits per E-Mail angeschrieben" – unabhängig vom Lead-Status. Basis ist
+      // der sent_emails-Log; damit tauchen Leads auch dann auf, wenn die Adresse
+      // sich später geändert hat oder der Status zurückgesetzt wurde.
+      where.push(`(EXISTS (
+         SELECT 1 FROM sent_emails se WHERE se.lead_id = l.id AND se.success = 1
+       ) OR EXISTS (
+         SELECT 1 FROM sent_emails se WHERE se.success = 1 AND se.to_email IS NOT NULL
+           AND l.email IS NOT NULL AND LOWER(TRIM(se.to_email)) = LOWER(TRIM(l.email))
+       ))`);
     }
     // state === 'all' → keine zusätzliche Einschränkung
     const params: Record<string, unknown> = {};
@@ -2002,12 +2012,25 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
       ? `CASE l.prioritaet WHEN 'A' THEN 0 WHEN 'B' THEN 1 ELSE 2 END,
          l.hat_notdienst_hinweis DESC, l.score_telefon DESC, l.score_gesamt DESC`
       : `COALESCE(l.last_manual_call_at, l.updated_at) DESC`;
+    // emails_sent_count: bevorzugt der lead_id-Match (präzise, überlebt Adress-
+    // wechsel), fällt sonst auf E-Mail-Match zurück (deckt Alt-Bestand ab, bevor
+    // der Sender lead_id konsequent geloggt hat). max() vermeidet Doppelzählung.
+    const emailsCountExpr = `(
+      SELECT MAX(cnt) FROM (
+        SELECT COUNT(*) cnt FROM sent_emails WHERE lead_id = l.id AND success = 1
+        UNION ALL
+        SELECT COUNT(*) cnt FROM sent_emails
+          WHERE success = 1 AND to_email IS NOT NULL
+            AND l.email IS NOT NULL AND LOWER(TRIM(to_email)) = LOWER(TRIM(l.email))
+      )
+    )`;
     const rows = db.prepare(
       `SELECT l.id, l.name, l.branche, l.stadt, l.telefon, l.email, l.website, l.adresse, l.geschaeftsfuehrer,
               l.prioritaet, l.score_gesamt, l.score_telefon, l.google_bewertung, l.google_anzahl_reviews,
               l.hat_notdienst_hinweis, l.status, l.kontakt_hinweis, l.manual_call_note,
               l.last_manual_call_at, l.notiz,
-              (${emailedExpr}) AS already_emailed
+              (${emailedExpr}) AS already_emailed,
+              ${emailsCountExpr} AS emails_sent_count
        FROM leads l
        WHERE ${whereSql}
        ORDER BY ${orderSql}
@@ -2023,6 +2046,26 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     ).get() as { n: number }).n;
     const calledToday = (db.prepare(
       `SELECT COUNT(*) n FROM leads WHERE manual_call_done = 1 AND date(last_manual_call_at) = date('now','localtime')`
+    ).get() as { n: number }).n;
+    // „Kontaktiert heute" = jeder Touch auf einem Lead heute (Anruf-Outcome, Notiz,
+    // Status-Änderung, versendete E-Mail), distinkt pro Lead. Gibt eine ehrliche
+    // Tagesleistung wieder – reine „angerufen"-Zahl war zu eng.
+    const contactedToday = (db.prepare(
+      `SELECT COUNT(*) n FROM (
+         SELECT DISTINCT lead_id FROM outreach_events
+         WHERE lead_id IS NOT NULL
+           AND date(created_at) = date('now','localtime')
+           AND event_type IN ('manual_call','status_changed','note','manual_contact')
+         UNION
+         SELECT DISTINCT lead_id FROM sent_emails
+         WHERE lead_id IS NOT NULL AND success = 1
+           AND date(sent_at) = date('now','localtime')
+       )`
+    ).get() as { n: number }).n;
+    // Reine E-Mail-Zahl heute – separat, damit man sieht wie viel Kanal-Mix rauslief.
+    const emailsSentToday = (db.prepare(
+      `SELECT COUNT(*) n FROM sent_emails
+       WHERE success = 1 AND date(sent_at) = date('now','localtime')`
     ).get() as { n: number }).n;
     // Tages-Outcomes (aus outreach_events): zeigt was HEUTE tatsächlich passiert ist,
     // nicht was insgesamt in dem Status hängt. updateLeadStatus schreibt event_type='status_changed'
@@ -2050,6 +2093,8 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
         shown: rows.length,
         shown_total: shownTotal,
         called_today: calledToday,
+        contacted_today: contactedToday,
+        emails_sent_today: emailsSentToday,
         interessiert_today: interessiertHeute,
         termin_today: terminHeute,
         kein_interesse_today: keinInteresseHeute,
