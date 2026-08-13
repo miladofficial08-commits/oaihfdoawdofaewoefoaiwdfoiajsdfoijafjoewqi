@@ -130,7 +130,8 @@ async function scanContactPages(
 const GF_LABELS = [
   'gesch[äa]ftsf[üu]hrer(?:in)?',
   'gesch[äa]ftsf[üu]hrung',
-  'vertretungsberechtigt[a-zäöüß]*(?:\\s+gesch[äa]ftsf[üu]hrer(?:in)?)?',
+  // "Vertretungsberechtigte Gesellschafter: …" ist eine Standardformel in GmbH-Impressen.
+  'vertretungsberechtigt[a-zäöüß]*(?:\\s+(?:gesch[äa]ftsf[üu]hrer(?:in)?|gesellschafter(?:in)?|person(?:en)?))?',
   'vertreten durch',
   'inhaber(?:in)?',
 ];
@@ -143,7 +144,7 @@ const GF_TITLES = /^(Herr|Frau|Dr\.?|Prof\.?|Dipl\.?-?[A-Za-zäöüß]*\.?)$/i;
 // Nur zum ABSCHNEIDEN nachlaufender Wörter (Berufe/Rechtsform/Adresse/Navigation) – NICHT zum
 // Verwerfen, damit echte Nachnamen wie "Meister" erhalten bleiben. Deckt die real beobachteten
 // Bleed-in-Muster ab: Kammer/Innung, Straßennamen, Navigations- und Füllwörter.
-const GF_TRAILING_NOISE = /^(installateur|meister|elektromeister|handwerksmeister|klempnermeister|heizungsbaumeister|ingenieur|techniker|monteur|inhaber|gesch[äa]ftsf[üu]hr\w*|gmbh|kg|ohg|gbr|mbh|ug|ag|co|handelsregister|registergericht|amtsgericht|ust|hrb|hra|steuernummer|telefon|telefax|fax|impressum|datenschutz|adresse|kontakt|home|start|menu|men[üu]|handwerkskammer|kammer|innung|mitglied|streitschlichtung|verbraucherschlichtungsstelle|die|der|das|und|[a-zäöüß]*(?:stra[sß]e|str\.?|weg|platz|allee|ring|gasse))$/i;
+const GF_TRAILING_NOISE = /^(installateur|meister|elektromeister|handwerksmeister|klempnermeister|heizungsbaumeister|ingenieur|techniker|monteur|inhaber|gesch[äa]ftsf[üu]hr\w*|vertretungsberechtigt\w*|vertreten|gmbh|kg|ohg|gbr|mbh|ug|ag|co|handelsregister|registergericht|amtsgericht|ust|hrb|hra|steuernummer|telefon|telefax|fax|impressum|datenschutz|adresse|kontakt|home|start|menu|men[üu]|handwerkskammer|kammer|innung|mitglied|streitschlichtung|verbraucherschlichtungsstelle|die|der|das|und|[a-zäöüß]*(?:stra[sß]e|str\.?|weg|platz|allee|ring|gasse))$/i;
 
 // Wandelt HTML in Text um, behält aber Block-Grenzen als "|" – so kann der Namens-Regex
 // nicht über eine Zeilen-/Absatzgrenze hinweg greifen und zieht keine Adresse ("… Kraspothstr"),
@@ -157,7 +158,24 @@ function stripTagsWithBoundaries(html: string): string {
     .replace(/[ \t]+/g, ' ');
 }
 
-export function extractGeschaeftsfuehrer(html: string): string | undefined {
+// Branchenwörter tauchen in Firmennamen auf ("Zimmer Haustechnik"), aber nie in
+// Personennamen – ohne diese Sperre landet die Firma selbst als "Geschäftsführer"
+// in der Anrufliste und die Anrede beim Anruf ist falsch.
+// Zusätzlich Agenturwörter: viele Impressen nennen die Werbeagentur, die die Seite
+// gebaut hat ("Schlütersche Marketing Holding") – die landet sonst als Ansprechpartner
+// in der Anrufliste.
+const GF_BRANCHENWORT = /\b(haustechnik|sanit[äa]r|heizung\w*|elektro\w*|klima|k[äa]lte|bedachung\w*|dachdecker|installation\w*|technik|service|energie|solar|immobilien|automobile|autohaus|werkstatt|betrieb|bau|holding|marketing|media|agentur|verlag|werbung|webdesign|consulting|solutions|systeme|kommunikation)\b/i;
+
+/** Prüft, ob der gefundene "Name" in Wahrheit nur der Firmenname ist. */
+function istFirmenname(name: string, firmenname?: string): boolean {
+  if (!firmenname) return false;
+  const zerlegen = (s: string) => new Set(s.toLowerCase().replace(/[^a-zäöüß\s]/g, ' ').split(/\s+/).filter(w => w.length > 2));
+  const firma = zerlegen(firmenname);
+  const teile = [...zerlegen(name)];
+  return teile.length > 0 && teile.every(w => firma.has(w));
+}
+
+export function extractGeschaeftsfuehrer(html: string, firmenname?: string): string | undefined {
   const text = stripTagsWithBoundaries(decodeHtmlEntities(html))
     .replace(/&auml;/g, 'ä').replace(/&ouml;/g, 'ö').replace(/&uuml;/g, 'ü').replace(/&szlig;/g, 'ß')
     .replace(/&Auml;/g, 'Ä').replace(/&Ouml;/g, 'Ö').replace(/&Uuml;/g, 'Ü')
@@ -169,7 +187,7 @@ export function extractGeschaeftsfuehrer(html: string): string | undefined {
     const m = text.match(re);
     if (!m || !m[1]) continue;
     const name = refineNameWords(m[1].trim().replace(/\s+/g, ' ').split(' '));
-    if (name && isPlausiblePersonName(name)) return name.slice(0, 60);
+    if (name && isPlausiblePersonName(name) && !istFirmenname(name, firmenname)) return name.slice(0, 60);
   }
   return undefined;
 }
@@ -201,6 +219,7 @@ export function cleanStoredGf(raw: string | null | undefined): string | undefine
 function isPlausiblePersonName(name: string): boolean {
   if (/\d/.test(name)) return false;
   if (GF_BLOCKWORDS.test(name)) return false;
+  if (GF_BRANCHENWORT.test(name)) return false;
   const words = name.split(/\s+/).filter(w => !GF_TITLES.test(w));
   return words.length >= 2 && words.length <= 3 && words.every(w => /^[A-ZÄÖÜ]/.test(w));
 }
@@ -550,4 +569,180 @@ function emptyResult(error: string): WebsiteAnalysis {
     quality_flags: [],
     error,
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Impressum-Extraktor: Durchwahl statt Zentrale
+//
+// Die Nummer aus Google Maps ist die Zentrale – genau die Leitung, die eine
+// Bürokraft abschirmt. Das Impressum (§5 DDG) nennt dagegen oft eine Mobil-
+// oder Durchwahlnummer, unter der der Inhaber selbst rangeht. Genau die wird
+// hier gezogen, zusammen mit dem Namen des Geschäftsführers.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PHONE_LABEL_NOTDIENST = /(notdienst|notfall|notruf|bereitschaft|st[öo]rungsdienst|24\s?[-/]?\s?(?:h\b|std)|rund um die uhr)/i;
+const PHONE_LABEL_MOBIL = /(mobil|handy|mobiltelefon)/i;
+const PHONE_LABEL_FAX = /(fax|telefax)/i;
+const PHONE_LABEL_DIREKT = /(durchwahl|direkt|gesch[äa]ftsf[üu]hr|inhaber|meister)/i;
+
+// Nur führende 0 / +49 / 0049, KEIN Punkt als Trenner (sonst matchen Datumsangaben
+// wie "01.01.2024" als Rufnummer). 8–14 Ziffern gesamt.
+const PHONE_RE = /(?<![\d/])(?:\+49|0049|0)[\s\-/()]*(?:\d[\s\-/()]*){7,13}\d/g;
+
+export type TelefonTyp = 'mobil' | 'notdienst' | 'festnetz';
+
+export interface ExtractedPhone {
+  nummer: string;
+  typ: TelefonTyp;
+  kontext?: string;
+}
+
+export interface ImpressumResult {
+  geschaeftsfuehrer?: string;
+  /** Mobil-/Durchwahlnummer für den Direktkontakt – nie die Zentrale, nie der Notdienst. */
+  telefon_direkt?: string;
+  telefon_direkt_typ?: TelefonTyp;
+  /** Bewusst getrennt gespeichert: Notdienstleitungen sind für Notfälle, nicht für Akquise. */
+  telefon_notdienst?: string;
+  whatsapp?: string;
+  impressum_url?: string;
+  alle_nummern: ExtractedPhone[];
+  error?: string;
+}
+
+/** Bringt eine deutsche Rufnummer auf +49… oder verwirft sie als unplausibel. */
+export function normalizeDePhone(raw: string): string | undefined {
+  if (/\b\d{1,2}\.\d{1,2}\.\d{2,4}\b/.test(raw)) return undefined; // Datum, keine Rufnummer
+  let d = raw.replace(/[^\d+]/g, '');
+  if (d.startsWith('+')) d = d.slice(1).replace(/\+/g, '');
+  else d = d.replace(/\+/g, '');
+
+  if (d.startsWith('0049')) d = d.slice(4);
+  else if (d.startsWith('49') && raw.trim().startsWith('+')) d = d.slice(2);
+  else if (d.startsWith('0')) d = d.slice(1);
+  else return undefined;
+
+  // Ortsnetz + Teilnehmer: realistisch 6–12 Ziffern nach der Landesvorwahl.
+  if (d.length < 6 || d.length > 12) return undefined;
+  if (/^(\d)\1+$/.test(d)) return undefined; // 0000000 / 1111111 = Platzhalter
+  return `+49${d}`;
+}
+
+// Das Label steht im Deutschen vor der Nummer ("Mobil: 0171…"). Entscheidend ist, nur
+// bis zur Feldgrenze zurückzulesen: sonst zieht das "Telefax:" der Zeile darüber die
+// darunterstehende Mobilnummer mit in den Fax-Ausschluss.
+function labelVor(kontext: string, rawLen: number): string {
+  const vor = kontext.slice(0, Math.max(0, kontext.length - rawLen));
+  const grenze = Math.max(vor.lastIndexOf('|'), vor.lastIndexOf(';'), vor.lastIndexOf('•'));
+  return (grenze >= 0 ? vor.slice(grenze + 1) : vor).slice(-60);
+}
+
+function classifyPhone(nummer: string, label: string): TelefonTyp {
+  if (PHONE_LABEL_NOTDIENST.test(label)) return 'notdienst';
+  if (/^\+491[567]/.test(nummer)) return 'mobil';
+  if (PHONE_LABEL_MOBIL.test(label)) return 'mobil';
+  return 'festnetz';
+}
+
+const TYP_RANG: Record<TelefonTyp, number> = { notdienst: 3, mobil: 2, festnetz: 1 };
+
+/** Zieht alle plausiblen Rufnummern samt Kontext-Label aus einer Seite. Faxnummern fliegen raus. */
+export function extractPhones(html: string): ExtractedPhone[] {
+  const found = new Map<string, ExtractedPhone>();
+
+  const merge = (raw: string, kontext: string) => {
+    const nummer = normalizeDePhone(raw);
+    if (!nummer) return;
+    const label = labelVor(kontext, raw.length);
+    if (PHONE_LABEL_FAX.test(label)) return;
+    const typ = classifyPhone(nummer, label);
+    const bisher = found.get(nummer);
+    if (!bisher || TYP_RANG[typ] > TYP_RANG[bisher.typ]) {
+      found.set(nummer, { nummer, typ, kontext: label.replace(/\s+/g, ' ').trim() });
+    }
+  };
+
+  // 1. tel:-Links – die zuverlässigste Quelle, weil der Betreiber sie selbst gesetzt hat.
+  const telRe = /href=["']tel:([^"']{5,30})["']/gi;
+  let m: RegExpExecArray | null;
+  while ((m = telRe.exec(html))) {
+    const vorlauf = stripTagsWithBoundaries(html.slice(Math.max(0, m.index - 220), m.index));
+    merge(m[1], `${vorlauf} ${m[1]}`);
+  }
+
+  // 2. Fließtext (Impressen listen Nummern oft ohne tel:-Link).
+  const text = stripTagsWithBoundaries(decodeHtmlEntities(html));
+  while ((m = PHONE_RE.exec(text))) {
+    merge(m[0], text.slice(Math.max(0, m.index - 60), m.index + m[0].length));
+  }
+  PHONE_RE.lastIndex = 0;
+
+  return [...found.values()];
+}
+
+/**
+ * Lädt Startseite + Impressum/Kontakt und liefert die Daten, die einen Kaltanruf
+ * in ein Gespräch verwandeln: Name des Entscheiders und eine Nummer, die nicht
+ * in der Zentrale endet.
+ *
+ * @param zentrale Bereits bekannte Nummer (Google Maps) – wird nie als Direktnummer zurückgegeben.
+ * @param firmenname Verhindert, dass der Firmenname selbst als Geschäftsführer durchgeht.
+ */
+export async function analyzeImpressum(url: string, zentrale?: string, firmenname?: string): Promise<ImpressumResult> {
+  const leer: ImpressumResult = { alle_nummern: [] };
+  if (!url) return { ...leer, error: 'Keine URL' };
+
+  const normalized = url.startsWith('http') ? url : `https://${url}`;
+  try {
+    const home = await fetchPage(normalized);
+    if (home.status && home.status >= 400) return { ...leer, error: `HTTP ${home.status}` };
+    if (home.html == null) return { ...leer, error: 'Timeout' };
+
+    const nummern = new Map<string, ExtractedPhone>();
+    const sammle = (liste: ExtractedPhone[]) => {
+      for (const p of liste) {
+        const bisher = nummern.get(p.nummer);
+        if (!bisher || TYP_RANG[p.typ] > TYP_RANG[bisher.typ]) nummern.set(p.nummer, p);
+      }
+    };
+
+    let gf = extractGeschaeftsfuehrer(home.html, firmenname);
+    let whatsapp = extractWhatsApp(home.html);
+    let impressumUrl: string | undefined;
+    sammle(extractPhones(home.html));
+
+    for (const u of candidateContactUrls(home.html, home.finalUrl).slice(0, 4)) {
+      try {
+        const page = await fetchPage(u);
+        if (!page.html) continue;
+        if (!impressumUrl && /impressum|imprint/i.test(u)) impressumUrl = u;
+        sammle(extractPhones(page.html));
+        if (!gf) gf = extractGeschaeftsfuehrer(page.html, firmenname);
+        if (!whatsapp) whatsapp = extractWhatsApp(page.html);
+      } catch { /* Unterseite nicht erreichbar – Rest zählt trotzdem */ }
+    }
+
+    const alle = [...nummern.values()];
+    const zentraleNorm = zentrale ? normalizeDePhone(zentrale) : undefined;
+    const istZentrale = (p: ExtractedPhone) => zentraleNorm != null && p.nummer === zentraleNorm;
+
+    const notdienst = alle.find(p => p.typ === 'notdienst' && !istZentrale(p));
+    const kandidaten = alle.filter(p => p.typ !== 'notdienst' && !istZentrale(p));
+    const direkt =
+      kandidaten.find(p => p.typ === 'mobil') ??
+      kandidaten.find(p => p.typ === 'festnetz' && PHONE_LABEL_DIREKT.test(p.kontext ?? ''));
+
+    return {
+      geschaeftsfuehrer: gf,
+      telefon_direkt: direkt?.nummer,
+      telefon_direkt_typ: direkt?.typ,
+      telefon_notdienst: notdienst?.nummer,
+      whatsapp,
+      impressum_url: impressumUrl,
+      alle_nummern: alle,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ...leer, error: msg.includes('abort') ? 'Timeout' : msg.slice(0, 100) };
+  }
 }

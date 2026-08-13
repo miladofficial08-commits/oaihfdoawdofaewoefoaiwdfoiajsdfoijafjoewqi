@@ -13,6 +13,7 @@
     "leadgen:list": "npm run build && node dist/cli.js list",
     "leadgen:presets": "npm run build && node dist/cli.js presets",
     "leadgen:cleanup": "node scripts/cleanup-bad-contacts.cjs",
+    "leadgen:impressum": "npm run build && node scripts/enrich-impressum.cjs",
     "test": "npm run build && node tests/run-tests.cjs",
     "build": "tsc",
     "start": "node dist/server.js"

@@ -349,6 +349,17 @@ function initSchema(db: Database.Database) {
     followup_stopped_reason: 'TEXT',
   });
 
+  // Impressum-Anreicherung: 'telefon' ist die Google-Maps-Zentrale (Bürokraft geht ran),
+  // 'telefon_direkt' die Mobil-/Durchwahlnummer aus dem Impressum (Entscheider geht ran).
+  // 'telefon_notdienst' steht bewusst separat und gehört NICHT in eine Anrufliste.
+  ensureColumns(db, 'leads', {
+    telefon_direkt: 'TEXT',
+    telefon_direkt_typ: 'TEXT',
+    telefon_notdienst: 'TEXT',
+    impressum_url: 'TEXT',
+    impressum_checked_at: 'TEXT',
+  });
+
   // Nachrüst-Spalten für bestehende Installationen (kein Datenverlust).
   ensureColumns(db, 'email_templates', {
     category: 'TEXT',

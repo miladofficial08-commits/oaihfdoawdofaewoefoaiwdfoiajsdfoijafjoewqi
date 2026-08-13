@@ -538,6 +538,11 @@
   .cl-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; }
   .cl-phone { font-size: 16px; font-weight: 800; color: var(--txt); text-decoration: none; letter-spacing: .3px; }
   .cl-phone:hover { color: var(--b); }
+  /* Direktnummer = die Nummer, bei der der Chef selbst rangeht. Optisch klar vor der Zentrale. */
+  .cl-phone.direkt { color: #15803d; }
+  .cl-phone2 { font-size: 11.5px; font-weight: 600; color: var(--txt3); text-decoration: none; letter-spacing: .2px; }
+  .cl-phone2:hover { color: var(--txt2); }
+  .cl-tag.direkt { background: rgba(34,209,124,.16); color: #15803d; }
   .cl-btns { display: flex; gap: 6px; }
   .cl-btn { border: 1px solid var(--line2); background: var(--elev); color: var(--txt2); font-size: 11.5px; font-weight: 600; padding: 7px 12px; border-radius: 8px; cursor: pointer; }
   .cl-btn.done { background: var(--g); border-color: var(--g); color: #052012; }
@@ -1639,13 +1644,14 @@ info@nur-eine-adresse.de"></textarea>
   <!-- ─── ANRUFLISTE ─── -->
   <div class="page" id="p-calls">
     <div class="fl-note">
-      <b>Telefon-Bereitschaft:</b> Die heißesten, noch nicht angerufenen Betriebe mit Telefonnummer – sortiert nach Priorität, Notdienst und Telefon-Score.
+      <b>Telefon-Bereitschaft:</b> Noch nicht angerufene Betriebe – zuerst die mit <span class="cl-tag direkt">📱 Mobil – Chef direkt</span> und bekanntem Namen, danach Priorität, Notdienst und Telefon-Score.
+      Die Nummer aus Google Maps ist die Zentrale, dort sitzt die Bürokraft. „Ist Herr Meyer da?" kommt durch, „kann ich den Verantwortlichen sprechen" nicht.
       Du verkaufst einen Telefonassistenten – <b>beweise ihn, indem du selbst durchkommst.</b> Ziel pro Anruf ist ein 15-Min-Demo-Termin, kein Abschluss.
       Betriebe mit <span class="cl-tag emailed">bereits angeschrieben</span> sind Warm-Calls (E-Mail + Anruf = höhere Conversion).
     </div>
     <div class="cl-summary" id="cl-summary"></div>
     <div class="fl-toolbar">
-      <input type="text" id="cl-search" class="an-filter" placeholder="🔍 Firma / Ort / Branche / Telefon…" oninput="clDebouncedSearch()">
+      <input type="text" id="cl-search" class="an-filter" placeholder="🔍 Firma / Name / Ort / Branche / Telefon…" oninput="clDebouncedSearch()">
       <select id="cl-branche" class="an-filter" onchange="loadCallList()" style="max-width:180px"><option value="">Branche: alle</option></select>
       <select id="cl-stadt" class="an-filter" onchange="loadCallList()" style="max-width:160px"><option value="">Stadt: alle</option></select>
       <select id="cl-prio" class="an-filter" onchange="loadCallList()" style="max-width:130px">
@@ -1653,6 +1659,11 @@ info@nur-eine-adresse.de"></textarea>
       </select>
       <select id="cl-emailed" class="an-filter" onchange="loadCallList()" style="max-width:170px">
         <option value="">E-Mail: alle</option><option value="1">bereits angeschrieben</option><option value="0">noch nicht</option>
+      </select>
+      <select id="cl-direkt" class="an-filter" onchange="loadCallList()" style="max-width:210px" title="Impressum-Direktnummern statt Google-Maps-Zentrale">
+        <option value="">Nummer: alle</option>
+        <option value="1">Nur Direktnummern</option>
+        <option value="name">Nur Direktnummer + Name</option>
       </select>
       <select id="cl-state" class="an-filter" onchange="loadCallList()" style="max-width:200px" title="Status-Filter">
         <option value="open">Status: offen (noch nicht angerufen)</option>
@@ -2411,6 +2422,7 @@ async function loadCallList() {
   const st = document.getElementById('cl-stadt')?.value; if (st) p.set('stadt', st);
   const pr = document.getElementById('cl-prio')?.value; if (pr) p.set('prio', pr);
   const em = document.getElementById('cl-emailed')?.value; if (em) p.set('emailed', em);
+  const dir = document.getElementById('cl-direkt')?.value; if (dir) p.set('direkt', dir);
   const state = document.getElementById('cl-state')?.value || 'open';
   p.set('state', state);
   const d = await fetchJSON('/api/call-list?' + p.toString()).catch(()=>null);
@@ -2427,6 +2439,7 @@ async function loadCallList() {
     : 'Alle mit Telefon';
   document.getElementById('cl-summary').innerHTML = [
     ['Offen zum Anrufen', s.open_total||0, 'b', 'Leads mit Telefon, noch nicht angerufen'],
+    ['Direktnummern offen', s.direkt_total||0, 'g', 'Noch nicht angerufene Leads mit Impressum-Direktnummer – hier geht der Chef selbst ran, keine Zentrale dazwischen'],
     ['Heute kontaktiert', s.contacted_today||0, 'g', 'Distinkte Leads mit heutigem Touch – Anruf, Notiz, Status-Wechsel oder gesendete E-Mail'],
     ['Heute E-Mails', s.emails_sent_today||0, 'b', 'Erfolgreich versendete E-Mails heute (alle Wege: Schnell-Mailer + Auto-Versand)'],
     ['Heute interessiert', s.interessiert_today||0, 'p', 'Leads, die heute auf „Interessiert" gesetzt wurden'],
@@ -2471,21 +2484,30 @@ const CL_STATUS_CHIP = {
 function renderCallList() {
   const q = (document.getElementById('cl-search')?.value||'').toLowerCase().trim();
   let rows = callListData.leads || [];
-  if (q) rows = rows.filter(l => [l.name,l.stadt,l.branche,l.telefon].some(x => String(x||'').toLowerCase().includes(q)));
+  if (q) rows = rows.filter(l => [l.name,l.stadt,l.branche,l.telefon,l.telefon_direkt,l.geschaeftsfuehrer].some(x => String(x||'').toLowerCase().includes(q)));
   const list = document.getElementById('cl-list');
   const empty = document.getElementById('cl-empty');
   if (!rows.length) { list.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display='none';
   list.innerHTML = rows.map(l => {
-    const tel = String(l.telefon||'').trim();
+    // Direktnummer aus dem Impressum schlägt die Google-Maps-Zentrale: dort geht der
+    // Inhaber selbst ran. Die Zentrale bleibt als Zweitnummer sichtbar.
+    const direkt = String(l.telefon_direkt||'').trim();
+    const zentrale = String(l.telefon||'').trim();
+    const tel = direkt || zentrale;
     const telHref = tel.replace(/[^0-9+]/g,'');
+    const zweitnummer = (direkt && zentrale && direkt !== zentrale)
+      ? `<a class="cl-phone2" href="tel:${esc(zentrale.replace(/[^0-9+]/g,''))}" title="Zentrale laut Google Maps – hier sitzt die Bürokraft">☎ Zentrale ${esc(zentrale)}</a>` : '';
     const rating = (l.google_bewertung!=null && l.google_bewertung>0)
       ? `<span class="cl-tag rating" title="${l.google_anzahl_reviews||0} Bewertungen">★ ${Number(l.google_bewertung).toFixed(1)}</span>` : '';
     const statusChip = CL_STATUS_CHIP[l.status] ? `<span class="cl-tag ${CL_STATUS_CHIP[l.status][0]}">${CL_STATUS_CHIP[l.status][1]}</span>` : '';
     // Sichtbare Mail-Historie: „✉ 3 Mails" macht Follow-up-Kandidaten sofort erkennbar.
     const nMails = Number(l.emails_sent_count || 0);
     const mailsChip = nMails > 0 ? `<span class="cl-tag emailed" title="Bereits ${nMails} E-Mail${nMails===1?'':'s'} an diesen Lead versendet">✉ ${nMails} Mail${nMails===1?'':'s'}</span>` : '';
+    const direktChip = direkt
+      ? `<span class="cl-tag direkt" title="Nummer aus dem Impressum – nicht die Zentrale">📱 ${l.telefon_direkt_typ === 'mobil' ? 'Mobil – Chef direkt' : 'Durchwahl'}</span>` : '';
     const tags = [
+      direktChip,
       l.prioritaet==='A' ? '<span class="cl-tag prioA">A-Priorität</span>' : '',
       l.hat_notdienst_hinweis ? '<span class="cl-tag notdienst">Notdienst</span>' : '',
       mailsChip || (l.already_emailed ? '<span class="cl-tag emailed">bereits angeschrieben</span>' : ''),
@@ -2506,7 +2528,8 @@ function renderCallList() {
         ${noteLine}
       </div>
       <div class="cl-actions">
-        <a class="cl-phone" href="tel:${esc(telHref)}">📞 ${esc(tel)}</a>
+        <a class="cl-phone${direkt?' direkt':''}" href="tel:${esc(telHref)}">📞 ${esc(tel)}</a>
+        ${zweitnummer}
         <div class="cl-btns">
           <select class="crm-outcome" onchange="clOutcome('${l.id}', this.value); this.value='';" title="Ergebnis des Anrufs">
             <option value="">Ergebnis wählen…</option>

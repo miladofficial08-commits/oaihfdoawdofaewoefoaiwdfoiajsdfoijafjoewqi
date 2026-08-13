@@ -1952,7 +1952,7 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
   // der Gründer parallel zum Auto-Versand gezielt cold-callen kann. Bereits per
   // E-Mail kontaktierte Betriebe sind erlaubt (Mehrfach-Touch = höhere Conversion)
   // und werden als "bereits angeschrieben" markiert – ein starker Warm-Call-Anlass.
-  app.get<{ Querystring: { limit?: string; q?: string; branche?: string; stadt?: string; prio?: string; emailed?: string; track?: string; state?: string } }>('/api/call-list', async (req) => {
+  app.get<{ Querystring: { limit?: string; q?: string; branche?: string; stadt?: string; prio?: string; emailed?: string; track?: string; state?: string; direkt?: string } }>('/api/call-list', async (req) => {
     const db = getDb();
     const Q = req.query;
     const limit = Math.max(1, Math.min(200, Number(Q.limit) || 50));
@@ -1961,8 +1961,10 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     // Leads mit dem entsprechenden Outcome — damit man tagsüber filtern kann, wen man wirklich
     // erreicht/gebucht/verloren hat.
     const STATE = (Q.state || 'open').toLowerCase();
+    // Anrufbar ist ein Lead, sobald IRGENDEINE Nummer existiert – die Impressum-Direktnummer
+    // zählt genauso wie die Google-Maps-Zentrale.
     const where: string[] = [
-      `l.telefon IS NOT NULL AND length(TRIM(l.telefon)) > 5`,
+      `COALESCE(l.telefon_direkt, l.telefon) IS NOT NULL AND length(TRIM(COALESCE(l.telefon_direkt, l.telefon))) > 5`,
       `l.status != 'archived'`,
     ];
     if (STATE === 'open') {
@@ -1994,9 +1996,13 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     // state === 'all' → keine zusätzliche Einschränkung
     const params: Record<string, unknown> = {};
     if (Q.q && Q.q.trim()) {
-      where.push(`(LOWER(l.name) LIKE @q OR LOWER(l.branche) LIKE @q OR LOWER(l.stadt) LIKE @q OR l.telefon LIKE @q)`);
+      where.push(`(LOWER(l.name) LIKE @q OR LOWER(l.branche) LIKE @q OR LOWER(l.stadt) LIKE @q
+                   OR l.telefon LIKE @q OR l.telefon_direkt LIKE @q OR LOWER(l.geschaeftsfuehrer) LIKE @q)`);
       params.q = '%' + Q.q.trim().toLowerCase() + '%';
     }
+    // „Nur Direktnummern": die Liste, bei der der Chef selbst rangeht statt der Zentrale.
+    if (Q.direkt === '1') where.push(`l.telefon_direkt IS NOT NULL`);
+    if (Q.direkt === 'name') where.push(`l.telefon_direkt IS NOT NULL AND l.geschaeftsfuehrer IS NOT NULL AND TRIM(l.geschaeftsfuehrer) != ''`);
     if (Q.branche && Q.branche.trim()) { where.push(`LOWER(l.branche) = @branche`); params.branche = Q.branche.trim().toLowerCase(); }
     if (Q.stadt && Q.stadt.trim()) { where.push(`LOWER(l.stadt) = @stadt`); params.stadt = Q.stadt.trim().toLowerCase(); }
     if (Q.prio && /^[ABC]$/.test(Q.prio)) { where.push(`l.prioritaet = @prio`); params.prio = Q.prio; }
@@ -2008,8 +2014,13 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     if (Q.emailed === '0') where.push(`(l.email IS NULL OR LOWER(TRIM(l.email)) NOT IN (SELECT LOWER(TRIM(to_email)) FROM sent_emails WHERE success=1 AND to_email IS NOT NULL AND to_email!=''))`);
     const whereSql = where.join(' AND ');
     // Sortierung: bei „open" Priorität → Notdienst; sonst zuletzt bearbeitete zuerst.
+    // Direktnummer schlägt Priorität: ein A-Lead nützt nichts, wenn die Bürokraft abblockt.
+    // Danach zusätzlich Leads mit bekanntem Namen nach vorn – „Ist Herr Meyer da?" kommt
+    // durch, „kann ich den Verantwortlichen sprechen" nicht.
     const orderSql = STATE === 'open'
-      ? `CASE l.prioritaet WHEN 'A' THEN 0 WHEN 'B' THEN 1 ELSE 2 END,
+      ? `l.telefon_direkt IS NULL,
+         (l.geschaeftsfuehrer IS NULL OR TRIM(l.geschaeftsfuehrer) = ''),
+         CASE l.prioritaet WHEN 'A' THEN 0 WHEN 'B' THEN 1 ELSE 2 END,
          l.hat_notdienst_hinweis DESC, l.score_telefon DESC, l.score_gesamt DESC`
       : `COALESCE(l.last_manual_call_at, l.updated_at) DESC`;
     // emails_sent_count: bevorzugt der lead_id-Match (präzise, überlebt Adress-
@@ -2025,7 +2036,8 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
       )
     )`;
     const rows = db.prepare(
-      `SELECT l.id, l.name, l.branche, l.stadt, l.telefon, l.email, l.website, l.adresse, l.geschaeftsfuehrer,
+      `SELECT l.id, l.name, l.branche, l.stadt, l.telefon, l.telefon_direkt, l.telefon_direkt_typ,
+              l.email, l.website, l.adresse, l.geschaeftsfuehrer,
               l.prioritaet, l.score_gesamt, l.score_telefon, l.google_bewertung, l.google_anzahl_reviews,
               l.hat_notdienst_hinweis, l.status, l.kontakt_hinweis, l.manual_call_note,
               l.last_manual_call_at, l.notiz,
@@ -2086,10 +2098,18 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     // Distinct branchen + städte für Filter-Dropdowns
     const branchen = db.prepare(`SELECT DISTINCT branche FROM leads WHERE telefon IS NOT NULL AND length(TRIM(telefon))>5 AND branche IS NOT NULL ORDER BY branche`).all() as Array<{branche:string}>;
     const staedte = db.prepare(`SELECT DISTINCT stadt FROM leads WHERE telefon IS NOT NULL AND length(TRIM(telefon))>5 AND stadt IS NOT NULL ORDER BY stadt`).all() as Array<{stadt:string}>;
+    // Offene Leads, bei denen der Chef selbst rangeht – die wertvollste Teilmenge der Liste.
+    const direktOffen = (db.prepare(
+      `SELECT COUNT(*) n FROM leads l
+       WHERE l.telefon_direkt IS NOT NULL
+         AND l.status IN ('new','checked','draft_ready','approved','manual_review','contacted')
+         AND COALESCE(l.manual_call_done, 0) = 0`
+    ).get() as { n: number }).n;
     return {
       leads: rows,
       summary: {
         open_total: openTotal,
+        direkt_total: direktOffen,
         shown: rows.length,
         shown_total: shownTotal,
         called_today: calledToday,
