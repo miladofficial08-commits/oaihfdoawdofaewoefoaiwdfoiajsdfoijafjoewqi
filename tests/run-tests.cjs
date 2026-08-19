@@ -397,6 +397,28 @@ const tests = [
     // Ohne Satz bleibt der Text unveraendert.
     assert.equal(applyPersonalLine('Guten Tag,\n\nText.', null), 'Guten Tag,\n\nText.');
   }],
+  ['A/B-Test teilt stabil und laesst Gruppe B unveraendert', () => {
+    const { abGruppe } = require('../dist/email/ab-test');
+    const { renderTemplate } = require('../dist/email/template');
+
+    // Dieselbe Firma muss IMMER in derselben Gruppe landen, sonst bekommt sie
+    // Erstmail mit Satz und Follow-up ohne – dann misst der Test nichts mehr.
+    const id = 'lead-abc-123';
+    assert.equal(abGruppe(id), abGruppe(id));
+    assert.equal(abGruppe(id), abGruppe(id));
+
+    // Beide Gruppen kommen vor.
+    const gruppen = new Set();
+    for (let i = 0; i < 200; i++) gruppen.add(abGruppe('lead-' + i));
+    assert.deepEqual([...gruppen].sort(), ['A', 'B']);
+
+    // Kontrollgruppe: Vorlage geht Wort fuer Wort raus.
+    const tpl = { id: 't', name: 't', subject: 'Betreff', body: 'Guten Tag,|ich melde mich kurz.'.split('|').join(String.fromCharCode(10, 10)), updated_at: '' };
+    const bLead = ['lead-0','lead-1','lead-2','lead-3'].map(x => ({ id: x, name: 'X', branche: 'SHK', hat_notdienst_hinweis: 1 })).find(l => abGruppe(l.id) === 'B');
+    assert.ok(bLead, 'kein B-Lead in der Stichprobe');
+    const raus = renderTemplate(tpl, { name: 'X', lead: bLead }).body;
+    assert.equal(raus, tpl.body, 'Gruppe B darf NICHT veraendert werden');
+  }],
   ['dashboard template preview renders markdown links instead of literal syntax', () => {
     const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'approval', 'views', 'dashboard.html'), 'utf8');
     assert.match(html, /function renderPreviewBodyHtml/);

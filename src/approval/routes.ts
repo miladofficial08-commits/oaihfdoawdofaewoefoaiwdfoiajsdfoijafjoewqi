@@ -37,6 +37,7 @@ import { getDb } from '../db/schema';
 import { fetchInboxEmails, getImapStatus, markEmailSeen } from '../email/inbox';
 import { startReplyScanner, scanReplies, listReplies } from '../email/reply-scanner';
 import { runReplyRepairOnBoot, repairStoredReplies } from '../email/reply-repair';
+import { abBericht } from '../email/ab-test';
 import { getEmailTemplate, updateEmailTemplate, renderTemplate, listEmailTemplates, createEmailTemplate, deleteEmailTemplate, getTemplateById } from '../email/template';
 import { nurEigeneVorlagen } from '../email/template-cleanup';
 import { startklarLinien } from '../workflow/health';
@@ -712,6 +713,9 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
   });
 
   // ── Antwort-Scanner: Antworten lesen, klassifizieren, Follow-ups sperren ────
+  // Ergebnis des A/B-Tests: Bringt der personalisierte Satz Antworten?
+  app.get('/api/ab-test', async () => abBericht());
+
   app.post('/api/inbox/scan-replies', async () => scanReplies());
 
   // Antworten neu einlesen: entschlüsselt gespeicherte Mails, stuft sie neu ein

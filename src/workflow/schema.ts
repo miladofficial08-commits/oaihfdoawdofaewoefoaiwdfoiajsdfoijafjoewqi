@@ -122,6 +122,11 @@ export function initWorkflowSchema(): void {
     // Wiedervorlage: bis zu diesem Zeitpunkt bleibt der Lauf auf dem Snooze-Knoten stehen.
     snooze_until: 'TEXT',
   });
+  ensureColumns('sent_emails', {
+    // A/B-Test: 'A' = mit personalisiertem Satz, 'B' = Vorlage unveraendert.
+    // Ohne diese Spalte liesse sich hinterher nicht sagen, welche Mail welche war.
+    ab_gruppe: 'TEXT',
+  });
   ensureColumns('leads', {
     // Vom Menschen gesetzte Wiedervorlage ("später kontaktieren", "später anrufen").
     wiedervorlage_at: 'TEXT',

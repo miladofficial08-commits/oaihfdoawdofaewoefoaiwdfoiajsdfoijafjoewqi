@@ -71,6 +71,8 @@ export function recordSentEmail(entry: {
   error?: string | null;
   message_id?: string | null;
   track?: string | null;
+  /** 'A' = mit personalisiertem Satz, 'B' = Vorlage unveraendert. Nur fuer den Test. */
+  ab_gruppe?: string | null;
 }) {
   // Track wird – falls nicht mitgegeben – automatisch vom Lead abgeleitet. So bekommt
   // JEDE Versand-Stelle (Auto-Versand, Bulk, geplant) den richtigen Track ohne Extra-Code.
@@ -81,8 +83,8 @@ export function recordSentEmail(entry: {
     track = row?.track ?? null;
   }
   db.prepare(
-    `INSERT INTO sent_emails (id, job_id, lead_id, scheduled_id, campaign, to_email, to_name, subject, body, template_id, success, error, message_id, track)
-     VALUES (@id, @job_id, @lead_id, @scheduled_id, @campaign, @to_email, @to_name, @subject, @body, @template_id, @success, @error, @message_id, @track)`
+    `INSERT INTO sent_emails (id, job_id, lead_id, scheduled_id, campaign, to_email, to_name, subject, body, template_id, success, error, message_id, track, ab_gruppe)
+     VALUES (@id, @job_id, @lead_id, @scheduled_id, @campaign, @to_email, @to_name, @subject, @body, @template_id, @success, @error, @message_id, @track, @ab_gruppe)`
   ).run({
     id: entry.id ?? uuid(),
     job_id: entry.job_id ?? null,

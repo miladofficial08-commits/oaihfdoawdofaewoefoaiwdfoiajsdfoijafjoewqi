@@ -2,6 +2,7 @@ import { getDb } from '../db/schema';
 import { retargetTemplateName } from '../workflow/schema';
 import { Lead } from '../types';
 import { personalLine, applyPersonalLine, upgradeAnrede } from './personal-line';
+import { abGruppe } from './ab-test';
 
 export interface EmailTemplate {
   id: string;
@@ -143,7 +144,9 @@ export function renderTemplate(
   let body = r(tmpl.body);
   // Fest getippte Anrede auf den bekannten Namen anheben, dann personalisieren.
   body = upgradeAnrede(body, gruss);
-  if (vars.lead) body = applyPersonalLine(body, personalLine(vars.lead));
+  // Gruppe B ist die Kontrollgruppe: Ihre Vorlage geht unveraendert raus, damit
+  // sich messen laesst, ob der Satz ueberhaupt etwas bringt.
+  if (vars.lead && abGruppe(vars.lead.id) === 'A') body = applyPersonalLine(body, personalLine(vars.lead));
   return { subject: r(tmpl.subject), body };
 }
 

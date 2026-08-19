@@ -4,6 +4,7 @@ import { v4 as uuid } from 'uuid';
 import { sendLeadEmail } from '../email/mailer';
 import { getTemplateById, renderTemplate, findTemplateByName } from '../email/template';
 import { recordSentEmail, sentTodayCount, GLOBAL_DAILY_CAP } from '../email/auto-sender';
+import { abGruppe } from '../email/ab-test';
 import { updateLeadStatus, recordOutreachEvent } from '../db/leads-repo';
 import { isSuppressed, suppressEmail } from './optout';
 import { newReply, hasRealClick, hasBounce, lastAutoReplyText, parseReturnDate, parseTs } from './reactions';
@@ -396,6 +397,7 @@ async function sendNodeEmail(wf: Workflow, run: RunRow, node: WorkflowNode, lead
     id: trackingId, lead_id: lead.id, campaign: `wf-${node.id}`, to_email: lead.email, to_name: lead.name,
     subject, body, template_id: tpl.id,
     success: result.success, error: result.error, message_id: (result as { messageId?: string }).messageId,
+    ab_gruppe: abGruppe(lead.id),
   });
 
   if (result.success) {
