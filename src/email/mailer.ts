@@ -307,9 +307,34 @@ export function getTrackingBaseUrl(): string {
   return base;
 }
 
+/**
+ * Über welche Adresse laufen Links und Zählpixel in der Mail?
+ *
+ * Nur über eine Adresse auf UNSERER Absender-Domain. Bisher war das die von
+ * Railway vergebene Zufalls-Subdomain:
+ *
+ *   oaihfdoawdofaewoefoaiwdfoiajsdfoijafjoewqi-production.up.railway.app
+ *
+ * Das stand als Ziel hinter jedem Link. Ein Handwerksmeister, der mit der Maus
+ * darüberfährt, sieht 44 zufällige Buchstaben – nicht von einer Phishing-Mail zu
+ * unterscheiden. Gemessen: 451 Öffnungen, 70 Klicks, eine Antwort.
+ *
+ * Passt die Adresse nicht zur Absender-Domain, wird NICHT umgeleitet: Links
+ * bleiben echt, das Zählpixel entfällt. Das kostet nichts, denn Brevo zählt
+ * Öffnungen und Klicks ohnehin selbst und spiegelt sie über brevo-sync zurück.
+ */
 function getTrackingBaseUrlFromEnv(env: NodeJS.ProcessEnv): string {
   const base = (env.PUBLIC_BASE_URL || '').trim().replace(/\/$/, '');
-  return base;
+  if (!base) return '';
+  if (env.TRACKING_ALLOW_FOREIGN_DOMAIN === 'true') return base;
+
+  const absender = (env.SMTP_FROM || env.SMTP_USER || '').match(/[\w.+-]+@([\w-]+\.[\w.-]+)/)?.[1]?.toLowerCase();
+  if (!absender) return '';
+  // Registrierbare Domain (tawano.de), damit mail.tawano.de ebenfalls zählt.
+  const kern = absender.split('.').slice(-2).join('.');
+  let host: string;
+  try { host = new URL(base).hostname.toLowerCase(); } catch { return ''; }
+  return host === kern || host.endsWith('.' + kern) ? base : '';
 }
 
 function buildHtml(body: string, trackingId?: string, env: NodeJS.ProcessEnv = process.env): string {

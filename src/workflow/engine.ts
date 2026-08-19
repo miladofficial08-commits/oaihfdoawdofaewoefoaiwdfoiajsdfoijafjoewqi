@@ -362,6 +362,8 @@ async function sendNodeEmail(wf: Workflow, run: RunRow, node: WorkflowNode, lead
 
   const rendered = renderTemplate(tpl, {
     name: lead.name, branche: lead.branche, stadt: lead.stadt, ansprechpartner: lead.geschaeftsfuehrer,
+    // Den ganzen Lead mitgeben: daraus entsteht der personalisierte Einstiegssatz.
+    lead,
   });
   const terminLink = getSetting('cal_link', '').trim();
   const needsLink = /\{termin_link\}/.test(rendered.body) || /\{termin_link\}/.test(rendered.subject);

@@ -1,5 +1,7 @@
 import { getDb } from '../db/schema';
 import { retargetTemplateName } from '../workflow/schema';
+import { Lead } from '../types';
+import { personalLine, applyPersonalLine, upgradeAnrede } from './personal-line';
 
 export interface EmailTemplate {
   id: string;
@@ -127,7 +129,7 @@ function buildGruss(ansprechpartner?: string): string {
 
 export function renderTemplate(
   tmpl: EmailTemplate,
-  vars: { name: string; branche?: string; stadt?: string; ansprechpartner?: string }
+  vars: { name: string; branche?: string; stadt?: string; ansprechpartner?: string; lead?: Lead }
 ): { subject: string; body: string } {
   const gruss = buildGruss(vars.ansprechpartner);
   const r = (s: string) =>
@@ -135,7 +137,14 @@ export function renderTemplate(
      .replace(/\{name\}/g, vars.name || '')
      .replace(/\{branche\}/g, vars.branche || '')
      .replace(/\{stadt\}/g, vars.stadt || '');
-  return { subject: r(tmpl.subject), body: r(tmpl.body) };
+
+  // Der personalisierte Satz kommt NACH dem Ersetzen: Er soll den Text des
+  // Nutzers ergänzen, nicht selbst durch die Platzhalter-Mühle laufen.
+  let body = r(tmpl.body);
+  // Fest getippte Anrede auf den bekannten Namen anheben, dann personalisieren.
+  body = upgradeAnrede(body, gruss);
+  if (vars.lead) body = applyPersonalLine(body, personalLine(vars.lead));
+  return { subject: r(tmpl.subject), body };
 }
 
 /** IDs der alten A/B-Rotation. Bleibt fuer den abgeschalteten Tagesmotor stehen. */

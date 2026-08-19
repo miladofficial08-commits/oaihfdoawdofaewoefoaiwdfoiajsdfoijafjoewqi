@@ -320,7 +320,7 @@ const tests = [
       subject: 'Hallo',
       body: 'Text https://example.com',
       trackingId: 'track-1',
-    }, { BREVO_API_KEY: 'x', PUBLIC_BASE_URL: 'https://app.example.com' });
+    }, { BREVO_API_KEY: 'x', PUBLIC_BASE_URL: 'https://app.example.com', SMTP_FROM: 'Tawano <info@example.com>' });
 
     assert.deepEqual(payload.sender, { name: 'Tawano', email: 'info@tawano.de' });
     assert.deepEqual(payload.to, [{ email: 'lead@example.com', name: 'Lead Name' }]);
@@ -336,7 +336,7 @@ const tests = [
       subject: 'Hallo',
       body: 'Termin: [Hier 15 Minuten einplanen](https://tawano.de/voice-agents/demo-buchen)\nHTML: <a href="https://tawano.de/voice-agents/demo-buchen">Demo buchen</a>\nKontakt: [info@tawano.de](mailto:info@tawano.de)',
       trackingId: 'track-md',
-    }, { BREVO_API_KEY: 'x', PUBLIC_BASE_URL: 'https://app.example.com' });
+    }, { BREVO_API_KEY: 'x', PUBLIC_BASE_URL: 'https://app.example.com', SMTP_FROM: 'Tawano <info@example.com>' });
 
     assert.match(payload.htmlContent, />Hier 15 Minuten einplanen<\/a>/);
     assert.match(payload.htmlContent, />Demo buchen<\/a>/);
@@ -344,6 +344,58 @@ const tests = [
     assert.match(payload.htmlContent, /href="mailto:info@tawano\.de"/);
     assert.doesNotMatch(payload.htmlContent, /\[Hier 15 Minuten einplanen\]/);
     assert.doesNotMatch(payload.htmlContent, /&lt;a href=/);
+  }],
+  ['tracking laeuft nur ueber die eigene Absender-Domain', () => {
+    const mailer = require('../dist/email/mailer');
+    const eingabe = {
+      to: 'lead@example.com',
+      subject: 'Hallo',
+      body: 'Mehr dazu: https://tawano.de/demo',
+      trackingId: 'track-x',
+    };
+
+    // Fremde Adresse (so lag es in Produktion: eine zufaellige Railway-Subdomain).
+    // Ein Link darauf sieht fuer den Empfaenger aus wie Phishing – also nicht umleiten.
+    const fremd = mailer.buildBrevoEmailPayload(eingabe, {
+      BREVO_API_KEY: 'x',
+      PUBLIC_BASE_URL: 'https://oaihfdoawdofa-production.up.railway.app',
+      SMTP_FROM: 'Tawano <info@tawano.de>',
+    });
+    assert.doesNotMatch(fremd.htmlContent, /railway\.app/);
+    assert.doesNotMatch(fremd.htmlContent, /\/track\/click\//);
+    assert.doesNotMatch(fremd.htmlContent, /\/track\/open\//);
+    assert.match(fremd.htmlContent, /href="https:\/\/tawano\.de\/demo"/);
+
+    // Eigene Domain: Umleitung und Zaehlpixel sind erlaubt.
+    const eigen = mailer.buildBrevoEmailPayload(eingabe, {
+      BREVO_API_KEY: 'x',
+      PUBLIC_BASE_URL: 'https://mail.tawano.de',
+      SMTP_FROM: 'Tawano <info@tawano.de>',
+    });
+    assert.match(eigen.htmlContent, /mail\.tawano\.de\/track\/click\/track-x/);
+  }],
+  ['personalisierter Satz nur aus echten Daten, nie erfunden', () => {
+    const { personalLine, applyPersonalLine } = require('../dist/email/personal-line');
+
+    // Ohne belastbare Angaben darf KEIN Satz entstehen.
+    assert.equal(personalLine({ id: '1', name: 'Ohne Daten' }), null);
+
+    // Notdienst nur, wo er zur Branche passt – nicht beim Nagelstudio.
+    const nagel = personalLine({ id: '2', name: 'Nagelstudio', branche: 'Nagelstudio', hat_notdienst_hinweis: 1 });
+    assert.ok(!nagel || !/Notdienst/.test(nagel), 'Nagelstudio darf keinen Notdienst-Satz bekommen');
+    const shk = personalLine({ id: '3', name: 'SHK Betrieb', branche: 'SHK Sanitär Heizung', hat_notdienst_hinweis: 1 });
+    assert.match(String(shk), /Notdienst/);
+
+    // Punycode-Domains gehoeren nicht in eine Mail.
+    const puny = personalLine({ id: '4', name: 'Umlaut', branche: 'Elektriker', website: 'https://xn--sp-energie-3bc.de' });
+    assert.ok(!puny || !puny.includes('xn--'), 'Punycode darf nicht im Text landen');
+
+    // Einsetzen: Satz hinter die Anrede, Folgeabsatz wird gross geschrieben.
+    const raus = applyPersonalLine('Guten Tag,\n\nich habe versucht Sie zu erreichen.', 'laut Google ist um 16:00 Uhr Schluss.');
+    assert.match(raus, /Guten Tag,\n\nLaut Google ist um 16:00 Uhr Schluss\.\n\nIch habe versucht/);
+
+    // Ohne Satz bleibt der Text unveraendert.
+    assert.equal(applyPersonalLine('Guten Tag,\n\nText.', null), 'Guten Tag,\n\nText.');
   }],
   ['dashboard template preview renders markdown links instead of literal syntax', () => {
     const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'approval', 'views', 'dashboard.html'), 'utf8');
