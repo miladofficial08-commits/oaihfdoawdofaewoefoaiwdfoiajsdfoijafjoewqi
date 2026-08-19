@@ -38,6 +38,14 @@ const AUTO_REPLY = [
   'automatische bestaetigung', 'auto-reply', 'autoreply', 'nicht im buero', 'nicht im hause',
   'im urlaub', 'bin bis', 'bin ab', 'erreichen sie mich wieder', 'urlaubsvertretung',
   'automatisch generiert', 'do not reply', 'noreply', 'no-reply',
+  // Eingangsbestaetigungen. Bewusst nur mit eindeutigem Marker – ein blosses
+  // „vielen Dank fuer Ihre Nachricht" schreiben auch echte Menschen, und eine
+  // echte Antwort als Auto-Antwort abzutun waere der schlimmere Fehler.
+  'eingangsbestaetigung', 'schnellstmoeglich bearbeiten', 'schnellstmoeglich bearbeitet',
+  'wir werden diese schnellstmoeglich', 'ihre anfrage ist bei uns eingegangen',
+  'ihre nachricht ist bei uns eingegangen', 'wir haben ihre anfrage erhalten',
+  'wir haben ihre nachricht erhalten', 'dies ist eine automatische',
+  'diese e-mail wurde automatisch', 'diese nachricht wurde automatisch',
 ];
 
 // Klares Desinteresse – stärkstes Geschäftssignal, hat Vorrang vor "interessiert".
@@ -83,7 +91,13 @@ export function classifyReply(subject: string, body: string): ReplyClassificatio
   const pos = hit(text, INTERESTED);
   if (pos) return { category: 'interested', confidence: 75, reason: `Interesse erkannt ("${pos}")` };
 
-  const q = hit(text, QUESTION);
+  // Rückfrage-Signale NUR im Text suchen, und mit Wortgrenzen.
+  //
+  // Der Betreff ist zum grössten Teil unser eigener: „Kurze Nachfrage, …",
+  // „Ihre Anfrage". Beide enthalten „frage" – als Teilstring gelesen wurde damit
+  // praktisch jede Antwort zur „Rückfrage" gestempelt, egal was drinstand.
+  const koerper = norm(body);
+  const q = QUESTION.find(w => new RegExp('\\b' + w + '\\b').test(koerper)) ?? null;
   if (q || /\?/.test(body)) return { category: 'question', confidence: 55, reason: q ? `Rückfrage erkannt ("${q}")` : 'Fragezeichen im Text' };
 
   return { category: 'unknown', confidence: 30, reason: 'Kein eindeutiges Signal – Antwort trotzdem als Reaktion gewertet' };
@@ -180,6 +194,33 @@ function findLeadForSender(fromEmail: string): MatchedLead | undefined {
 
   if (kandidaten.length !== 1) return undefined;   // 0 = nie angeschrieben, 2+ = mehrdeutig
   return { ...kandidaten[0], viaDomain: true };
+}
+
+/**
+ * Antwort, die niemand sicher deuten kann → Aufgabe für einen Menschen.
+ *
+ * Der Nutzer hat es klar gesagt: Bei unklarem Status soll nichts automatisch
+ * passieren, die Sache soll dort landen, wo er selbst nachsehen kann. Genau das
+ * ist die Aufgabenliste. Ohne diesen Schritt verschwaende eine echte Antwort
+ * im Postfach – oder schlimmer, sie wuerde als Interesse fehlgedeutet.
+ */
+function legeNachseh_Aufgabe(lead: MatchedLead, von: string, betreff: string, text: string, grund: string): void {
+  const db = getDb();
+  const titel = `Antwort prüfen: ${lead.name}`.slice(0, 200);
+  if (db.prepare(`SELECT 1 FROM tasks WHERE lead_id = ? AND title = ? AND status = 'open' LIMIT 1`).get(lead.id, titel)) return;
+  db.prepare(
+    `INSERT INTO tasks (id, lead_id, kind, title, note, due_at, status, source)
+     VALUES (lower(hex(randomblob(16))), @lead_id, 'todo', @title, @note, datetime('now'), 'open', 'reply-scan')`
+  ).run({
+    lead_id: lead.id,
+    title: titel,
+    note: `Von ${von}
+Betreff: ${betreff}
+
+${text.slice(0, 600)}
+
+(${grund} – nicht eindeutig, deshalb wurde nichts automatisch gesetzt.)`,
+  });
 }
 
 function suppress(email: string, reason: string): void {
@@ -280,11 +321,27 @@ export async function scanReplies(limit = 60): Promise<ScanResult> {
       stopFollowup(lead.id, `Antwort erhalten (${cls.category}) – ${cls.reason}`);
 
       // Status setzen (fortgeschrittene Beziehungen nicht zurückstufen).
+      //
+      // NUR bei eindeutigem Signal. Vorher galt jede Antwort ausser einer Absage
+      // als 'replied' – und 'replied' ist der Status der Stage „Interessiert".
+      // Dadurch landeten Eingangsbestaetigungen, unlesbare Mails und sogar ein
+      // „STOP!" als Interessenten im Baum. Ist die Antwort unklar, wird der Status
+      // NICHT angefasst; stattdessen entsteht unten eine Aufgabe zum Nachsehen.
       if (!KEEP_STATUS.includes(lead.status)) {
-        const newStatus: LeadStatus = cls.category === 'not_interested' ? 'no_interest' : 'replied';
-        updateLeadStatus(lead.id, newStatus, {
-          notiz: `Antwort erkannt (${cls.category}): "${(m.snippet || '').slice(0, 200)}"`,
-        });
+        if (cls.category === 'not_interested') {
+          updateLeadStatus(lead.id, 'no_interest' as LeadStatus, {
+            notiz: `Absage erkannt: "${(m.snippet || '').slice(0, 200)}"`,
+          });
+        } else if (cls.category === 'interested') {
+          updateLeadStatus(lead.id, 'replied' as LeadStatus, {
+            notiz: `Interesse erkannt: "${(m.snippet || '').slice(0, 200)}"`,
+          });
+        }
+      }
+
+      // Unklare Antwort: nichts automatisch entscheiden, sondern vorlegen.
+      if (cls.category === 'question' || cls.category === 'unknown') {
+        legeNachseh_Aufgabe(lead, from, m.subject || '', m.snippet || '', cls.reason);
       }
 
       // Klares Desinteresse zusätzlich global sperren (auch Auto-Versand meidet die Adresse).

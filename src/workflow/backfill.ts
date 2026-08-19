@@ -139,13 +139,23 @@ export function placeLead(lead: LeadFacts, nodeIds: Set<string>): Placement | nu
   if (lead.bounced && sonder) return { node: sonder, reason: 'Adresse unzustellbar', dueAt: hold };
 
   // Antwort im Postfach, die nie in den Status übernommen wurde: Inhalt entscheidet.
-  // Eine Absage darf NICHT als heiße Spur einsortiert werden.
+  //
+  // Hier saß ein teurer Fehler: Jede Antwort ausser einer Absage galt als
+  // „Interessiert". So landeten Eingangsbestätigungen, unlesbare Mails und sogar
+  // ein „STOP!" auf der Interessenten-Stage – die Zahl dort war schlicht falsch.
+  // Jetzt gilt: nur ausdrückliches Interesse ist Interesse. Alles Unklare geht auf
+  // den Sonderfall, wo nichts von allein passiert und ein Mensch draufschaut.
   if (lead.last_reply_cat) {
     const optOut = detectOptOut(lead.last_reply_subject || '', lead.last_reply_snippet || '');
     if ((optOut || lead.last_reply_cat === 'not_interested') && absage) {
       return { node: absage, reason: 'Absage im Postfach', dueAt: hold };
     }
-    if (lead.has_reply && interesse) return { node: interesse, reason: 'Antwort im Postfach', dueAt: hold };
+    if (lead.last_reply_cat === 'interested' && interesse) {
+      return { node: interesse, reason: 'Interesse im Postfach', dueAt: hold };
+    }
+    if ((lead.last_reply_cat === 'question' || lead.last_reply_cat === 'unknown') && sonder) {
+      return { node: sonder, reason: 'Antwort da, aber unklar – bitte prüfen', dueAt: hold };
+    }
   }
 
   // Wiedervorlage vom Menschen gesetzt → dort abholen.

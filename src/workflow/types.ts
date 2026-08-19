@@ -52,7 +52,11 @@ export const ALL_CHECK_PORTS: CheckPort[] = [
 
 /** Wohin eine erkannte Reaktion ausweicht, wenn ihr eigener Ausgang nicht verdrahtet ist. */
 export const PORT_FALLBACK: Partial<Record<CheckPort, CheckPort[]>> = {
-  question: ['interested'],
+  // Eine Rückfrage ist KEIN Interesse. Früher lief sie hier auf „Interesse" –
+  // dadurch standen Eingangsbestätigungen und unlesbare Mails als Interessenten
+  // im Baum. Unklares gehört auf den Sonderfall: dort passiert nichts von allein,
+  // ein Mensch sieht es sich an.
+  question: ['sonderfall', 'interested'],
   clicked: ['interested'],
   later: ['sonderfall', 'auto_reply'],
   wrong_contact: ['sonderfall'],

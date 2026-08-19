@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import { recordOutreachEvent, updateLeadStatus } from '../db/leads-repo';
 import { getSmtpConfig as getSharedSmtpConfig } from './smtp';
+import { isSuppressed, suppressionReason } from '../workflow/optout';
 
 export interface EmailPayload {
   leadId: string;
@@ -198,7 +199,32 @@ export async function getSmtpStatus(): Promise<SmtpStatus> {
   }
 }
 
+/**
+ * Letzte Instanz vor dem Versand.
+ *
+ * Jede Mail dieser Plattform läuft durch sendLeadEmail oder sendBulkEmail. Wer hier
+ * gesperrt ist, kommt nicht durch – egal über welchen Knopf, welche Kampagne, welchen
+ * Worker jemand kommt. Vorher hing die Sperre an den aufrufenden Stellen: die Engine
+ * prüfte, das E-Mail-Center nicht. Eine einzige neue Sendestelle, die es vergisst,
+ * und es geht Post an jemanden, der ausdrücklich widersprochen hat.
+ *
+ * Das ist kein Komfort-Check, sondern Rechtsschutz. Deshalb steht er am Nadelöhr
+ * und nicht am Rand.
+ */
+function pruefeSperre(to: string): SendResult | null {
+  if (!isSuppressed(to)) return null;
+  const grund = suppressionReason(to);
+  console.warn(`[email] BLOCKIERT: ${to} steht auf der Sperrliste${grund ? ' (' + grund + ')' : ''}`);
+  return {
+    success: false,
+    to,
+    error: `Gesperrt: ${to} hat weiteren Kontakt abgelehnt${grund ? ' – ' + grund : ''}. Es wurde nichts gesendet.`,
+  };
+}
+
 export async function sendLeadEmail(payload: EmailPayload): Promise<SendResult> {
+  const gesperrt = pruefeSperre(payload.to);
+  if (gesperrt) return gesperrt;
   try {
     let result: SendResult;
     let server = 'Brevo API';
@@ -252,6 +278,8 @@ export async function sendLeadEmail(payload: EmailPayload): Promise<SendResult> 
 }
 
 export async function sendBulkEmail(payload: { to: string; toName?: string; subject: string; body: string; trackingId?: string }): Promise<SendResult> {
+  const gesperrt = pruefeSperre(payload.to);
+  if (gesperrt) return gesperrt;
   try {
     if (process.env.BREVO_API_KEY?.trim()) return await sendViaBrevoApi(payload);
 

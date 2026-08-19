@@ -1,5 +1,6 @@
 import { ImapFlow } from 'imapflow';
 import { isNoise } from './noise-filter';
+import { decodeMailText } from './mime';
 
 export interface InboxEmail {
   uid: number;
@@ -96,9 +97,14 @@ export async function fetchInboxEmails(limit = 40): Promise<InboxEmail[]> {
         })) continue;
         const bodyBuf = (msg as any).bodyParts?.get('1') || (msg as any).bodyParts?.get('TEXT');
         const raw = bodyBuf ? Buffer.from(bodyBuf).toString('utf-8') : '';
-        const clean = raw
-          .split('\n').filter(l => !l.startsWith('>') && !l.match(/^-{3,}/) && !l.match(/^_{3,}/))
-          .join('\n').replace(/\s+/g, ' ').trim();
+        // Erst dekodieren, dann alles Weitere. Vorher wurde der rohe Teil direkt
+        // als Text übernommen – bei Base64-Mails stand dann Buchstabensalat in der
+        // Datenbank, und die Abmelde-Erkennung lief ins Leere.
+        // Zeilenumbrüche bleiben erhalten. Sie sind kein Schönheitsmerkmal, sondern
+        // Information: Eine Abmeldung ist ein Wort in der ersten Zeile („STOP!"),
+        // ein Fließtext mit demselben Wort ist keine. Ohne Zeilen kann man das
+        // nicht unterscheiden – und genau daran hängt, ob wir jemanden sperren.
+        const clean = decodeMailText(raw);
         emails.push({
           uid: msg.uid,
           seq: msg.seq,

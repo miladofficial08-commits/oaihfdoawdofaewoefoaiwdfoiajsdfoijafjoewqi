@@ -36,6 +36,7 @@ import { v4 as uuid } from 'uuid';
 import { getDb } from '../db/schema';
 import { fetchInboxEmails, getImapStatus, markEmailSeen } from '../email/inbox';
 import { startReplyScanner, scanReplies, listReplies } from '../email/reply-scanner';
+import { runReplyRepairOnBoot, repairStoredReplies } from '../email/reply-repair';
 import { getEmailTemplate, updateEmailTemplate, renderTemplate, listEmailTemplates, createEmailTemplate, deleteEmailTemplate, getTemplateById } from '../email/template';
 import { nurEigeneVorlagen } from '../email/template-cleanup';
 import { startklarLinien } from '../workflow/health';
@@ -712,6 +713,11 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
 
   // ── Antwort-Scanner: Antworten lesen, klassifizieren, Follow-ups sperren ────
   app.post('/api/inbox/scan-replies', async () => scanReplies());
+
+  // Antworten neu einlesen: entschlüsselt gespeicherte Mails, stuft sie neu ein
+  // und sperrt nachträglich erkannte Abmeldungen. Ohne apply=true nur ein Bericht.
+  app.post<{ Body: { apply?: boolean } }>('/api/inbox/repair-replies', async (req) =>
+    repairStoredReplies(!req.body?.apply));
   app.get<{ Querystring: { limit?: string } }>('/api/inbox/replies', async (req) => {
     const limit = Math.min(200, Number(req.query.limit || 100));
     return listReplies(limit);
@@ -2065,6 +2071,24 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
       // an dem gearbeitet wird, also muss der Rückläufer genau hier auftauchen.
       where.push(`(COALESCE(l.manual_call_done, 0) = 0
                    OR (l.wiedervorlage_at IS NOT NULL AND l.wiedervorlage_at <= datetime('now')))`);
+    } else if (STATE === 'nie_kontaktiert') {
+      // Wirklich unberührt: keine Mail raus UND kein Anruf dokumentiert.
+      //
+      // „E-Mail: noch nicht" und „Status: noch nicht angerufen" gab es einzeln,
+      // aber nicht zusammen – und genau die Schnittmenge ist die kalte Liste, mit
+      // der man einen Tag anfängt. Wer schon eine Mail hat, ist ein Warm-Call und
+      // gehört in ein anderes Gespräch.
+      where.push(`l.status IN ('new','checked','draft_ready','approved')`);
+      where.push(`COALESCE(l.manual_call_done, 0) = 0`);
+      where.push(`NOT EXISTS (SELECT 1 FROM outreach_events oe
+                              WHERE oe.lead_id = l.id AND oe.event_type IN ('manual_call','manual_contact'))`);
+      // Sende-Log über die Lead-ID UND über die Adresse prüfen: Bulk-Mails aus der
+      // alten Kampagne wurden teils ohne Lead-Bezug gespeichert.
+      where.push(`NOT EXISTS (SELECT 1 FROM sent_emails se
+                              WHERE se.success = 1
+                                AND (se.lead_id = l.id
+                                     OR (l.email IS NOT NULL AND l.email != ''
+                                         AND LOWER(TRIM(se.to_email)) = LOWER(TRIM(l.email)))))`);
     } else if (STATE === 'nicht_erreicht') {
       // recordManualCall setzt status='manual_review' + manual_call_done=1 als „nicht erreicht" markiert.
       where.push(`l.manual_call_done = 1`);
@@ -2304,6 +2328,11 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
   } catch (err) {
     console.log('[startklar] Bericht nicht moeglich: ' + (err as Error).message);
   }
+
+  // Altlasten zuerst: kodiert gespeicherte Antworten entschluesseln und neu
+  // bewerten, BEVOR ein Worker laeuft. Sonst koennte die Engine im selben Moment
+  // eine Mail an jemanden schicken, dessen "STOP" noch unerkannt in der DB liegt.
+  runReplyRepairOnBoot();
 
   // Hintergrund-Worker starten
   startAutoSender();

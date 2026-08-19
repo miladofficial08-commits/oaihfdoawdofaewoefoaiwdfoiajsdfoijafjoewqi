@@ -41,6 +41,20 @@ const NO_INTEREST = [
   'not interested', 'no interest',
 ];
 
+/**
+ * Kurze, für sich allein stehende Abmeldewörter.
+ *
+ * Ein Betrieb antwortet auf eine Werbemail gern mit einem einzigen Wort: „STOP".
+ * Als Teilstring wäre das gefährlich („Stopfen", „Stoppuhr"), deshalb nur mit
+ * Wortgrenzen. Genau dieses Wort ist uns durchgerutscht – die Antwort kam
+ * Base64-kodiert, wurde nie dekodiert, und der Absender landete als
+ * „Interessent" im Baum.
+ */
+const HARD_OPT_OUT_WORTE = [
+  'stop', 'stopp', 'stoppen', 'halt', 'loeschen', 'entfernen', 'raus',
+  'unsubscribe', 'remove', 'delete',
+];
+
 export interface OptOutHit {
   hard: boolean;   // ausdrücklicher Widerspruch → immer sperren
   phrase: string;  // welche Formulierung ausgelöst hat (fürs Protokoll)
@@ -49,10 +63,38 @@ export interface OptOutHit {
 /**
  * Prüft Betreff + Text auf einen ausdrücklichen Abmelde-/Widerspruchswunsch.
  * Gibt null zurück, wenn nichts gefunden wurde.
+ *
+ * WICHTIG: Hier muss bereits dekodierter Klartext ankommen. Auf einem
+ * Base64-Block findet diese Funktion nichts – siehe email/mime.ts.
  */
 export function detectOptOut(subject: string, body: string): OptOutHit | null {
   const text = norm(`${subject}\n${body}`);
   for (const p of HARD_OPT_OUT) if (text.includes(p)) return { hard: true, phrase: p };
+
+  // Einzelne Signalwörter zählen NUR, wenn sie die Nachricht sind – nicht, wenn sie
+  // irgendwo im Fließtext vorkommen.
+  //
+  // Das ist die Absicherung gegen den umgekehrten Fehler: „Wir haben an der
+  // Haltestelle Stopp gemacht und möchten gerne mehr wissen" ist ein Interessent,
+  // keine Abmeldung. Eine echte Abmeldung besteht aus einem Wort, allein in der
+  // ersten Zeile. Genau darauf – und nur darauf – reagieren wir.
+  const zeilen = text.split('\n').map(z => z.trim()).filter(Boolean);
+  const ersteZeile = (zeilen[0] || '').replace(/^(betreff|subject)\s*:/i, '').trim();
+  const nurWorte = (s: string) => s.replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+
+  // Zeile 0 ist der Betreff, ab Zeile 1 der Text. Zusätzlich die ganze Nachricht,
+  // falls sie insgesamt nur aus dem einen Wort besteht.
+  const kandidaten = [ersteZeile, zeilen[1] || '', zeilen.slice(1).join(' ')];
+  for (const kandidat of kandidaten) {
+    const sauber = nurWorte(kandidat);
+    if (!sauber) continue;
+    const woerter = sauber.split(' ');
+    if (woerter.length > 2) continue;                       // ein Satz ist keine Abmeldung
+    for (const w of HARD_OPT_OUT_WORTE) {
+      if (woerter.includes(w)) return { hard: true, phrase: w.toUpperCase() };
+    }
+  }
+
   for (const p of NO_INTEREST) if (text.includes(p)) return { hard: false, phrase: p };
   return null;
 }
@@ -95,6 +137,20 @@ export function isSuppressed(email: string): boolean {
      WHERE LOWER(TRIM(email)) = ? AND status IN ('do_not_contact','no_interest') LIMIT 1`
   ).get(em);
   return Boolean(blocked);
+}
+
+/** Warum ist diese Adresse gesperrt? Für Protokoll und Fehlermeldung. */
+export function suppressionReason(email: string): string {
+  const em = normalizeEmail(email);
+  if (!em) return '';
+  const row = getDb().prepare(
+    `SELECT reason FROM email_suppression WHERE email_normalized = ? LIMIT 1`
+  ).get(em) as { reason: string | null } | undefined;
+  if (row?.reason) return row.reason;
+  const lead = getDb().prepare(
+    `SELECT status FROM leads WHERE LOWER(TRIM(email)) = ? AND status IN ('do_not_contact','no_interest') LIMIT 1`
+  ).get(em) as { status: string } | undefined;
+  return lead ? `Status "${lead.status}"` : '';
 }
 
 /** SQL-Baustein für Kandidatenabfragen: schließt gesperrte Adressen aus. */
