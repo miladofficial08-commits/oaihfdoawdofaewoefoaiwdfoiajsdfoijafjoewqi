@@ -51,7 +51,10 @@ import { scrapeHandwerkRegion, handwerkProgress, HANDWERK_CRAFTS } from '../scra
 import { harvestEmails, harvestProgress, stopHarvest, offeneWebsites } from '../scraper/email-harvester';
 import { startSupplyWorker, supplyStatus, setSupplyAuto } from '../scraper/supply-worker';
 import { registerWorkflowRoutes } from '../workflow/routes';
-import { startWorkflowEngine } from '../workflow/engine';
+import {
+  startWorkflowEngine, noteManualEmail, noteManualCall,
+} from '../workflow/engine';
+import { isSuppressed } from '../workflow/optout';
 
 const BERLIN_TZ = 'Europe/Berlin';
 
@@ -142,7 +145,13 @@ function contactedEmailSet(): Set<string> {
   const rows = getDb().prepare(
     `SELECT LOWER(TRIM(to_email)) e FROM sent_emails      WHERE success = 1                          AND to_email IS NOT NULL AND to_email != ''
      UNION
-     SELECT LOWER(TRIM(to_email)) e FROM scheduled_emails WHERE status IN ('scheduled','processing') AND to_email IS NOT NULL AND to_email != ''`
+     SELECT LOWER(TRIM(to_email)) e FROM scheduled_emails WHERE status IN ('scheduled','processing') AND to_email IS NOT NULL AND to_email != ''
+     UNION
+     -- Abgemeldet, unzustellbar, Spam-Beschwerde: diese Adressen gehören in JEDE
+     -- Ausschlussliste. Vorher hing die Sperre nur in der Engine und im
+     -- Auto-Versand – über Bulk-Versand konnte eine abgemeldete Adresse trotzdem
+     -- wieder Post bekommen.
+     SELECT email_normalized e FROM email_suppression WHERE email_normalized IS NOT NULL AND email_normalized != ''`
   ).all() as Array<{ e: string }>;
   return new Set(rows.map(r => r.e));
 }
@@ -326,12 +335,16 @@ export async function registerRoutes(app: FastifyInstance) {
     }
   );
 
-  app.post<{ Body: { id: string; note: string } }>(
+  // Anruf protokollieren – und das Ergebnis direkt in die Kampagne durchreichen,
+  // damit die passende Mail nach dem Anruf von selbst rausgeht.
+  app.post<{ Body: { id: string; note: string; outcome?: string } }>(
     '/api/manual-call',
     async (req, reply) => {
       if (!req.body.id || !req.body.note?.trim()) return reply.status(400).send({ error: 'Lead und Call-Notiz sind Pflicht' });
-      recordManualCall(req.body.id, req.body.note.trim());
-      return { ok: true };
+      const note = req.body.note.trim();
+      recordManualCall(req.body.id, note);
+      const kampagne = noteManualCall(req.body.id, req.body.outcome, note);
+      return { ok: true, kampagne: kampagne.info };
     }
   );
 
@@ -630,6 +643,14 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     return result;
   });
 
+  // Von Hand senden – aus dem E-Mail-Center, der Anrufliste oder dem Lead-Detail.
+  //
+  // Zwei Dinge passieren hier zusätzlich zum Versand, und beide sind Pflicht:
+  //   1. Sperrliste prüfen. Wer abgemeldet oder unzustellbar ist, bekommt auch von
+  //      Hand keine Mail mehr – sonst wäre die Abmelde-Sperre ein Loch mit Deckel.
+  //   2. Die Firma an die E-Mail-Kampagne übergeben. Jede Mail auf dieser Plattform
+  //      läuft über die Kampagne, damit auf die Reaktion gewartet und nachgefasst
+  //      wird und die Strategie nicht sofort eine zweite Mail hinterherschickt.
   app.post<{ Body: { id: string; to: string; subject: string; body: string } }>(
     '/api/send-email',
     async (req, reply) => {
@@ -637,12 +658,19 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
       if (!id || !to || !subject || !body) {
         return reply.status(400).send({ error: 'id, to, subject und body sind Pflicht' });
       }
+      if (isSuppressed(to)) {
+        return reply.status(409).send({
+          error: `${to} steht auf der Sperrliste (Abmeldung, Bounce oder Absage). Es geht bewusst nichts raus.`,
+        });
+      }
       const trackingId = uuid();
       const lead = getAllLeads().find(l => l.id === id);
       const result = await sendLeadEmail({ leadId: id, to, toName: lead?.name, subject, body, trackingId });
       recordSentEmail({ id: trackingId, lead_id: id, to_email: to, to_name: lead?.name, subject, body, success: result.success, error: result.error, message_id: result.messageId });
       if (!result.success) return reply.status(502).send(result);
-      return result;
+
+      const kampagne = noteManualEmail(id, subject);
+      return { ...result, kampagne: kampagne.info };
     }
   );
 
@@ -882,6 +910,9 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
           ? await sendLeadEmail({ leadId: r.id, to: r.email, toName: r.name, subject: rendered.subject, body: rendered.body, trackingId })
           : await sendBulkEmail({ to: r.email, toName: r.name, subject: rendered.subject, body: rendered.body, trackingId });
         recordSentEmail({ id: trackingId, lead_id: r.id ?? null, campaign: campaign ?? null, to_email: r.email, to_name: r.name, subject: rendered.subject, body: rendered.body, template_id: template.id, success: res.success, error: res.error, message_id: res.messageId });
+        // Auch der Massenversand endet in der Kampagne: sonst stünden genau die
+        // Firmen ohne Nachfassen da, in die gerade Zustellkosten geflossen sind.
+        if (res.success && r.id) noteManualEmail(r.id, rendered.subject);
         results.push({ name: r.name, email: r.email, success: res.success, error: res.error, messageId: res.messageId });
       }
       return {

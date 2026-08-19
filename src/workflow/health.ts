@@ -74,10 +74,78 @@ function fehlendeVorlagen(wf: Workflow): HealthLine | null {
  * Strategie noch aus ist. Vorher brach der Waechter im Aus-Zustand frueh ab und
  * verschwieg genau die Fragen, die man vor dem Start beantwortet haben will.
  */
+/**
+ * Ist der Baum als Bauwerk in Ordnung – unabhaengig von Daten und Zugaengen?
+ *
+ * Genau hier sass der teuerste Fehler des Systems: Der Start-Knoten hatte keinen
+ * Ausgang, den die Aufnahme finden konnte. Es sah alles normal aus, im Dashboard
+ * stand eine Wartend-Zahl – und trotzdem kam monatelang kein einziger Lead in die
+ * Strategie. So etwas darf nie wieder still passieren, deshalb prueft der
+ * Waechter jetzt die Statik des Baums selbst.
+ */
+export function baumLinien(wf: Workflow): HealthLine[] {
+  const raus: HealthLine[] = [];
+  const g = wf.graph;
+
+  // 1. Kommt ueberhaupt jemand rein?
+  const starts = g.nodes.filter(n => n.type === 'trigger');
+  const ohneAusgang = starts.filter(t => !g.edges.some(e => e.from === t.id));
+  if (!starts.length) {
+    raus.push({ level: 'down', text: 'Der Baum hat keinen Start-Knoten. Es kann niemand aufgenommen werden.' });
+  } else if (ohneAusgang.length) {
+    raus.push({
+      level: 'down',
+      text: `Start-Knoten ohne Ausgang: ${ohneAusgang.map(t => `„${t.title}"`).join(', ')}. `
+          + 'Solange dort keine Linie weggeht, kommt kein einziger Lead in die Strategie.',
+    });
+  } else {
+    raus.push({ level: 'ok', text: 'Aufnahme: der Start-Knoten nimmt Leads auf und verteilt sie nach Kontaktweg.' });
+  }
+
+  // 2. Sackgasse mitten in der Strecke: eine Weiche ohne „Keine Antwort" beendet
+  //    den Lauf still. Genau der Fall, der am haeufigsten eintritt.
+  const weichenOhneWeg = g.nodes.filter(
+    n => n.type === 'check' && !g.edges.some(e => e.from === n.id && e.port === 'no_reply')
+  );
+  if (weichenOhneWeg.length) {
+    raus.push({
+      level: 'down',
+      text: `Diese Weichen haben keinen Ausgang „Keine Antwort": ${weichenOhneWeg.map(n => `„${n.title}"`).join(', ')}. `
+          + 'Wer nicht antwortet, faellt dort lautlos aus der Kampagne.',
+    });
+  }
+
+  // 3. Knoten, die von keinem Start aus erreichbar sind – gebaut, aber tot.
+  const erreichbar = new Set<string>();
+  const stapel = starts.map(n => n.id);
+  while (stapel.length) {
+    const id = stapel.pop()!;
+    if (erreichbar.has(id)) continue;
+    erreichbar.add(id);
+    for (const e of g.edges) if (e.from === id) stapel.push(e.to);
+  }
+  const tot = g.nodes.filter(n => !erreichbar.has(n.id));
+  if (tot.length) {
+    raus.push({
+      level: 'warn',
+      text: `${tot.length} Stage(s) haengen ohne Verbindung im Baum: ${tot.slice(0, 4).map(n => `„${n.title}"`).join(', ')}`
+          + `${tot.length > 4 ? ' u. a.' : ''}. Dort landet nie jemand.`,
+    });
+  }
+
+  if (!weichenOhneWeg.length && !tot.length && starts.length && !ohneAusgang.length) {
+    raus.push({ level: 'ok', text: 'Wege: jede Firma hat von jeder Stage aus einen Weg weiter – bis Termin oder Absage.' });
+  }
+  return raus;
+}
+
 export function startklarLinien(wf: Workflow): HealthLine[] {
   const db = getDb();
   const raus: HealthLine[] = [];
   const one = (sql: string, ...a: unknown[]) => (db.prepare(sql).get(...a) as { n: number }).n;
+
+  // Statik des Baums zuerst: ohne sie nuetzen Vorlagen und Zugaenge nichts.
+  raus.push(...baumLinien(wf));
 
   // Vorlagen: haengt jede Mail des Baums an einer Vorlage, die es gibt?
   const fehlt = fehlendeVorlagen(wf);
@@ -291,6 +359,13 @@ export function workflowHealth(wf: Workflow): HealthReport {
         : `${v.n} angeschriebene Firmen im Bereich „${v.track}" laufen in keiner Strategie. Dafür braucht es eine eigene Strategie mit diesem Track.`,
     });
     worse('warn');
+  }
+
+  // ── Statik des Baums (gilt auch im laufenden Betrieb: der Graph ist editierbar) ──
+  for (const l of baumLinien(wf)) {
+    if (l.level === 'ok') continue;   // im Betrieb nur melden, was klemmt
+    lines.push(l);
+    worse(l.level);
   }
 
   // ── Vorlagen ──

@@ -2843,11 +2843,17 @@ async function clOutcome(id, outcome) {
   const statusMap = { termin: 'demo_booked', interessiert: 'replied', kein_interesse: 'no_interest', nicht_anrufen: 'do_not_contact' };
   let r;
   if (outcome === 'nicht_erreicht') {
-    r = await post('/api/manual-call', { id, note: 'Nicht erreicht (' + new Date().toLocaleDateString('de-DE') + ')' });
+    // outcome mitgeben: die Kampagne schiebt die Firma damit auf den richtigen Ast
+    // und schickt die Mail nach dem Anruf von selbst.
+    r = await post('/api/manual-call', { id, outcome: 'nicht_erreicht', note: 'Nicht erreicht (' + new Date().toLocaleDateString('de-DE') + ')' });
   } else {
     r = await post('/api/status', { id, status: statusMap[outcome], notiz: 'Anrufliste: ' + outcome });
   }
-  if (r && r.ok) { toast('Ergebnis gespeichert'); loadCallList(); refreshCallsBadge(); }
+  if (r && r.ok) {
+    const d = await r.json().catch(function(){ return {}; });
+    toast(d.kampagne ? 'Ergebnis gespeichert · ' + d.kampagne : 'Ergebnis gespeichert');
+    loadCallList(); refreshCallsBadge();
+  }
   else { toast('Konnte nicht speichern', true); }
 }
 
@@ -3120,11 +3126,15 @@ async function crmOutcome(id, outcome) {
   const map = { termin:'demo_booked', interessiert:'replied', kein_interesse:'no_interest', tot:'do_not_contact' };
   let r;
   if (outcome === 'nicht_erreicht') {
-    r = await post('/api/manual-call', { id, note: 'Nicht erreicht (' + new Date().toLocaleDateString('de-DE') + ')' });
+    r = await post('/api/manual-call', { id, outcome: 'nicht_erreicht', note: 'Nicht erreicht (' + new Date().toLocaleDateString('de-DE') + ')' });
   } else {
     r = await post('/api/status', { id, status: map[outcome], notiz: 'CRM: ' + outcome });
   }
-  if (r && r.ok) { toast('Lead aktualisiert'); loadCrmLeads(); refreshCallsBadge(); }
+  if (r && r.ok) {
+    const d = await r.json().catch(function(){ return {}; });
+    toast(d.kampagne ? 'Lead aktualisiert · ' + d.kampagne : 'Lead aktualisiert');
+    loadCrmLeads(); refreshCallsBadge();
+  }
   else { toast('Konnte nicht speichern', true); }
 }
 
@@ -4857,8 +4867,8 @@ async function doSendEmail(leadId, textId) {
   const r = await post('/api/send-email', { id:leadId, to, subject, body });
   const d = await r.json().catch(()=>({}));
   if (r.ok) {
-    if (res) { res.className='ef-result ok'; res.textContent='Gesendet an '+to; }
-    toast('E-Mail gesendet an '+to);
+    if (res) { res.className='ef-result ok'; res.textContent='Gesendet an '+to+(d.kampagne ? ' · '+d.kampagne : ''); }
+    toast(d.kampagne ? 'Gesendet · '+d.kampagne : 'E-Mail gesendet an '+to);
     setTimeout(reloadPipeline, 1800);
   } else {
     if (res) { res.className='ef-result err'; res.textContent='Fehler: '+(d.error||'Unbekannt'); }
@@ -5741,7 +5751,7 @@ async function wfLeadSend(){
   if (!confirm('Diese E-Mail jetzt an ' + wfLead.lead.email + ' senden?')) return;
   const r = await post('/api/send-email', { id: wfLead.lead.id, to: wfLead.lead.email, subject: subject, body: body });
   const j = await r.json().catch(function(){ return {}; });
-  toast(r.ok ? 'E-Mail gesendet' : (j.error || 'Versand fehlgeschlagen'), !r.ok);
+  toast(r.ok ? (j.kampagne ? 'Gesendet · ' + j.kampagne : 'E-Mail gesendet') : (j.error || 'Versand fehlgeschlagen'), !r.ok);
   if (r.ok) await wfOpenLead(wfLead.lead.id);
 }
 

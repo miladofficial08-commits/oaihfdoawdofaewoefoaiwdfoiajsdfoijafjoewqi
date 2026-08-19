@@ -2,7 +2,7 @@ import { getDb } from '../db/schema';
 import { Lead } from '../types';
 import { v4 as uuid } from 'uuid';
 import { isSuppressed } from './optout';
-import { Workflow, WorkflowNode, findNode, nextNodeId, logWorkflow } from './schema';
+import { Workflow, WorkflowNode, logWorkflow, effectiveDailyCap } from './schema';
 
 // Wer kommt wann in die Strategie? Getrennt von der Ausführung, weil hier eine
 // eigene Frage beantwortet wird: welche Leads sind überhaupt Kandidaten – und
@@ -102,22 +102,53 @@ export function startRun(workflowId: string, leadId: string, triggerId: string |
   return runId;
 }
 
+/**
+ * Wie viele Firmen wurden heute frisch aufgenommen?
+ *
+ * Ohne Bremse saugt die Aufnahme den ganzen Vorrat in wenigen Minuten in den Baum
+ * – gesendet wird trotzdem nur im Tagestakt. Dann stehen hunderte Firmen auf
+ * „Erstkontakt", die Warteschlange zeigt 0 und der Waechter meldet faelschlich
+ * „Nachschub versiegt". Deshalb kommen pro Tag nur so viele rein, wie an diesem
+ * Tag auch angeschrieben werden koennen.
+ */
+function heuteAufgenommen(wf: Workflow): number {
+  return (getDb().prepare(
+    `SELECT COUNT(*) n FROM workflow_runs
+     WHERE workflow_id = ? AND trigger_id IS NOT NULL
+       AND started_at >= datetime('now','start of day','localtime')`
+  ).get(wf.id) as { n: number }).n;
+}
+
 export function enroll(wf: Workflow): number {
+  const tagesbudget = effectiveDailyCap(wf).cap - heuteAufgenommen(wf);
+  if (tagesbudget <= 0) return 0;
+
   const triggers = wf.graph.nodes.filter(n => n.type === 'trigger');
+  const proTick = Math.min(MAX_ENROLL_PER_TICK, tagesbudget);
   let created = 0;
   for (const trigger of triggers) {
-    if (created >= MAX_ENROLL_PER_TICK) break;
-    const first = nextNodeId(wf.graph, trigger.id);
-    if (!first) continue;
-    for (const lead of enrollCandidates(wf, trigger, MAX_ENROLL_PER_TICK - created)) {
+    if (created >= proTick) break;
+
+    // Der Lauf startet AUF dem Start-Knoten, nicht hinter ihm.
+    //
+    // Die Wurzel verteilt selbst nach Kontaktweg (E-Mail / nur Telefon / gar
+    // nichts) und hat deshalb fünf benannte Ausgänge statt des schlichten "out".
+    // Vorher wurde hier stur nach "out" gesucht – den gab es nicht, also kam
+    // überhaupt kein Lead mehr in die Strategie: die Maschine lief leer, während
+    // im Dashboard "wartend" stand. Ein Start-Knoten braucht nur IRGENDEINEN
+    // Ausgang; wohin es geht, entscheidet er beim ersten Schritt selbst.
+    if (!wf.graph.edges.some(e => e.from === trigger.id)) continue;
+
+    for (const lead of enrollCandidates(wf, trigger, proTick - created)) {
       if (lead.email && isSuppressed(lead.email)) continue;
-      const runId = startRun(wf.id, lead.id, trigger.id, first, nowIso());
+      const runId = startRun(wf.id, lead.id, trigger.id, trigger.id, nowIso());
       logWorkflow({
         run_id: runId, lead_id: lead.id, lead_name: lead.name, node_id: trigger.id, node_type: 'trigger',
-        action: 'In Workflow aufgenommen', detail: `${trigger.title} → ${findNode(wf.graph, first)?.title ?? first}`,
+        action: 'In Workflow aufgenommen',
+        detail: `${trigger.title} → wird nach Kontaktweg verteilt (${lead.email ? 'E-Mail vorhanden' : (lead.telefon_direkt || lead.telefon) ? 'nur Telefon' : 'kein Kontakt'})`,
       });
       created++;
-      if (created >= MAX_ENROLL_PER_TICK) break;
+      if (created >= proTick) break;
     }
   }
   return created;

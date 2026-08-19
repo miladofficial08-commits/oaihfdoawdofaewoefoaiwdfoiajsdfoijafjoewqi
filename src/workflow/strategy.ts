@@ -53,6 +53,10 @@ export const CALL_OUTCOMES: Outcome[] = [
   out('weiterleitung', 'Weiterleitung / AP nicht da', 'active'),
   out('nicht_erreicht', 'Nicht erreicht', 'active'),
   out('ausserhalb', 'Außerhalb Geschäftszeiten', 'active'),
+  // Ohne diesen Ausgang hing die Wiedervorlage unerreichbar im Baum: es gab keine
+  // Möglichkeit, einen Anruf einfach nochmal anzusetzen, ohne dass gleich eine
+  // Mail rausging. Manchmal will man genau das – nur nochmal durchklingeln.
+  out('nochmal', 'Später nochmal anrufen', 'waiting'),
   out('interesse', 'Interesse', 'positive'),
   out('kein_interesse', 'Kein Interesse', 'negative'),
 ];
@@ -320,6 +324,7 @@ export function defaultGraph(): WorkflowGraph {
     edge('anruf', 'tel_ausserhalb', 'ausserhalb'),
     edge('anruf', 'tel_termin_mail', 'interesse'),
     edge('anruf', 'tel_kein1', 'kein_interesse'),
+    edge('anruf', 'anruf_wv', 'nochmal'),
     edge('anruf_wv', 'anruf'),
 
     edge('ohne_kontakt', 'anruf', 'kontakt_da'),

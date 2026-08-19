@@ -3,7 +3,7 @@ import { Lead } from '../types';
 import { Workflow, findNode, logWorkflow } from './schema';
 import { startRun } from './enroll';
 import { parseTs } from './reactions';
-import { detectOptOut } from './optout';
+import { detectOptOut, isSuppressed } from './optout';
 import { v4 as uuid } from 'uuid';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -102,25 +102,50 @@ export function placeLead(lead: LeadFacts, nodeIds: Set<string>): Placement | nu
   const hold = new Date(Date.now() + 5 * 60_000).toISOString();
   const has = (id: string) => nodeIds.has(id);
 
-  if (lead.status === 'won' && has('alt_kunde')) return { node: 'alt_kunde', reason: 'Kunde gewonnen', dueAt: hold };
-  if (lead.status === 'lost' && has('alt_kein_kunde')) return { node: 'alt_kein_kunde', reason: 'Als verloren markiert', dueAt: hold };
-  if ((lead.status === 'no_interest' || lead.status === 'do_not_contact') && has('alt_kein1')) {
-    return { node: 'alt_kein1', reason: 'Absage vorhanden', dueAt: hold };
-  }
-  if (lead.status === 'proposal_sent' && has('int_angebot')) return { node: 'int_angebot', reason: 'Angebot raus', dueAt: hold };
-  if (lead.status === 'demo_booked' && has('alt_gespraech')) return { node: 'alt_gespraech', reason: 'Termin gebucht', dueAt: hold };
-  if (lead.status === 'replied' && has('alt_int1')) return { node: 'alt_int1', reason: 'Hat geantwortet', dueAt: hold };
+  // Erster vorhandener Knoten aus einer Wunschliste.
+  //
+  // Der Baum wurde schon zweimal umgebaut, und jedes Mal sind Knoten umbenannt
+  // worden (int_angebot → alt_angebot, alt_sonder → alt_pruef1). Stand hier eine
+  // einzelne feste ID, fiel die ganze Bedingung lautlos durch – ein Lead mit
+  // Angebot oder mit toter Adresse rutschte weiter unten in die Mailstrecke und
+  // bekam neue Werbung. Deshalb: mehrere Namen, und am Ende immer ein Halt, der
+  // KEINE Mail auslöst.
+  const pick = (...ids: string[]): string | null => ids.find(has) ?? null;
 
-  if (lead.bounced && has('alt_sonder')) return { node: 'alt_sonder', reason: 'Adresse unzustellbar', dueAt: hold };
+  const kunde     = pick('alt_kunde');
+  const keinKunde = pick('alt_kein_kunde');
+  const absage    = pick('alt_kein1');
+  const angebot   = pick('alt_angebot', 'int_angebot');
+  const gespraech = pick('alt_gespraech');
+  const interesse = pick('alt_int1');
+  // Sonderfall-Stage; als letzter Halt das Ast-Ende – dort geht nichts mehr raus.
+  const sonder    = pick('alt_pruef1', 'alt_sonder', 'alt_ende');
+
+  if (lead.status === 'won' && kunde) return { node: kunde, reason: 'Kunde gewonnen', dueAt: hold };
+  if (lead.status === 'lost' && keinKunde) return { node: keinKunde, reason: 'Als verloren markiert', dueAt: hold };
+  if ((lead.status === 'no_interest' || lead.status === 'do_not_contact') && absage) {
+    return { node: absage, reason: 'Absage vorhanden', dueAt: hold };
+  }
+  if (lead.status === 'proposal_sent' && angebot) return { node: angebot, reason: 'Angebot raus', dueAt: hold };
+  if (lead.status === 'demo_booked' && gespraech) return { node: gespraech, reason: 'Termin gebucht', dueAt: hold };
+  if (lead.status === 'replied' && interesse) return { node: interesse, reason: 'Hat geantwortet', dueAt: hold };
+
+  // Gesperrt heißt gesperrt – egal, was sonst noch in den Daten steht. Diese Firma
+  // darf unter keinen Umständen in einer Mailstrecke landen.
+  if (lead.email && isSuppressed(lead.email) && absage) {
+    return { node: absage, reason: 'Adresse gesperrt (Abmeldung/Bounce)', dueAt: hold };
+  }
+
+  if (lead.bounced && sonder) return { node: sonder, reason: 'Adresse unzustellbar', dueAt: hold };
 
   // Antwort im Postfach, die nie in den Status übernommen wurde: Inhalt entscheidet.
   // Eine Absage darf NICHT als heiße Spur einsortiert werden.
   if (lead.last_reply_cat) {
     const optOut = detectOptOut(lead.last_reply_subject || '', lead.last_reply_snippet || '');
-    if ((optOut || lead.last_reply_cat === 'not_interested') && has('alt_kein1')) {
-      return { node: 'alt_kein1', reason: 'Absage im Postfach', dueAt: hold };
+    if ((optOut || lead.last_reply_cat === 'not_interested') && absage) {
+      return { node: absage, reason: 'Absage im Postfach', dueAt: hold };
     }
-    if (lead.has_reply && has('alt_int1')) return { node: 'alt_int1', reason: 'Antwort im Postfach', dueAt: hold };
+    if (lead.has_reply && interesse) return { node: interesse, reason: 'Antwort im Postfach', dueAt: hold };
   }
 
   // Wiedervorlage vom Menschen gesetzt → dort abholen.

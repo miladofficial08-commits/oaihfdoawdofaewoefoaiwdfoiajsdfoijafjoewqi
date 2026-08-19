@@ -7,7 +7,7 @@ import { recordSentEmail, sentTodayCount, GLOBAL_DAILY_CAP } from '../email/auto
 import { updateLeadStatus, recordOutreachEvent } from '../db/leads-repo';
 import { isSuppressed, suppressEmail } from './optout';
 import { newReply, hasRealClick, hasBounce, lastAutoReplyText, parseReturnDate, parseTs } from './reactions';
-import { enroll } from './enroll';
+import { enroll, startRun } from './enroll';
 import {
   Workflow, WorkflowNode, WorkflowGraph, CheckPort, PORT_LABELS, PORT_FALLBACK, nodeOutcomes, nodePorts,
   getWorkflow, findNode, nextNodeId, logWorkflow, getSetting, setSetting, initWorkflowSchema, activeWorkflows,
@@ -674,6 +674,141 @@ export function moveLeadToNode(leadId: string, nodeId: string, note?: string): A
   });
   if (note) recordOutreachEvent({ lead_id: leadId, event_type: 'note', channel: 'workflow', user: 'mensch', note });
   return { ok: true, node_id: target.id, node_title: target.title };
+}
+
+// ── Rückmeldung aus den anderen Bereichen ───────────────────────────────────
+
+/**
+ * Wo gehört eine Firma hin, die gerade VON HAND eine Mail bekommen hat?
+ *
+ * In den Bestands-Ast – sie ist ja jetzt angeschrieben. Und dort nicht auf die
+ * Mail selbst (die ist gerade raus), sondern einen Schritt weiter: auf das
+ * Warten dahinter. Von da greifen Reaktions-Weiche und Nachfassen ganz normal.
+ */
+function einstiegNachHandmail(wf: Workflow): string | null {
+  const trigger = wf.graph.nodes.find(n => n.type === 'trigger');
+  if (!trigger) return null;
+  const entry =
+    nextNodeId(wf.graph, trigger.id, 'angeschrieben') ??
+    nextNodeId(wf.graph, trigger.id, 'neu') ??
+    nextNodeId(wf.graph, trigger.id);
+  if (!entry) return null;
+  const node = findNode(wf.graph, entry);
+  if (node?.type === 'email') return nextNodeId(wf.graph, entry) ?? entry;
+  return entry;
+}
+
+/**
+ * Eine von Hand verschickte Mail in die Kampagne zurückgeben.
+ *
+ * Das ist der zentrale Punkt: JEDE Mail, die auf der Plattform rausgeht – aus dem
+ * E-Mail-Center, aus der Anrufliste, aus dem Lead-Detail – kommt hier wieder an.
+ * Ohne diesen Schritt stand eine von Hand angeschriebene Firma unberührt im Baum:
+ * die Strategie hätte kurz darauf ihre eigene Mail hinterhergeschickt, und auf die
+ * Antwort hätte an dieser Stelle niemand gewartet.
+ *
+ * Zwei Fälle, beide enden in der Kampagne:
+ *   • Firma läuft schon → steht sie auf einer Mail, wird die übersprungen (wir
+ *     waren ja selbst gerade dran). Sonst bleibt sie, wo sie ist.
+ *   • Firma läuft noch nicht → wird jetzt aufgenommen, hinter der Erstmail.
+ */
+export function noteManualEmail(leadId: string, betreff?: string): { ok: boolean; info: string } {
+  const lead = getLead(leadId);
+  if (!lead) return { ok: false, info: 'Lead nicht gefunden' };
+  const zusatz = betreff ? ` · Betreff: "${betreff.slice(0, 80)}"` : '';
+
+  const run = activeRunForLead(leadId);
+  if (run) {
+    let wf: Workflow;
+    try { wf = getWorkflow(run.workflow_id); } catch { return { ok: false, info: 'Strategie nicht gefunden' }; }
+    const node = findNode(wf.graph, run.node_id);
+
+    if (node?.type === 'email') {
+      advance(run, wf, node.id);
+      logWorkflow({
+        run_id: run.id, lead_id: leadId, lead_name: lead.name, node_id: node.id, node_type: 'email',
+        action: 'Von Hand gesendet – Kampagnen-Mail übersprungen', level: 'hot',
+        detail: `Die Strategie hätte hier "${node.title}" geschickt. Weiter im Baum, ohne zweite Mail.${zusatz}`,
+      });
+      return { ok: true, info: `In der Kampagne: "${node.title}" übersprungen, Lauf geht weiter` };
+    }
+
+    logWorkflow({
+      run_id: run.id, lead_id: leadId, lead_name: lead.name, node_id: run.node_id, node_type: node?.type ?? null,
+      action: 'Von Hand gesendet', level: 'info',
+      detail: `Firma steht auf "${node?.title ?? run.node_id}" – die Kampagne wartet dort auf die Reaktion.${zusatz}`,
+    });
+    return { ok: true, info: `In der Kampagne auf "${node?.title ?? '—'}"` };
+  }
+
+  // Noch nicht in der Kampagne: jetzt aufnehmen.
+  const track = lead.track || 'voice_agent';
+  const aktive = activeWorkflows();
+  const wf = aktive.find(w => w.track === track) ?? aktive[0];
+  if (!wf) return { ok: true, info: 'Keine Strategie aktiv – Mail nur protokolliert' };
+
+  const ziel = einstiegNachHandmail(wf);
+  if (!ziel) return { ok: false, info: 'Kein Einstiegspunkt im Baum gefunden' };
+
+  const runId = startRun(wf.id, leadId, null, ziel, nowIso());
+  const titel = findNode(wf.graph, ziel)?.title ?? ziel;
+  logWorkflow({
+    run_id: runId, lead_id: leadId, lead_name: lead.name, node_id: ziel,
+    action: 'Von Hand gesendet – in die Kampagne aufgenommen', level: 'hot',
+    detail: `Mail von Hand raus → Firma läuft ab jetzt in "${wf.name}" auf "${titel}".${zusatz}`,
+  });
+  return { ok: true, info: `In die Kampagne aufgenommen auf "${titel}"` };
+}
+
+/**
+ * Ein in der Anrufliste protokollierter Anruf schiebt den Baum weiter.
+ *
+ * Vorher waren das zwei getrennte Welten: In der Anrufliste drückte man
+ * „Nicht erreicht", es entstand eine Notiz – und die passende Mail
+ * („telefonisch leider nicht erreicht") ging nie raus, weil der Lauf im Baum
+ * unberührt auf der Anruf-Stage stand. Man musste dasselbe Ergebnis an einem
+ * zweiten Ort nochmal klicken. Genau das ist die Art Handarbeit, die vergessen
+ * wird.
+ *
+ * Bewusst zurückhaltend: Nur wenn die Firma wirklich auf einer Anruf-Stage steht
+ * UND sich das Ergebnis eindeutig einem Ausgang zuordnen lässt, wird geschoben.
+ * Ein falsch geratener Ast wäre schlimmer als keiner.
+ */
+export function noteManualCall(leadId: string, ergebnis?: string, notiz?: string): { ok: boolean; info: string } {
+  const run = activeRunForLead(leadId);
+  if (!run) return { ok: true, info: 'Firma läuft in keiner Strategie – Anruf nur protokolliert' };
+
+  let wf: Workflow;
+  try { wf = getWorkflow(run.workflow_id); } catch { return { ok: false, info: 'Strategie nicht gefunden' }; }
+
+  const node = findNode(wf.graph, run.node_id);
+  if (!node || (node.type !== 'call' && node.type !== 'stage')) {
+    return { ok: true, info: `Firma steht auf "${node?.title ?? '—'}" – dort ist kein Anrufergebnis vorgesehen` };
+  }
+
+  const outcomes = nodeOutcomes(node);
+  if (!outcomes.length) return { ok: true, info: `"${node.title}" ist eine Endstation` };
+
+  const norm = (s: string) => (s || '').toLowerCase()
+    .replace(/[äöüß]/g, m => ({ ä: 'ae', ö: 'oe', ü: 'ue', ß: 'ss' }[m] || m))
+    .replace(/[^a-z0-9]+/g, ' ').trim();
+
+  // 1. Ausdrücklich mitgegebener Ergebnis-Schlüssel gewinnt.
+  let treffer = ergebnis ? outcomes.find(o => o.key === ergebnis) : undefined;
+  // 2. Sonst über die Beschriftung (der Knopf heißt "Nicht erreicht", die Notiz auch).
+  if (!treffer && ergebnis) treffer = outcomes.find(o => norm(o.label) === norm(ergebnis));
+  if (!treffer && notiz) {
+    const n = norm(notiz);
+    treffer = outcomes.find(o => n.includes(norm(o.label))) ?? outcomes.find(o => n.includes(norm(o.key)));
+  }
+  if (!treffer) {
+    return { ok: true, info: `Ergebnis nicht eindeutig – Firma bleibt auf "${node.title}"` };
+  }
+
+  const r = advanceLeadManually(leadId, treffer.key, notiz);
+  return r.ok
+    ? { ok: true, info: `Anrufergebnis "${treffer.label}" → weiter mit "${r.node_title ?? r.node_id}"` }
+    : { ok: false, info: r.error ?? 'Konnte nicht weitergeschoben werden' };
 }
 
 /** Diesen Lead sofort weiterlaufen lassen (z. B. Follow-up jetzt senden). */

@@ -144,7 +144,7 @@ export function initWorkflowSchema(): void {
  * dann übernehmen laufende Systeme den neuen Baum beim nächsten Start.
  * Läufe werden dabei umgehängt, nicht verworfen (siehe repairRuns).
  */
-export const GRAPH_VERSION = 4;
+export const GRAPH_VERSION = 5;
 
 function migrateLegacyGraph(): void {
   const db = getDb();
