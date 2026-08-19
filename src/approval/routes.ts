@@ -51,6 +51,7 @@ import { scrapeHandwerkRegion, handwerkProgress, HANDWERK_CRAFTS } from '../scra
 import { harvestEmails, harvestProgress, stopHarvest, offeneWebsites } from '../scraper/email-harvester';
 import { startSupplyWorker, supplyStatus, setSupplyAuto } from '../scraper/supply-worker';
 import { registerWorkflowRoutes } from '../workflow/routes';
+import { HANDWERK_FILTER, istHandwerk, brancheOptionen } from '../config/handwerk';
 import {
   startWorkflowEngine, noteManualEmail, noteManualCall,
 } from '../workflow/engine';
@@ -154,6 +155,13 @@ function contactedEmailSet(): Set<string> {
      SELECT email_normalized e FROM email_suppression WHERE email_normalized IS NOT NULL AND email_normalized != ''`
   ).all() as Array<{ e: string }>;
   return new Set(rows.map(r => r.e));
+}
+
+/** Alle Branchen, die im Bestand wirklich vorkommen. */
+function alleBranchen(): string[] {
+  return (getDb().prepare(
+    `SELECT DISTINCT branche FROM leads WHERE branche IS NOT NULL AND TRIM(branche) != ''`
+  ).all() as Array<{ branche: string }>).map(r => r.branche);
 }
 
 interface ImportRow { maps_place_id: string; name: string; email?: string; telefon?: string; website?: string; stadt?: string }
@@ -337,11 +345,22 @@ export async function registerRoutes(app: FastifyInstance) {
 
   // Anruf protokollieren – und das Ergebnis direkt in die Kampagne durchreichen,
   // damit die passende Mail nach dem Anruf von selbst rausgeht.
-  app.post<{ Body: { id: string; note: string; outcome?: string } }>(
+  app.post<{ Body: { id: string; note: string; outcome?: string; wiedervorlage_tage?: number } }>(
     '/api/manual-call',
     async (req, reply) => {
       if (!req.body.id || !req.body.note?.trim()) return reply.status(400).send({ error: 'Lead und Call-Notiz sind Pflicht' });
       const note = req.body.note.trim();
+
+      // „Nochmal anrufen": Wiedervorlage VOR dem Weiterschieben setzen. Der
+      // Wiedervorlage-Knoten im Baum übernimmt ein gesetztes Datum, statt seine
+      // Standardfrist zu nehmen – so gilt überall dieselbe Zahl.
+      const tage = Number(req.body.wiedervorlage_tage);
+      if (Number.isFinite(tage) && tage > 0) {
+        getDb().prepare(
+          `UPDATE leads SET wiedervorlage_at = ?, wiedervorlage_grund = ?, updated_at = datetime('now') WHERE id = ?`
+        ).run(new Date(Date.now() + tage * 86_400_000).toISOString(), note, req.body.id);
+      }
+
       recordManualCall(req.body.id, note);
       const kampagne = noteManualCall(req.body.id, req.body.outcome, note);
       return { ok: true, kampagne: kampagne.info };
@@ -1761,7 +1780,22 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
       where.push(`(LOWER(l.name) LIKE @q OR LOWER(l.email) LIKE @q OR l.telefon LIKE @q OR LOWER(l.stadt) LIKE @q OR LOWER(l.branche) LIKE @q)`);
       params.q = '%' + Q.q.trim().toLowerCase() + '%';
     }
-    if (Q.branche && Q.branche.trim()) { where.push(`LOWER(l.branche) = @branche`); params.branche = Q.branche.trim().toLowerCase(); }
+    if (Q.branche && Q.branche.trim()) {
+      if (Q.branche.trim() === HANDWERK_FILTER) {
+        // Sammelfilter: alle Handwerksgewerke auf einmal. Die Branche am Lead
+        // bleibt dabei die konkrete – sie steckt als {branche} in den Mails.
+        const gewerke = alleBranchen().filter(istHandwerk);
+        if (gewerke.length) {
+          where.push(`LOWER(l.branche) IN (${gewerke.map((_, i) => '@hw' + i).join(', ')})`);
+          gewerke.forEach((g, i) => { params['hw' + i] = g.toLowerCase(); });
+        } else {
+          where.push('1 = 0');
+        }
+      } else {
+        where.push(`LOWER(l.branche) = @branche`);
+        params.branche = Q.branche.trim().toLowerCase();
+      }
+    }
     if (Q.stadt && Q.stadt.trim()) { where.push(`LOWER(l.stadt) = @stadt`); params.stadt = Q.stadt.trim().toLowerCase(); }
     if (Q.stage && STAGE_STATUS[Q.stage]) {
       const list = STAGE_STATUS[Q.stage];
@@ -2023,7 +2057,14 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     ];
     if (STATE === 'open') {
       where.push(`l.status IN ('new','checked','draft_ready','approved','manual_review','contacted')`);
-      where.push(`COALESCE(l.manual_call_done, 0) = 0`);
+      // Noch nicht angerufen ODER die Wiedervorlage ist fällig.
+      //
+      // Ohne den zweiten Teil wäre „Nochmal anrufen" eine Sackgasse: Der Lead
+      // verschwindet aus der Liste und käme nie wieder – im Baum stünde eine
+      // Wiedervorlage, die hier niemand sieht. Die Anrufliste ist aber der Ort,
+      // an dem gearbeitet wird, also muss der Rückläufer genau hier auftauchen.
+      where.push(`(COALESCE(l.manual_call_done, 0) = 0
+                   OR (l.wiedervorlage_at IS NOT NULL AND l.wiedervorlage_at <= datetime('now')))`);
     } else if (STATE === 'nicht_erreicht') {
       // recordManualCall setzt status='manual_review' + manual_call_done=1 als „nicht erreicht" markiert.
       where.push(`l.manual_call_done = 1`);
@@ -2057,7 +2098,22 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     // „Nur Direktnummern": die Liste, bei der der Chef selbst rangeht statt der Zentrale.
     if (Q.direkt === '1') where.push(`l.telefon_direkt IS NOT NULL`);
     if (Q.direkt === 'name') where.push(`l.telefon_direkt IS NOT NULL AND l.geschaeftsfuehrer IS NOT NULL AND TRIM(l.geschaeftsfuehrer) != ''`);
-    if (Q.branche && Q.branche.trim()) { where.push(`LOWER(l.branche) = @branche`); params.branche = Q.branche.trim().toLowerCase(); }
+    if (Q.branche && Q.branche.trim()) {
+      if (Q.branche.trim() === HANDWERK_FILTER) {
+        // Sammelfilter: alle Handwerksgewerke auf einmal. Die Branche am Lead
+        // bleibt dabei die konkrete – sie steckt als {branche} in den Mails.
+        const gewerke = alleBranchen().filter(istHandwerk);
+        if (gewerke.length) {
+          where.push(`LOWER(l.branche) IN (${gewerke.map((_, i) => '@hw' + i).join(', ')})`);
+          gewerke.forEach((g, i) => { params['hw' + i] = g.toLowerCase(); });
+        } else {
+          where.push('1 = 0');
+        }
+      } else {
+        where.push(`LOWER(l.branche) = @branche`);
+        params.branche = Q.branche.trim().toLowerCase();
+      }
+    }
     if (Q.stadt && Q.stadt.trim()) { where.push(`LOWER(l.stadt) = @stadt`); params.stadt = Q.stadt.trim().toLowerCase(); }
     if (Q.prio && /^[ABC]$/.test(Q.prio)) { where.push(`l.prioritaet = @prio`); params.prio = Q.prio; }
     if (Q.track && Q.track !== 'all') { where.push(`COALESCE(l.track,'voice_agent') = @track`); params.track = Q.track; }
@@ -2108,7 +2164,8 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
       `SELECT COUNT(*) n FROM leads l
        WHERE l.telefon IS NOT NULL AND length(TRIM(l.telefon)) > 5
          AND l.status IN ('new','checked','draft_ready','approved','manual_review','contacted')
-         AND COALESCE(l.manual_call_done, 0) = 0`
+         AND (COALESCE(l.manual_call_done, 0) = 0
+              OR (l.wiedervorlage_at IS NOT NULL AND l.wiedervorlage_at <= datetime('now')))`
     ).get() as { n: number }).n;
     const calledToday = (db.prepare(
       `SELECT COUNT(*) n FROM leads WHERE manual_call_done = 1 AND date(last_manual_call_at) = date('now','localtime')`
@@ -2150,14 +2207,20 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
        WHERE event_type = 'manual_call' AND date(created_at) = date('now','localtime')`
     ).get() as { n: number }).n;
     // Distinct branchen + städte für Filter-Dropdowns
-    const branchen = db.prepare(`SELECT DISTINCT branche FROM leads WHERE telefon IS NOT NULL AND length(TRIM(telefon))>5 AND branche IS NOT NULL ORDER BY branche`).all() as Array<{branche:string}>;
+    const branchenRoh = (db.prepare(
+      `SELECT DISTINCT branche FROM leads WHERE telefon IS NOT NULL AND length(TRIM(telefon))>5 AND branche IS NOT NULL ORDER BY branche`
+    ).all() as Array<{ branche: string }>).map(r => r.branche);
+    // Handwerk als EIN Eintrag statt fünf einzelner Gewerke – gefiltert wird
+    // trotzdem über die echten Branchen, nichts wird umgeschrieben.
+    const branchen = brancheOptionen(branchenRoh);
     const staedte = db.prepare(`SELECT DISTINCT stadt FROM leads WHERE telefon IS NOT NULL AND length(TRIM(telefon))>5 AND stadt IS NOT NULL ORDER BY stadt`).all() as Array<{stadt:string}>;
     // Offene Leads, bei denen der Chef selbst rangeht – die wertvollste Teilmenge der Liste.
     const direktOffen = (db.prepare(
       `SELECT COUNT(*) n FROM leads l
        WHERE l.telefon_direkt IS NOT NULL
          AND l.status IN ('new','checked','draft_ready','approved','manual_review','contacted')
-         AND COALESCE(l.manual_call_done, 0) = 0`
+         AND (COALESCE(l.manual_call_done, 0) = 0
+              OR (l.wiedervorlage_at IS NOT NULL AND l.wiedervorlage_at <= datetime('now')))`
     ).get() as { n: number }).n;
     return {
       leads: rows,
@@ -2175,7 +2238,7 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
         nicht_erreicht_today: nichtErreichtHeute,
         state: STATE,
       },
-      branchen: branchen.map(r=>r.branche),
+      branchen,
       staedte: staedte.map(r=>r.stadt),
     };
   });

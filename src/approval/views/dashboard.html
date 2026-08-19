@@ -2739,7 +2739,10 @@ async function loadCallList() {
   // Filter-Dropdowns befüllen (einmalig)
   const bSel = document.getElementById('cl-branche');
   if (bSel && bSel.options.length <= 1 && d.branchen?.length) {
-    bSel.innerHTML = '<option value="">Branche: alle</option>' + d.branchen.map(b => `<option value="${esc(b)}">${esc(b)}</option>`).join('');
+    // Die Liste kommt fertig gruppiert vom Server: Handwerk als ein Eintrag,
+    // der Rest einzeln. {value,label}, weil der Sammeleintrag anders filtert als er heißt.
+    bSel.innerHTML = '<option value="">Branche: alle</option>'
+      + d.branchen.map(b => `<option value="${esc(b.value)}">${esc(b.label)}</option>`).join('');
   }
   const sSel = document.getElementById('cl-stadt');
   if (sSel && sSel.options.length <= 1 && d.staedte?.length) {
@@ -2825,6 +2828,7 @@ function renderCallList() {
             <option value="termin">✅ Termin gebucht</option>
             <option value="interessiert">👍 Interessiert</option>
             <option value="nicht_erreicht">📵 Nicht erreicht</option>
+            <option value="nochmal">🔁 Nochmal anrufen</option>
             <option value="kein_interesse">✋ Kein Interesse</option>
             <option value="nicht_anrufen">⛔ Nicht mehr anrufen</option>
           </select>
@@ -2846,6 +2850,11 @@ async function clOutcome(id, outcome) {
     // outcome mitgeben: die Kampagne schiebt die Firma damit auf den richtigen Ast
     // und schickt die Mail nach dem Anruf von selbst.
     r = await post('/api/manual-call', { id, outcome: 'nicht_erreicht', note: 'Nicht erreicht (' + new Date().toLocaleDateString('de-DE') + ')' });
+  } else if (outcome === 'nochmal') {
+    // Nur nochmal durchklingeln, ohne dass eine Mail rausgeht: in 2 Tagen ist
+    // der Lead wieder in dieser Liste.
+    r = await post('/api/manual-call', { id, outcome: 'nochmal', wiedervorlage_tage: 2,
+      note: 'Nochmal anrufen (ab ' + new Date(Date.now() + 2*86400000).toLocaleDateString('de-DE') + ')' });
   } else {
     r = await post('/api/status', { id, status: statusMap[outcome], notiz: 'Anrufliste: ' + outcome });
   }
@@ -3086,6 +3095,7 @@ function renderCrm(d) {
             <option value="termin">✅ Termin gebucht</option>
             <option value="interessiert">👍 Interessiert</option>
             <option value="nicht_erreicht">📵 Nicht erreicht</option>
+            <option value="nochmal">🔁 Nochmal anrufen</option>
             <option value="kein_interesse">✋ Kein Interesse</option>
             <option value="tot">⛔ Tot / nicht anrufen</option>
           </select>
@@ -3127,6 +3137,9 @@ async function crmOutcome(id, outcome) {
   let r;
   if (outcome === 'nicht_erreicht') {
     r = await post('/api/manual-call', { id, outcome: 'nicht_erreicht', note: 'Nicht erreicht (' + new Date().toLocaleDateString('de-DE') + ')' });
+  } else if (outcome === 'nochmal') {
+    r = await post('/api/manual-call', { id, outcome: 'nochmal', wiedervorlage_tage: 2,
+      note: 'Nochmal anrufen (ab ' + new Date(Date.now() + 2*86400000).toLocaleDateString('de-DE') + ')' });
   } else {
     r = await post('/api/status', { id, status: map[outcome], notiz: 'CRM: ' + outcome });
   }
