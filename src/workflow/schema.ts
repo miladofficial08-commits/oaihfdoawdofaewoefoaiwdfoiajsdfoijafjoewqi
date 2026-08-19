@@ -144,7 +144,7 @@ export function initWorkflowSchema(): void {
  * dann übernehmen laufende Systeme den neuen Baum beim nächsten Start.
  * Läufe werden dabei umgehängt, nicht verworfen (siehe repairRuns).
  */
-export const GRAPH_VERSION = 3;
+export const GRAPH_VERSION = 4;
 
 function migrateLegacyGraph(): void {
   const db = getDb();
@@ -199,6 +199,17 @@ const NODE_RENAMES: Record<string, string> = {
   wv_anruf: 'anruf_wv', notiz_wv: 'tel_sonder',
   // Telefon-Ast: eine Einstiegsmail wurde zu dreien (je Anrufergebnis)
   tel_mail1: 'tel_nicht_erreicht',
+
+  // Stand 4: Jede Weiche hat eigene Folgeknoten, jeder Ast eine eigene
+  // Terminstrecke. Die frueher geteilten Knoten wandern in den Bestands-Ast –
+  // dort steckt die Masse der Leads.
+  int_start: 'alt_int1', int_mail: 'alt_termin_mail', int_wait: 'alt_termin_wait',
+  int_termin: 'alt_termin', int_wv: 'alt_termin_wv', int_gespraech: 'alt_gespraech',
+  int_angebot: 'alt_angebot', int_kunde: 'alt_kunde', int_kein_kunde: 'alt_kein_kunde',
+  alt_int: 'alt_int1', neu_int: 'neu_int1', tel_int: 'tel_int1',
+  alt_kein: 'alt_kein1', neu_kein: 'neu_kein1', tel_kein: 'tel_kein1',
+  alt_sperren: 'alt_kein1', neu_sperren: 'neu_kein1', tel_sperren: 'tel_kein1',
+  alt_sonder: 'alt_pruef1', neu_sonder: 'neu_pruef1', tel_sonder: 'tel_pruef1',
 };
 
 function repairRuns(workflowId: string, graph: WorkflowGraph): number {

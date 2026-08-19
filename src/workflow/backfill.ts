@@ -102,14 +102,14 @@ export function placeLead(lead: LeadFacts, nodeIds: Set<string>): Placement | nu
   const hold = new Date(Date.now() + 5 * 60_000).toISOString();
   const has = (id: string) => nodeIds.has(id);
 
-  if (lead.status === 'won' && has('int_kunde')) return { node: 'int_kunde', reason: 'Kunde gewonnen', dueAt: hold };
-  if (lead.status === 'lost' && has('int_kein_kunde')) return { node: 'int_kein_kunde', reason: 'Als verloren markiert', dueAt: hold };
-  if ((lead.status === 'no_interest' || lead.status === 'do_not_contact') && has('alt_kein')) {
-    return { node: 'alt_kein', reason: 'Absage vorhanden', dueAt: hold };
+  if (lead.status === 'won' && has('alt_kunde')) return { node: 'alt_kunde', reason: 'Kunde gewonnen', dueAt: hold };
+  if (lead.status === 'lost' && has('alt_kein_kunde')) return { node: 'alt_kein_kunde', reason: 'Als verloren markiert', dueAt: hold };
+  if ((lead.status === 'no_interest' || lead.status === 'do_not_contact') && has('alt_kein1')) {
+    return { node: 'alt_kein1', reason: 'Absage vorhanden', dueAt: hold };
   }
   if (lead.status === 'proposal_sent' && has('int_angebot')) return { node: 'int_angebot', reason: 'Angebot raus', dueAt: hold };
-  if (lead.status === 'demo_booked' && has('int_gespraech')) return { node: 'int_gespraech', reason: 'Termin gebucht', dueAt: hold };
-  if (lead.status === 'replied' && has('int_start')) return { node: 'int_start', reason: 'Hat geantwortet', dueAt: hold };
+  if (lead.status === 'demo_booked' && has('alt_gespraech')) return { node: 'alt_gespraech', reason: 'Termin gebucht', dueAt: hold };
+  if (lead.status === 'replied' && has('alt_int1')) return { node: 'alt_int1', reason: 'Hat geantwortet', dueAt: hold };
 
   if (lead.bounced && has('alt_sonder')) return { node: 'alt_sonder', reason: 'Adresse unzustellbar', dueAt: hold };
 
@@ -117,10 +117,10 @@ export function placeLead(lead: LeadFacts, nodeIds: Set<string>): Placement | nu
   // Eine Absage darf NICHT als heiße Spur einsortiert werden.
   if (lead.last_reply_cat) {
     const optOut = detectOptOut(lead.last_reply_subject || '', lead.last_reply_snippet || '');
-    if ((optOut || lead.last_reply_cat === 'not_interested') && has('alt_kein')) {
-      return { node: 'alt_kein', reason: 'Absage im Postfach', dueAt: hold };
+    if ((optOut || lead.last_reply_cat === 'not_interested') && has('alt_kein1')) {
+      return { node: 'alt_kein1', reason: 'Absage im Postfach', dueAt: hold };
     }
-    if (lead.has_reply && has('int_start')) return { node: 'int_start', reason: 'Antwort im Postfach', dueAt: hold };
+    if (lead.has_reply && has('alt_int1')) return { node: 'alt_int1', reason: 'Antwort im Postfach', dueAt: hold };
   }
 
   // Wiedervorlage vom Menschen gesetzt → dort abholen.

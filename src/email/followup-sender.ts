@@ -6,6 +6,7 @@ import { isRealClick } from './tracking';
 import { Lead } from '../types';
 import { NOT_SUPPRESSED_SQL } from '../workflow/optout';
 import { NOT_IN_ACTIVE_WORKFLOW_SQL } from '../workflow/schema';
+import { anyWorkflowActive } from '../workflow/health';
 import { v4 as uuid } from 'uuid';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -280,6 +281,10 @@ export function startFollowupSender() {
   if (timer) return;
   timer = setInterval(async () => {
     if (busy) return;
+    // Eine Strategie ist zustaendig oder das alte System - nie beide. Sonst
+    // bekommt dieselbe Firma Post aus zwei Kanaelen und der alte Text geht
+    // trotz aufgeraeumter Vorlagen wieder raus.
+    if (anyWorkflowActive()) return;
     busy = true;
     try { await tick(); }
     catch (err) { console.error('[followup] Tick-Fehler:', err instanceof Error ? err.message : err); }

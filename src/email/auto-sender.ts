@@ -4,6 +4,7 @@ import { getTemplateById, renderTemplate } from './template';
 import { verticalPresets } from '../config/markets';
 import { Lead } from '../types';
 import { NOT_IN_ACTIVE_WORKFLOW_SQL } from '../workflow/schema';
+import { anyWorkflowActive } from '../workflow/health';
 import { v4 as uuid } from 'uuid';
 
 // ── Sicherheits-Limits (Schutz vor SMTP-Account-Sperrung) ──────────────────
@@ -261,6 +262,10 @@ export function startAutoSender() {
   if (timer) return;
   timer = setInterval(async () => {
     if (busy) return;
+    // Eine Strategie ist zustaendig oder das alte System - nie beide. Sonst
+    // bekommt dieselbe Firma Post aus zwei Kanaelen und der alte Text geht
+    // trotz aufgeraeumter Vorlagen wieder raus.
+    if (anyWorkflowActive()) return;
     busy = true;
     try {
       const jobs = getDb().prepare(`SELECT * FROM send_jobs WHERE status = 'running'`).all() as SendJob[];

@@ -258,9 +258,11 @@ async function executeNode(wf: Workflow, run: RunRow, node: WorkflowNode, lead: 
         run_id: run.id, lead_id: lead.id, lead_name: lead.name, node_id: node.id, node_type: 'suppress',
         action: 'Dauerhaft gesperrt', detail: `${lead.email || 'ohne E-Mail'} bekommt nie wieder eine E-Mail`, level: 'warn',
       });
-      // Weiterleiten, damit der Lead sichtbar in einer Stage landet (z. B. "Kein Interesse").
+      // Der Lead muss sichtbar bleiben: Wer absagt, soll weiter auf seiner Stage
+      // stehen und anklickbar sein. Frueher endete der Lauf hier und die Firma
+      // verschwand aus dem Baum - man sah nicht mehr, wer abgesagt hatte.
       if (nextNodeId(wf.graph, node.id)) advance(run, wf, node.id);
-      else finishRun(run, 'stopped', 'Adresse gesperrt', lead);
+      else setRun(run.id, { due_at: HOLD_UNTIL, steps: run.steps + 1, snooze_until: null });
       return false;
     }
 

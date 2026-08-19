@@ -2,6 +2,7 @@ import { getDb } from '../db/schema';
 import { sendLeadEmail, sendBulkEmail } from './mailer';
 import { recordSentEmail, sentTodayCount, GLOBAL_DAILY_CAP } from './auto-sender';
 import { v4 as uuid } from 'uuid';
+import { anyWorkflowActive } from '../workflow/health';
 
 // Serverseitiger Worker für zeitversetzte Einzel-E-Mails (E-Mail-Center → "Planen").
 // Läuft unabhängig vom Browser: solange der Server an ist, werden fällige Mails gesendet.
@@ -101,6 +102,10 @@ export function startScheduledSender() {
   if (timer) return;
   timer = setInterval(async () => {
     if (busy) return;
+    // Eine Strategie ist zustaendig oder das alte System - nie beide. Sonst
+    // bekommt dieselbe Firma Post aus zwei Kanaelen und der alte Text geht
+    // trotz aufgeraeumter Vorlagen wieder raus.
+    if (anyWorkflowActive()) return;
     busy = true;
     try {
       const due = getDb().prepare(

@@ -152,6 +152,14 @@ export async function registerWorkflowRoutes(app: FastifyInstance) {
     const fuWasOn = (db.prepare(`SELECT enabled FROM followup_config WHERE id = 1`).get() as { enabled: number } | undefined)?.enabled === 1;
     if (fuWasOn) db.prepare(`UPDATE followup_config SET enabled = 0, updated_at = datetime('now') WHERE id = 1`).run();
 
+    // Fertig vorbereitete Mails aus dem alten System liegen in der Warteschlange
+    // und wuerden beim naechsten Tick rausgehen - mit dem alten Text. Sie werden
+    // abgeraeumt, nicht gesendet. Ab hier schreibt nur noch die Strategie.
+    const geplant = db.prepare(
+      `UPDATE scheduled_emails SET status = 'cancelled', error = 'Abgeraeumt: Strategie uebernommen',
+       updated_at = datetime('now') WHERE status IN ('scheduled','processing')`
+    ).run().changes;
+
     const backfill = req.body?.skipBackfill ? null : backfillWorkflow(wf, false);
     const saved = saveWorkflow({ enabled: true }, wf.id);
 
@@ -161,6 +169,7 @@ export async function registerWorkflowRoutes(app: FastifyInstance) {
       deaktivierte_strategien: others.map(o => o.name),
       gestoppte_kampagnen: jobs.map(j => j.name),
       followup_worker_gestoppt: fuWasOn,
+      geplante_mails_abgeraeumt: geplant,
       einsortiert: backfill ? backfill.assigned : 0,
       ...payload(saved),
     };
