@@ -1651,7 +1651,7 @@ info@nur-eine-adresse.de"></textarea>
         </div>
         <div class="sp-body">
           <div class="sched-row">
-            <div class="field"><label>Name der Vorlage</label><input id="tpl-edit-name" type="text"></div>
+            <div class="field"><label>Name der Vorlage <span style="text-transform:none;font-weight:500;color:var(--txt3)">(optional – leer = Betreff)</span></label><input id="tpl-edit-name" type="text" placeholder="leer lassen: der Betreff wird als Name übernommen"></div>
             <div class="field"><label>Kategorie <span style="text-transform:none;font-weight:500;color:var(--txt3)">(optional)</span></label><input id="tpl-edit-category" type="text" placeholder="z.B. Voice Agent, Follow-up"></div>
           </div>
           <div class="field"><label>Betreff</label><input id="tpl-edit-subject" type="text"></div>
@@ -4200,7 +4200,11 @@ async function saveEditedTemplate() {
   if (!subject || !body) { toast('Betreff und Text sind Pflicht', true); return; }
   const r = await fetch('/api/email-templates/'+editingTplId, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name, category, subject, body }) });
   if (!r.ok) { toast('Speichern fehlgeschlagen', true); return; }
-  toast('✓ Vorlage gespeichert');
+  const saved = await r.json().catch(function(){ return {}; });
+  const mit = saved.strategie_mitgezogen || [];
+  toast(mit.length
+    ? '✓ Gespeichert · Strategie mitgezogen: ' + mit.join(', ')
+    : '✓ Vorlage gespeichert');
   if (editingTplId === 'default') { templateCache = { subject, body }; }
   loadTemplatesPage();
 }

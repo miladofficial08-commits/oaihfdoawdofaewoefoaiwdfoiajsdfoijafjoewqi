@@ -451,3 +451,69 @@ export function effectiveDailyCap(wf: Workflow): { cap: number; ramping: boolean
 export function activeWorkflows(): Workflow[] {
   return listWorkflows().filter(w => w.enabled);
 }
+
+// ── Vorlagen umbenennen, ohne die Strategie zu zerreissen ───────────────────
+
+const normName = (s: string): string => (s || '').toLowerCase()
+  .replace(/[äöüß]/g, m => ({ 'ä': 'ae', 'ö': 'oe', 'ü': 'ue', 'ß': 'ss' }[m] || m))
+  .replace(/[^a-z0-9]+/g, ' ').trim();
+
+/**
+ * Zeigt dieser Eintrag im Baum auf eine Vorlage mit diesem Namen?
+ * Gleiche Regel wie beim Aufloesen: exakt oder als Namensteil.
+ */
+function zeigtAuf(eintrag: string, vorlagenName: string): boolean {
+  const e = normName(eintrag), n = normName(vorlagenName);
+  return Boolean(e) && (e === n || n.includes(e));
+}
+
+/**
+ * Benennt eine Vorlage in ALLEN Strategien mit um.
+ *
+ * Der Baum haengt bewusst am NAMEN der Vorlage, nicht an einer internen ID –
+ * so ueberlebt die Strategie es, wenn eine Vorlage neu angelegt wird. Der Preis:
+ * Wer eine Vorlage umbenennt, kappt die Verbindung, und genau diese eine Mail
+ * faellt still aus. Nachgemessen: Wuerde man alle Vorlagen auf ihren Betreff
+ * umbenennen, verloere die Standard-Strategie vier von neun Mails.
+ *
+ * Statt das zu verbieten, ziehen wir den Baum einfach mit. Umbenennen darf keine
+ * Nebenwirkung haben, an die jemand denken muss.
+ *
+ * @returns Titel der Knoten, die umgehaengt wurden.
+ */
+export function retargetTemplateName(altName: string, neuName: string): string[] {
+  if (!altName.trim() || !neuName.trim() || normName(altName) === normName(neuName)) return [];
+  const db = getDb();
+  const beruehrt: string[] = [];
+
+  for (const wf of listWorkflows()) {
+    let geaendert = false;
+    for (const node of wf.graph.nodes) {
+      if (node.type !== 'email') continue;
+      const cfg = node.config as { template_match?: unknown };
+      const roh = cfg.template_match;
+      if (roh == null) continue;
+
+      const liste = Array.isArray(roh) ? roh.map(String) : [String(roh)];
+      const neu = liste.map(e => (zeigtAuf(e, altName) ? neuName : e));
+      if (neu.every((v, i) => v === liste[i])) continue;
+
+      cfg.template_match = Array.isArray(roh) ? neu : neu[0];
+      geaendert = true;
+      beruehrt.push(node.title);
+    }
+    if (geaendert) {
+      db.prepare(`UPDATE workflows SET graph = ?, updated_at = datetime('now') WHERE id = ?`)
+        .run(JSON.stringify(wf.graph), wf.id);
+    }
+  }
+
+  if (beruehrt.length) {
+    logWorkflow({
+      action: 'Vorlage umbenannt – Strategie mitgezogen',
+      detail: `"${altName}" → "${neuName}". Betroffene Mails: ${beruehrt.join(', ')}.`,
+      level: 'warn',
+    });
+  }
+  return beruehrt;
+}

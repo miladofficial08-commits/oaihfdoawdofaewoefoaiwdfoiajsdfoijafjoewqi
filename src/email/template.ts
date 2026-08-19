@@ -1,4 +1,5 @@
 import { getDb } from '../db/schema';
+import { retargetTemplateName } from '../workflow/schema';
 
 export interface EmailTemplate {
   id: string;
@@ -38,22 +39,35 @@ export function getEmailTemplate(id = 'default'): EmailTemplate {
   return row;
 }
 
-export function updateEmailTemplate(id: string, data: Partial<Pick<EmailTemplate, 'name' | 'subject' | 'body' | 'category'>>): EmailTemplate {
+export function updateEmailTemplate(
+  id: string,
+  data: Partial<Pick<EmailTemplate, 'name' | 'subject' | 'body' | 'category'>>
+): EmailTemplate & { strategie_mitgezogen: string[] } {
   const db = getDb();
   // getEmailTemplate legt die Zeile an, falls sie fehlt — danach ist ein reines UPDATE sicher (kein NOT NULL Konflikt).
   const current = getEmailTemplate(id);
   const now = new Date().toISOString();
+  const subject = data.subject ?? current.subject;
+  // Der Name ist kein zweites Feld zum Ausdenken: Wer ihn leer laesst, bekommt den
+  // Betreff als Namen. Ein Betreff beschreibt die Mail ohnehin am besten.
+  const name = nameOderBetreff(data.name !== undefined ? data.name : current.name, subject);
+
   db.prepare(
     `UPDATE email_templates SET name = @name, subject = @subject, body = @body, category = @category, updated_at = @now WHERE id = @id`
   ).run({
     id,
-    name: data.name ?? current.name,
-    subject: data.subject ?? current.subject,
+    name,
+    subject,
     body: data.body ?? current.body,
     category: data.category !== undefined ? data.category : (current.category ?? null),
     now,
   });
-  return getEmailTemplate(id);
+
+  // Haengt die Strategie an dieser Vorlage, wird sie mit umbenannt – sonst faellt
+  // genau diese Mail nach dem Umbenennen still aus.
+  const mitgezogen = name !== current.name ? retargetTemplateName(current.name, name) : [];
+
+  return { ...getEmailTemplate(id), strategie_mitgezogen: mitgezogen };
 }
 
 export function listEmailTemplates(): EmailTemplate[] {
@@ -66,8 +80,22 @@ export function createEmailTemplate(data: { name: string; subject: string; body:
   const id = 'tpl_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   db.prepare(
     `INSERT INTO email_templates (id, name, subject, body, category, updated_at) VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(id, data.name || 'Neue Vorlage', data.subject || '', data.body || '', data.category ?? null, new Date().toISOString());
+  ).run(id, nameOderBetreff(data.name, data.subject), data.subject || '', data.body || '', data.category ?? null, new Date().toISOString());
   return db.prepare('SELECT * FROM email_templates WHERE id = ?').get(id) as EmailTemplate;
+}
+
+/**
+ * Der Name einer Vorlage ist optional.
+ *
+ * Sich zusätzlich zum Betreff einen Namen auszudenken ist doppelte Arbeit für
+ * dieselbe Sache. Bleibt das Feld leer, ist der Betreff der Name – der beschreibt
+ * die Mail ohnehin am genauesten.
+ */
+function nameOderBetreff(name: string | undefined, subject: string | undefined): string {
+  const n = (name || '').trim();
+  if (n) return n;
+  const s = (subject || '').trim();
+  return s ? s.slice(0, 120) : 'Neue Vorlage';
 }
 
 export function deleteEmailTemplate(id: string): void {
