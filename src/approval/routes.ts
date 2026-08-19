@@ -36,7 +36,8 @@ import { v4 as uuid } from 'uuid';
 import { getDb } from '../db/schema';
 import { fetchInboxEmails, getImapStatus, markEmailSeen } from '../email/inbox';
 import { startReplyScanner, scanReplies, listReplies } from '../email/reply-scanner';
-import { getEmailTemplate, updateEmailTemplate, renderTemplate, listEmailTemplates, createEmailTemplate, deleteEmailTemplate, getTemplateById, seedFollowupTemplates, seedOutreachTemplates, seedConsultTemplates, seedWorkflowTemplates, seedReengageTemplates } from '../email/template';
+import { getEmailTemplate, updateEmailTemplate, renderTemplate, listEmailTemplates, createEmailTemplate, deleteEmailTemplate, getTemplateById } from '../email/template';
+import { nurEigeneVorlagen } from '../email/template-cleanup';
 import { startDailyEngine } from '../email/daily-engine';
 import { startAutoSender, recordSentEmail, sentTodayCount, GLOBAL_DAILY_CAP, ALLOWED_DAILY_LIMITS, SendJob } from '../email/auto-sender';
 import { startFollowupSender, getFollowupConfig, setFollowupConfig, followupStats } from '../email/followup-sender';
@@ -2181,13 +2182,14 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     return supplyStatus();
   });
 
-  // Fertige Follow-up- + Erstkontakt-Vorlagen bereitstellen (idempotent).
-  // seedOutreachTemplates repariert zusätzlich die beschädigte Standard-Vorlage.
-  seedFollowupTemplates();
-  seedOutreachTemplates();
-  seedConsultTemplates();
-  seedWorkflowTemplates();
-  seedReengageTemplates();
+  // Es werden KEINE Vorlagen mehr angelegt. Frueher hat der Start eigene Texte
+  // nachgesaet, sodass geloeschte Vorlagen immer wiederkamen. Jetzt gilt nur der
+  // eigene Bestand, alles andere wird beim Start entfernt.
+  const vorlagen = nurEigeneVorlagen();
+  if (vorlagen.geloescht.length) {
+    console.log(`[vorlagen] ${vorlagen.geloescht.length} fremde Vorlagen entfernt: ${vorlagen.geloescht.join(', ')}`);
+  }
+  console.log(`[vorlagen] Bestand: ${vorlagen.behalten.length} eigene Vorlagen`);
 
   // Strategie-Workflow (visueller Baum im Autoversand)
   await registerWorkflowRoutes(app);
