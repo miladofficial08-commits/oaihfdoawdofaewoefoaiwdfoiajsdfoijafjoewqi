@@ -523,3 +523,25 @@ export function seedReengageTemplates(): void {
   );
   for (const t of REENGAGE_TEMPLATES) insert.run(t.id, t.name, t.subject, t.body, now);
 }
+
+/**
+ * Findet eine Vorlage über einen Teil ihres Namens.
+ *
+ * Der Nutzer benennt seine Vorlagen selbst („Anruf um 17:40 Uhr", „verpasster
+ * Anruf"). Deren interne IDs kennt der Graph nicht – und soll er auch nicht,
+ * sonst bricht die Strategie, sobald jemand eine Vorlage neu anlegt. Deshalb
+ * verweist der Graph auf den NAMEN, und diese Funktion löst ihn auf.
+ * Vergleich bewusst tolerant: Groß-/Kleinschreibung und Umlaute egal.
+ */
+export function findTemplateByName(fragment: string): EmailTemplate | undefined {
+  const norm = (s: string) => (s || '').toLowerCase()
+    .replace(/[äöüß]/g, m => ({ 'ä': 'ae', 'ö': 'oe', 'ü': 'ue', 'ß': 'ss' }[m] || m))
+    .replace(/[^a-z0-9]+/g, ' ').trim();
+  const ziel = norm(fragment);
+  if (!ziel) return undefined;
+  const alle = getDb().prepare('SELECT * FROM email_templates').all() as EmailTemplate[];
+  // Exakter Name gewinnt, sonst der erste Treffer, der den Text enthält.
+  return alle.find(t => norm(t.name) === ziel)
+      ?? alle.find(t => norm(t.name).includes(ziel))
+      ?? alle.find(t => norm(t.subject).includes(ziel));
+}

@@ -45,13 +45,33 @@ export const CALL_OUTCOMES: Outcome[] = [
   out('kein_interesse', 'Kein Interesse', 'negative'),
 ];
 
-const CHECK_CFG = { ports: ['no_reply', 'interested', 'not_interested', 'auto_reply', 'sonderfall'] };
+// Deine Vorlagen, über den NAMEN referenziert – nicht über interne IDs.
+// So bleibt die Strategie an genau den Mails hängen, die du geschrieben hast.
+export const VORLAGEN = {
+  erstkontakt: ['Anruf um 17:40 Uhr', 'verpasster Anruf'],   // zwei Varianten im Wechsel
+  followup1: 'Follow-up 1',
+  followup2: 'Follow-up 2',
+  letzterVersuch: 'letzter Versuch',
+  terminmail: 'Antwort auf Interesse',
+  telAusserhalb: 'Anruf außerhalb Ihrer Geschäftszeiten',
+  telNichtErreicht: 'telefonisch leider nicht erreicht',
+  telWeiterleitung: 'Vielen Dank für die Weiterleitung',
+};
+
+// Die Abwesenheitsnotiz ist nur bei der ERSTEN Mail zu erwarten – wer im Urlaub
+// ist, hat sie da schon geschickt. Ab Follow-up 1 fällt der Ausgang deshalb weg,
+// damit der Baum nicht mit Möglichkeiten zugestellt wird, die nie eintreten.
+const CHECK_ERSTE = { ports: ['no_reply', 'interested', 'not_interested', 'auto_reply', 'sonderfall'] };
+const CHECK_FOLGE = { ports: ['no_reply', 'interested', 'not_interested', 'sonderfall'] };
 
 interface BranchSpec {
   prefix: string;
   x: number;
   endTitle: string;
-  mails: Array<{ title: string; template: string; waitDays: number }>;
+  /** template = Name der Vorlage; mehrere = Zufallswechsel (A/B) */
+  mails: Array<{ title: string; template: string | string[]; waitDays: number }>;
+  /** Mehrere Einstiegsmails (Telefon: je Anrufergebnis eine eigene). */
+  entries?: Array<{ id: string; title: string; template: string }>;
 }
 
 /**
@@ -69,11 +89,24 @@ function branch(spec: BranchSpec): { nodes: WorkflowNode[]; edges: WorkflowEdge[
 
   mails.forEach((m, i) => {
     const mail = `${prefix}_mail${i + 1}`, wait = `${prefix}_wait${i + 1}`, check = `${prefix}_check${i + 1}`;
-    nodes.push(node(mail, 'email', m.title, x, y, { template_id: m.template }));
+    const erste = i === 0;
+
+    // Beim Telefon-Ast ersetzen drei Einstiegsmails die erste Stufe – für jedes
+    // Anrufergebnis die passende Vorlage, danach läuft alles gleich weiter.
+    if (erste && spec.entries?.length) {
+      spec.entries.forEach((e, k) => {
+        nodes.push(node(e.id, 'email', e.title, x + k * SIDE, y, { template_match: e.template }));
+        edges.push(edge(e.id, wait));
+      });
+    } else {
+      nodes.push(node(mail, 'email', m.title, x, y, { template_match: m.template }));
+      if (prevCheck) edges.push(edge(prevCheck, mail, 'no_reply'));
+      edges.push(edge(mail, wait));
+    }
+
     nodes.push(node(wait, 'wait', `${m.waitDays} Tage warten`, x, y + STEP, { days: m.waitDays }));
-    nodes.push(node(check, 'check', `Reaktion nach Stufe ${i + 1}`, x, y + 2 * STEP, CHECK_CFG));
-    edges.push(edge(mail, wait), edge(wait, check));
-    if (prevCheck) edges.push(edge(prevCheck, mail, 'no_reply'));
+    nodes.push(node(check, 'check', `Reaktion nach Stufe ${i + 1}`, x, y + 2 * STEP, erste ? CHECK_ERSTE : CHECK_FOLGE));
+    edges.push(edge(wait, check));
     prevCheck = check;
     y += 3 * STEP;
   });
@@ -118,7 +151,7 @@ function branch(spec: BranchSpec): { nodes: WorkflowNode[]; edges: WorkflowEdge[
   edges.push(edge(interesse, 'int_start', 'weiter'));
   edges.push(edge(interesse, kein, 'doch_nicht'));
   edges.push(edge(sperren, kein));
-  edges.push(edge(sonder, `${prefix}_mail1`, 'weiter'));
+  edges.push(edge(sonder, spec.entries?.length ? spec.entries[0].id : `${prefix}_mail1`, 'weiter'));
   edges.push(edge(sonder, wv, 'spaeter'));
   edges.push(edge(sonder, kein, 'raus'));
 
@@ -127,42 +160,51 @@ function branch(spec: BranchSpec): { nodes: WorkflowNode[]; edges: WorkflowEdge[
     const check = `${prefix}_check${i}`;
     edges.push(edge(check, interesse, 'interested'));
     edges.push(edge(check, sperren, 'not_interested'));
-    edges.push(edge(check, urlaub, 'auto_reply'));
     edges.push(edge(check, sonder, 'sonderfall'));
+    if (i === 1) edges.push(edge(check, urlaub, 'auto_reply'));   // nur nach der Erstmail
   }
 
-  return { nodes, edges, entry: `${prefix}_mail1` };
+  return { nodes, edges, entry: spec.entries?.length ? spec.entries[0].id : `${prefix}_mail1` };
 }
 
 export function defaultGraph(): WorkflowGraph {
   // Ast 1 – Bestand: hat die alte Kampagne schon bekommen, bekommt die neuen Texte.
+  // Bestand: hat die Erstmail längst bekommen, steigt deshalb bei Follow-up 1 ein.
   const alt = branch({
     prefix: 'alt', x: COL_ALT, endTitle: 'Keine Antwort · Bestand',
     mails: [
-      { title: 'Neuanlauf 1 · ehrlicher Neustart', template: 'wf-neu-1', waitDays: 4 },
-      { title: 'Neuanlauf 2 · die Rechnung', template: 'wf-neu-2', waitDays: 6 },
-      { title: 'Neuanlauf 3 · Schlusspunkt', template: 'wf-neu-3', waitDays: 7 },
+      { title: 'Follow-up 1', template: VORLAGEN.followup1, waitDays: 4 },
+      { title: 'Follow-up 2', template: VORLAGEN.followup2, waitDays: 6 },
+      { title: 'Letzter Versuch', template: VORLAGEN.letzterVersuch, waitDays: 7 },
     ],
   });
 
   // Ast 2 – noch nie angeschrieben: Erstkontakt + drei Follow-ups.
+  // Neue Leads: Erstkontakt in zwei Varianten im Wechsel, dann die drei Follow-ups.
   const neu = branch({
     prefix: 'neu', x: COL_NEU, endTitle: 'Keine Antwort · Neu',
     mails: [
-      { title: 'Erstkontakt', template: 'default', waitDays: 3 },
-      { title: 'Follow-up 1', template: 'wf-neu-1', waitDays: 5 },
-      { title: 'Follow-up 2', template: 'wf-proof', waitDays: 6 },
-      { title: 'Follow-up 3 · letzte Nachricht', template: 'wf-neu-3', waitDays: 7 },
+      { title: 'Erstkontakt · 2 Varianten', template: VORLAGEN.erstkontakt, waitDays: 3 },
+      { title: 'Follow-up 1', template: VORLAGEN.followup1, waitDays: 5 },
+      { title: 'Follow-up 2', template: VORLAGEN.followup2, waitDays: 6 },
+      { title: 'Letzter Versuch', template: VORLAGEN.letzterVersuch, waitDays: 7 },
     ],
   });
 
   // Ast 3 – Telefon: nach dem Anruf dieselbe Mail-Logik wie überall.
+  // Telefon: Für jedes Anrufergebnis geht die passende Mail raus, danach läuft
+  // dieselbe Follow-up-Logik wie überall.
   const tel = branch({
     prefix: 'tel', x: COL_TEL, endTitle: 'Keine Antwort · Telefon',
+    entries: [
+      { id: 'tel_ausserhalb', title: 'Außerhalb der Geschäftszeiten', template: VORLAGEN.telAusserhalb },
+      { id: 'tel_nicht_erreicht', title: 'Nicht erreicht', template: VORLAGEN.telNichtErreicht },
+      { id: 'tel_weiterleitung', title: 'Danke für die Weiterleitung', template: VORLAGEN.telWeiterleitung },
+    ],
     mails: [
-      { title: 'Mail nach Anruf', template: 'default', waitDays: 3 },
-      { title: 'Nachfass nach Anruf', template: 'wf-neu-2', waitDays: 6 },
-      { title: 'Letzte Nachricht', template: 'wf-neu-3', waitDays: 7 },
+      { title: 'Mail nach Anruf', template: VORLAGEN.telNichtErreicht, waitDays: 3 },
+      { title: 'Follow-up 1', template: VORLAGEN.followup1, waitDays: 6 },
+      { title: 'Letzter Versuch', template: VORLAGEN.letzterVersuch, waitDays: 7 },
     ],
   });
 
@@ -184,7 +226,7 @@ export function defaultGraph(): WorkflowGraph {
       tone: 'positive', status: 'replied',
       outcomes: [out('termin', 'Terminlink senden', 'active'), out('kein_kunde', 'Doch kein Interesse', 'negative')],
     }),
-    node('int_mail', 'email', 'Terminlink senden', COL_INT, TOP + STEP, { template_id: 'wf-termin', urgent: true }),
+    node('int_mail', 'email', 'Terminlink senden', COL_INT, TOP + STEP, { template_match: VORLAGEN.terminmail, urgent: true }),
     node('int_wait', 'wait', '2 Tage warten', COL_INT, TOP + 2 * STEP, { days: 2 }),
     node('int_termin', 'stage', 'Termin gebucht?', COL_INT, TOP + 3 * STEP, {
       tone: 'waiting',
@@ -230,9 +272,9 @@ export function defaultGraph(): WorkflowGraph {
     ...tel.edges,
 
     // Anruf-Ergebnisse: drei führen in denselben Mail-Nachlauf
-    edge('anruf', tel.entry, 'weiterleitung'),
-    edge('anruf', tel.entry, 'nicht_erreicht'),
-    edge('anruf', tel.entry, 'ausserhalb'),
+    edge('anruf', 'tel_weiterleitung', 'weiterleitung'),
+    edge('anruf', 'tel_nicht_erreicht', 'nicht_erreicht'),
+    edge('anruf', 'tel_ausserhalb', 'ausserhalb'),
     edge('anruf', 'int_start', 'interesse'),
     edge('anruf', 'tel_sperren', 'kein_interesse'),
     edge('anruf_wv', 'anruf'),

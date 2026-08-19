@@ -2,7 +2,7 @@ import { getDb } from '../db/schema';
 import { Lead } from '../types';
 import { v4 as uuid } from 'uuid';
 import { sendLeadEmail } from '../email/mailer';
-import { getTemplateById, renderTemplate } from '../email/template';
+import { getTemplateById, renderTemplate, findTemplateByName } from '../email/template';
 import { recordSentEmail, sentTodayCount, GLOBAL_DAILY_CAP } from '../email/auto-sender';
 import { updateLeadStatus, recordOutreachEvent } from '../db/leads-repo';
 import { isSuppressed, suppressEmail } from './optout';
@@ -305,6 +305,35 @@ async function executeNode(wf: Workflow, run: RunRow, node: WorkflowNode, lead: 
   }
 }
 
+/**
+ * Welche Vorlage nimmt dieser Knoten?
+ *
+ * Für den Erstkontakt gibt es zwei gleichwertige Varianten. Statt den Baum zu
+ * verdoppeln, hält EIN Knoten beide und wechselt zufällig – so bekommt nicht
+ * jeder Betrieb denselben Betreff, was zusätzlich das Spam-Risiko senkt.
+ */
+function pickTemplateId(node: WorkflowNode): string {
+  const cfg = node.config as { template_id?: string; template_ids?: unknown; template_match?: unknown };
+
+  // 1. Über den Namen der Vorlage – so bleibt die Strategie an DEINEN Vorlagen
+  //    hängen, auch wenn sie neu angelegt oder umbenannt werden.
+  const namen = Array.isArray(cfg.template_match)
+    ? cfg.template_match.filter((t): t is string => typeof t === 'string' && t.trim() !== '')
+    : typeof cfg.template_match === 'string' && cfg.template_match.trim() ? [cfg.template_match] : [];
+  if (namen.length) {
+    const treffer = namen.map(n => findTemplateByName(n)).filter(Boolean);
+    if (treffer.length) return treffer[Math.floor(Math.random() * treffer.length)]!.id;
+  }
+
+  // 2. Feste IDs (mehrere = Zufallswechsel, z. B. zwei Erstkontakt-Varianten)
+  const liste = Array.isArray(cfg.template_ids)
+    ? cfg.template_ids.filter((t): t is string => typeof t === 'string' && t.trim() !== '')
+    : [];
+  if (liste.length) return liste[Math.floor(Math.random() * liste.length)];
+
+  return String(cfg.template_id || 'default');
+}
+
 async function sendNodeEmail(wf: Workflow, run: RunRow, node: WorkflowNode, lead: Lead): Promise<boolean> {
   const cfg = node.config as { template_id?: string; urgent?: boolean };
   if (!lead.email) {
@@ -317,9 +346,9 @@ async function sendNodeEmail(wf: Workflow, run: RunRow, node: WorkflowNode, lead
     return false;
   }
 
-  const tpl = getTemplateById(String(cfg.template_id || 'default'));
+  const tpl = getTemplateById(pickTemplateId(node));
   if (!tpl) {
-    logWorkflow({ run_id: run.id, lead_id: lead.id, lead_name: lead.name, node_id: node.id, node_type: 'email', action: 'Vorlage fehlt', detail: `Vorlage "${cfg.template_id}" existiert nicht – Knoten übersprungen`, level: 'warn' });
+    logWorkflow({ run_id: run.id, lead_id: lead.id, lead_name: lead.name, node_id: node.id, node_type: 'email', action: 'Vorlage fehlt', detail: `Vorlage "${pickTemplateId(node)}" existiert nicht – Knoten übersprungen`, level: 'warn' });
     advance(run, wf, node.id);
     return false;
   }
@@ -536,6 +565,23 @@ function routeReaction(wf: Workflow, run: RunRow, lead: Lead, port: CheckPort, d
   for (const p of candidates) {
     const t = wiredPort(wf.graph, checkNode, p);
     if (t) { used = p; target = t; break; }
+  }
+
+  // Manche Ausgänge hängen bewusst nur an der ERSTEN Weiche eines Astes, damit das
+  // Bild ruhig bleibt (z. B. die Abwesenheitsnotiz). Trotzdem kann eine
+  // Urlaubsmeldung auch auf Follow-up 2 kommen – jemand fährt eben später weg.
+  // Dann greifen wir auf die passende Weiche desselben Astes zurück, statt die
+  // Meldung zu verschlucken und weiter in ein leeres Büro zu schreiben.
+  if (!target) {
+    const ast = checkNode.id.split('_')[0] + '_';
+    for (const n of wf.graph.nodes) {
+      if (n.type !== 'check' || !n.id.startsWith(ast)) continue;
+      for (const p of candidates) {
+        const t = wiredPort(wf.graph, n, p);
+        if (t) { used = p; target = t; break; }
+      }
+      if (target) break;
+    }
   }
   if (!target || !used || run.node_id === target) return false;
   port = used;

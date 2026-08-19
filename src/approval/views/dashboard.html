@@ -878,8 +878,26 @@
   .wf-panel.wf-full .wf-main { flex:1; min-height:0; }
   .wf-panel.wf-full .wf-canvas { height:100%; }
   .wf-panel.wf-full .wf-side { max-height:none; height:100%; }
-  .wf-panel.wf-full .wf-settings, .wf-panel.wf-full .wf-stats, .wf-panel.wf-full .sp-head p { display:none; }
-  .wf-panel.wf-full .sp-head { padding-bottom:8px; }
+  /* Vollbild heisst Vollbild: nur die Karte. Alles, was nicht der Baum ist,
+     verschwindet – Kopfzeile, Strategie-Leiste, Uebernehmen-Kasten, Statistik,
+     Einstellungen. Zurueck ueber den Knopf oben rechts oder Escape. */
+  .wf-panel.wf-full .wf-settings,
+  .wf-panel.wf-full .wf-stats,
+  .wf-panel.wf-full .wf-strats,
+  .wf-panel.wf-full .wf-adopt,
+  .wf-panel.wf-full #wf-backfill,
+  .wf-panel.wf-full #wf-health,
+  .wf-panel.wf-full .sp-head { display:none; }
+  .wf-panel.wf-full .sp-body { padding:0; }
+  /* Die Werkzeugleiste bleibt – ohne sie kaeme man nicht zurueck und koennte
+     nichts speichern. Sie schwebt schmal ueber der Karte. */
+  .wf-panel.wf-full .wf-toolbar {
+    position:absolute; top:10px; left:10px; right:10px; z-index:5;
+    background:var(--surf); border:1px solid var(--line2); border-radius:10px;
+    padding:6px 10px; box-shadow:var(--shadow); margin:0;
+  }
+  .wf-panel.wf-full .wf-main { padding-top:0; }
+  .wf-panel.wf-full .wf-canvas { border-radius:0; border:0; }
 
   /* Knoten-Karten: je Typ eine eigene Form, nicht nur eine andere Farbe */
   .wf-node { display:flex; gap:9px; align-items:flex-start; border-left-width:1.5px; padding:9px 11px 9px 10px; }

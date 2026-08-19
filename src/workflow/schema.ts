@@ -139,8 +139,16 @@ export function initWorkflowSchema(): void {
  * mit einem Graphen weiterarbeiten, in dem die neuen Stages fehlen – das
  * Einsortieren fände dann nichts. Bearbeitete Graphen bleiben unangetastet.
  */
+/**
+ * Version der Standard-Strategie. Hochzählen, wenn sich der Aufbau ändert –
+ * dann übernehmen laufende Systeme den neuen Baum beim nächsten Start.
+ * Läufe werden dabei umgehängt, nicht verworfen (siehe repairRuns).
+ */
+export const GRAPH_VERSION = 3;
+
 function migrateLegacyGraph(): void {
   const db = getDb();
+  const gespeicherteVersion = Number(getSetting('graph_version', '0')) || 0;
   const rows = db.prepare('SELECT id, graph FROM workflows').all() as Array<{ id: string; graph: string }>;
   for (const row of rows) {
     let ids: string[];
@@ -150,17 +158,22 @@ function migrateLegacyGraph(): void {
     // keine Leads laufen.
     // Merkmal der jeweils aktuellen Fassung ist der Einstiegsknoten 'lead_liste'.
     // Alles davor gilt als veraltet und wird angehoben, solange dort keine Leads laufen.
-    // Merkmal der aktuellen Fassung ist die Wurzel 'kunden'. Alles davor gilt als veraltet.
-    const isLegacy = !ids.includes('kunden')
+    // Zwei Gründe für eine Auffrischung:
+    //   1. Der Graph stammt aus einer Vorgängerfassung (Merkmal: keine Wurzel 'kunden').
+    //   2. Die Standard-Strategie wurde seither weiterentwickelt (Versionsnummer).
+    // Ohne Nummer 2 käme eine verbesserte Strategie nie auf einem laufenden System an.
+    const alteFassung = !ids.includes('kunden')
       && ['watch', 'weiche', 'start', 'lead_liste', 'mail1'].some(i => ids.includes(i));
+    const isLegacy = alteFassung || gespeicherteVersion < GRAPH_VERSION;
     if (!isLegacy) continue;
     const next = defaultGraph();
     db.prepare(`UPDATE workflows SET graph = ?, updated_at = datetime('now') WHERE id = ?`)
       .run(JSON.stringify(next), row.id);
     const moved = repairRuns(row.id, next);
-    console.log('[workflow] Alte Strategie "' + row.id + '" auf den neuen Stand gehoben'
+    console.log('[workflow] Strategie "' + row.id + '" auf Stand ' + GRAPH_VERSION + ' gehoben'
       + (moved ? ' – ' + moved + ' laufende Leads umgehängt' : ''));
   }
+  setSetting('graph_version', String(GRAPH_VERSION));
 }
 
 /**
@@ -184,6 +197,8 @@ const NODE_RENAMES: Record<string, string> = {
   sperren: 'alt_sperren', kein_interesse: 'alt_kein', urlaub: 'alt_urlaub',
   spaeter: 'alt_wv', falscher_ap: 'alt_sonder', bounce_pruefen: 'alt_sonder',
   wv_anruf: 'anruf_wv', notiz_wv: 'tel_sonder',
+  // Telefon-Ast: eine Einstiegsmail wurde zu dreien (je Anrufergebnis)
+  tel_mail1: 'tel_nicht_erreicht',
 };
 
 function repairRuns(workflowId: string, graph: WorkflowGraph): number {
