@@ -898,6 +898,8 @@
   }
   .wf-panel.wf-full .wf-main { padding-top:0; }
   .wf-panel.wf-full .wf-canvas { border-radius:0; border:0; }
+  .wf-panel.wf-full .wf-side.wf-side-leer { display:none; }
+  .wf-panel.wf-full .wf-main.wf-main-solo { grid-template-columns:1fr; }
 
   /* Knoten-Karten: je Typ eine eigene Form, nicht nur eine andere Farbe */
   .wf-node { display:flex; gap:9px; align-items:flex-start; border-left-width:1.5px; padding:9px 11px 9px 10px; }
@@ -5128,12 +5130,45 @@ function wfRenderStats(){
     '<div title="Adressen, die nie wieder angeschrieben werden"><b>' + (s.suppressed||0) + '</b> gesperrt</div>';
 }
 
+// Gleiche Suche wie auf dem Server (findTemplateByName): erst exakt, dann
+// enthalten im Namen, dann im Betreff. Umlaute und Zeichensetzung egal.
+function wfSetVorlagen(sel){
+  const namen = Array.prototype.slice.call(sel.selectedOptions).map(function(o){ return o.value; });
+  wfSetCfg('template_match', namen);
+}
+
+function wfTplNorm(v){
+  return String(v || '').toLowerCase()
+    .replace(/[äöüß]/g, function(m){ return {'ä':'ae','ö':'oe','ü':'ue','ß':'ss'}[m] || m; })
+    .replace(/[^a-z0-9]+/g, ' ').trim();
+}
+function wfTplPasst(tpl, name){
+  const n = wfTplNorm(name);
+  if (!n) return false;
+  const tn = wfTplNorm(tpl.name), ts = wfTplNorm(tpl.subject);
+  return tn === n || tn.indexOf(n) >= 0 || ts.indexOf(n) >= 0;
+}
+
 function wfSubtitle(n){
   const c = n.config || {};
   if (n.type === 'trigger') return c.source === 'status'
     ? 'Startet bei Status: ' + wfEsc(c.status || 'demo_booked')
     : (c.requires_email === 'no' ? 'Leads ohne E-Mail' : 'Neue Leads mit E-Mail') + (c.branche ? ', ' + wfEsc(c.branche) : '');
-  if (n.type === 'email') { const t = wfTpls.find(function(x){ return x.id === c.template_id; }); return 'Vorlage: ' + wfEsc(t ? t.name : (c.template_id || '—')) + (c.urgent ? ' · sofort' : ''); }
+  if (n.type === 'email') {
+    // Der Baum haengt an den NAMEN deiner Vorlagen, nicht an IDs. Auf der Karte
+    // muss deshalb stehen, was wirklich rausgeht - und ob es die Vorlage gibt.
+    const namen = Array.isArray(c.template_match) ? c.template_match
+                : (c.template_match ? [c.template_match] : []);
+    if (namen.length) {
+      const txt = namen.map(function(name){
+        const da = wfTpls.some(function(x){ return wfTplPasst(x, name); });
+        return (da ? '' : '⚠ ') + name;
+      }).join(' · ');
+      return 'Vorlage: ' + wfEsc(txt) + (c.urgent ? ' · sofort' : '');
+    }
+    const t = wfTpls.find(function(x){ return x.id === c.template_id; });
+    return 'Vorlage: ' + wfEsc(t ? t.name : (c.template_id || '—')) + (c.urgent ? ' · sofort' : '');
+  }
   if (n.type === 'wait') return (c.days != null ? c.days : 1) + ' Tage warten';
   if (n.type === 'snooze') return 'Wiedervorlage · ' + (c.days != null ? c.days : 2) + ' Tage';
   if (n.type === 'check') return 'Antwort, Bounce oder Klick leitet um';
@@ -5148,8 +5183,38 @@ function wfSubtitle(n){
   return 'Der Lauf endet hier';
 }
 
+// Ausgangs-Beschriftungen so stapeln, dass sich keine zwei ueberdecken. Feste
+// Zeilen reichen nicht: „Geklärt · weitermachen“ ist breiter als der halbe Knoten.
+// Deshalb wird nach dem Zeichnen gemessen und jede Beschriftung in die erste
+// Zeile gelegt, in der sie frei steht.
+function wfPortLabelsSetzen(){
+  const gruppen = new Map();
+  document.querySelectorAll('#wf-nodes .wf-plabel').forEach(function(el){
+    const host = el.parentElement;
+    if (!gruppen.has(host)) gruppen.set(host, []);
+    gruppen.get(host).push(el);
+  });
+  gruppen.forEach(function(labels){
+    labels.forEach(function(el){ el.style.bottom = '-25px'; });
+    if (labels.length < 2) return;
+    const boxen = labels.map(function(el){
+      const r = el.getBoundingClientRect();
+      return { el: el, l: r.left, r: r.right };
+    }).sort(function(a, b){ return a.l - b.l; });
+    const belegt = [];
+    boxen.forEach(function(b){
+      let zeile = 0;
+      while (belegt[zeile] != null && b.l < belegt[zeile] + 6) zeile++;
+      belegt[zeile] = b.r;
+      b.el.style.bottom = '-' + (25 + zeile * 13) + 'px';
+    });
+  });
+}
+
 function wfPortHtml(n, port, pct, single){
   const col = WF_TONE[port.tone] || WF_TONE.active;
+  // Die Zeile wird nach dem Zeichnen gemessen (wfPortLabelsSetzen) - nur so
+  // passt es auch bei langen Namen wie „Geklärt · weitermachen“.
   const lbl = single ? '' : '<div class="wf-plabel" style="left:' + (pct*100) + '%;color:' + col + '">' + wfEsc(port.label || port.key) + '</div>';
   return '<div class="wf-port pout" data-port-node="' + n.id + '" data-port="' + wfEsc(port.key) + '" title="' + wfEsc(port.label || '') +
          '" style="left:' + (pct*100) + '%;margin-left:-6px;border-color:' + col + '"></div>' + lbl;
@@ -5179,8 +5244,8 @@ function wfRenderNodes(){
       outs + '</div>';
   }).join('');
   wfApplyTransform();
-  requestAnimationFrame(function(){ wfDrawEdges(); });
-  setTimeout(function(){ wfDrawEdges(); }, 60);
+  requestAnimationFrame(function(){ wfPortLabelsSetzen(); wfDrawEdges(); });
+  setTimeout(function(){ wfPortLabelsSetzen(); wfDrawEdges(); }, 60);
 }
 
 function wfRenderBadges(){
@@ -5339,6 +5404,11 @@ function wfField(label, inner){ return '<div class="wf-f"><label>' + label + '</
 function wfRenderSide(){
   const side = document.getElementById('wf-side');
   const n = wfNodeById(wfSel);
+  // Im Vollbild soll wirklich nur die Karte zu sehen sein. Solange keine Stage
+  // angeklickt ist, hat die Seitenspalte nichts zu sagen - dann weg damit.
+  side.classList.toggle('wf-side-leer', !n);
+  const main = side.closest('.wf-main');
+  if (main) main.classList.toggle('wf-main-solo', !n);
   if (!n) {
     side.innerHTML = '<h4>Keine Stage ausgewählt</h4><p class="hint">Klick eine Stage im Baum an: links stellst du sie ein, unten siehst du, welche Kunden gerade dort stehen.</p>';
     return;
@@ -5361,8 +5431,24 @@ function wfRenderSide(){
     }
   }
   if (n.type === 'email') {
-    form += wfField('Vorlage', '<select onchange="wfSetCfg(\'template_id\', this.value)">' +
-      wfTpls.map(function(t){ return '<option value="' + wfEsc(t.id) + '"' + (c.template_id === t.id ? ' selected' : '') + '>' + wfEsc(t.name) + '</option>'; }).join('') + '</select>');
+    // Der Versand sucht die Vorlage ueber den NAMEN. Also muss hier auch der Name
+    // gesetzt werden - sonst waehlst du etwas aus und es geht trotzdem die alte raus.
+    // Mehrere Ausgewaehlte wechseln sich ab (z. B. die zwei Erstkontakte).
+    const gewaehlt = Array.isArray(c.template_match) ? c.template_match
+                   : (c.template_match ? [c.template_match] : []);
+    form += wfField('Vorlage · mehrere anklicken = sie wechseln sich ab',
+      '<select multiple size="6" onchange="wfSetVorlagen(this)" style="height:auto">' +
+      wfTpls.map(function(t){
+        const an = gewaehlt.some(function(name){ return wfTplPasst(t, name); });
+        return '<option value="' + wfEsc(t.name) + '"' + (an ? ' selected' : '') + '>' + wfEsc(t.name) + '</option>';
+      }).join('') + '</select>');
+    const fehlt = gewaehlt.filter(function(name){ return !wfTpls.some(function(t){ return wfTplPasst(t, name); }); });
+    if (fehlt.length) {
+      form += '<div style="font-size:12px;color:var(--r);margin:-6px 0 10px">⚠ Nicht gefunden: ' + wfEsc(fehlt.join(', ')) +
+        ' — diese Mail fällt aus. Lege die Vorlage unter „Vorlagen“ an oder wechsle oben.</div>';
+    } else if (!gewaehlt.length) {
+      form += '<div style="font-size:12px;color:var(--r);margin:-6px 0 10px">⚠ Keine Vorlage gewählt — hier geht nichts raus.</div>';
+    }
     form += '<label style="display:flex;gap:8px;align-items:center;font-size:12px;color:var(--txt2);margin-bottom:10px">' +
       '<input type="checkbox"' + (c.urgent ? ' checked' : '') + ' onchange="wfSetCfg(\'urgent\', this.checked)"> Sofort senden (ignoriert Sendefenster und Abstand)</label>';
   }
@@ -5773,7 +5859,7 @@ function wfToggleFull(){
     document.body.style.overflow = '';
   }
   document.getElementById('wf-full-btn').textContent = wfFullscreen ? '⤡ Vollbild verlassen' : '⛶ Vollbild';
-  setTimeout(function(){ wfDrawEdges(); }, 60);
+  setTimeout(function(){ wfPortLabelsSetzen(); wfDrawEdges(); }, 60);
 }
 document.addEventListener('keydown', function(ev){
   if (ev.key !== 'Escape') return;

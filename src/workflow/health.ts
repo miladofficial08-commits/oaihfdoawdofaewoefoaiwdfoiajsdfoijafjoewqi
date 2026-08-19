@@ -52,8 +52,11 @@ function fehlendeVorlagen(wf: Workflow): HealthLine | null {
   const fehlend = new Set<string>();
   for (const n of wf.graph.nodes) {
     if (n.type !== 'email') continue;
-    const roh = (n.config as { template_match?: unknown }).template_match;
+    const cfg = n.config as { template_match?: unknown; template_id?: string };
+    const roh = cfg.template_match;
     const namen = Array.isArray(roh) ? roh.map(String) : roh ? [String(roh)] : [];
+    // Gar keine Vorlage hinterlegt ist genauso schlimm wie eine falsch benannte.
+    if (!namen.length && !cfg.template_id) { fehlend.add(`${n.title} (keine Vorlage gewaehlt)`); continue; }
     for (const name of namen) if (!findTemplateByName(name)) fehlend.add(name);
   }
   if (!fehlend.size) return null;
