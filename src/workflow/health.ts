@@ -68,6 +68,78 @@ function fehlendeVorlagen(wf: Workflow): HealthLine | null {
   };
 }
 
+/**
+ * Alles, was VOR dem ersten Versand stimmen muss. Bewusst getrennt von den
+ * Laufzeit-Pruefungen: Diese Punkte gelten auch (und gerade) dann, wenn die
+ * Strategie noch aus ist. Vorher brach der Waechter im Aus-Zustand frueh ab und
+ * verschwieg genau die Fragen, die man vor dem Start beantwortet haben will.
+ */
+export function startklarLinien(wf: Workflow): HealthLine[] {
+  const db = getDb();
+  const raus: HealthLine[] = [];
+  const one = (sql: string, ...a: unknown[]) => (db.prepare(sql).get(...a) as { n: number }).n;
+
+  // Vorlagen: haengt jede Mail des Baums an einer Vorlage, die es gibt?
+  const fehlt = fehlendeVorlagen(wf);
+  if (fehlt) raus.push(fehlt);
+  else raus.push({ level: 'ok', text: 'Vorlagen: jede Mail im Baum haengt an einer vorhandenen Vorlage.' });
+
+  // Postfach: ohne IMAP werden Antworten und Abmeldungen nicht erkannt.
+  const inboxOk = Boolean((process.env.IMAP_USER || process.env.SMTP_USER) && (process.env.IMAP_PASS || process.env.SMTP_PASS));
+  raus.push(inboxOk
+    ? { level: 'ok', text: 'Postfach angebunden: Antworten und Abmeldungen werden erkannt.' }
+    : { level: 'down', text: 'Postfach NICHT angebunden. Antworten werden nicht erkannt – Interessenten gehen verloren und Abmeldungen greifen nicht.' });
+
+  // Versandweg: ohne SMTP/Brevo geht ueberhaupt nichts raus.
+  const sendenOk = Boolean(process.env.BREVO_API_KEY || (process.env.SMTP_HOST && process.env.SMTP_USER));
+  raus.push(sendenOk
+    ? { level: 'ok', text: `Versandweg steht (${process.env.SMTP_FROM || 'Absender nicht gesetzt'}).` }
+    : { level: 'down', text: 'Kein Versandweg: weder Brevo-Schluessel noch SMTP-Zugang gesetzt.' });
+
+  // Termin-Link: ohne ihn wird aus Interesse nur eine Aufgabe statt einer Mail.
+  raus.push(getSetting('cal_link', '').trim()
+    ? { level: 'ok', text: 'Termin-Link hinterlegt: Bei Interesse geht die Terminmail automatisch raus.' }
+    : { level: 'warn', text: 'Kein Cal.com-Link hinterlegt: Bei Interesse entsteht nur eine Aufgabe, keine Terminmail. Unten unter den Einstellungen eintragen.' });
+
+  // Nahrung: gibt es ueberhaupt Firmen zum Anschreiben?
+  const wartend = wf.graph.nodes
+    .filter(n => n.type === 'trigger')
+    .reduce((sum, n) => { try { return sum + pendingCount(wf, n); } catch { return sum; } }, 0);
+  const drin = one(`SELECT COUNT(*) n FROM workflow_runs WHERE workflow_id = ? AND status = 'active'`, wf.id);
+  raus.push((wartend + drin) > 0
+    ? { level: 'ok', text: `Vorrat: ${drin} Firmen bereits in der Strategie, ${wartend} warten auf Aufnahme.` }
+    : { level: 'down', text: 'Keine Firmen zum Anschreiben: weder in der Strategie noch in der Warteschlange. Erst Leads holen oder „Bestandsdaten einsortieren" druecken.' });
+
+  // Bereits angeschriebene Firmen, die in keiner Stage stehen.
+  const verwaist = db.prepare(
+    `SELECT COALESCE(l.track,'voice_agent') AS track, COUNT(*) AS n
+     FROM leads l
+     WHERE l.email IS NOT NULL AND l.email != ''
+       AND LOWER(TRIM(l.email)) IN (SELECT LOWER(TRIM(to_email)) FROM sent_emails WHERE success = 1)
+       AND l.id NOT IN (SELECT lead_id FROM workflow_runs WHERE status = 'active')
+       AND COALESCE(l.status,'') != 'duplicate'
+     GROUP BY COALESCE(l.track,'voice_agent')`
+  ).all() as Array<{ track: string; n: number }>;
+  for (const v of verwaist) {
+    if (v.n <= 0) continue;
+    raus.push({
+      level: 'warn',
+      text: v.track === wf.track
+        ? `${v.n} bereits angeschriebene Firmen stehen in keiner Stage – auf „Bestandsdaten einsortieren" druecken, sonst faellt niemand nach.`
+        : `${v.n} angeschriebene Firmen im Bereich „${v.track}" laufen in keiner Strategie. Dafuer braucht es eine eigene Strategie mit diesem Track.`,
+    });
+  }
+
+  // Altsysteme, die parallel senden wuerden.
+  const alteJobs = one(`SELECT COUNT(*) n FROM send_jobs WHERE status = 'running'`);
+  if (alteJobs > 0) raus.push({ level: 'down', text: `${alteJobs} alte Auto-Kampagne(n) laufen noch. Dieselben Firmen bekaemen Post aus zwei Systemen – erst stoppen.` });
+  const fuOn = (db.prepare(`SELECT enabled FROM followup_config WHERE id = 1`).get() as { enabled: number } | undefined)?.enabled === 1;
+  if (fuOn) raus.push({ level: 'warn', text: 'Der alte Follow-up-Worker ist noch aktiv. Die Strategie fasst selbst nach – beim Uebernehmen wird er gestoppt.' });
+  if (alteJobs === 0 && !fuOn) raus.push({ level: 'ok', text: 'Keine Altkampagne laeuft parallel.' });
+
+  return raus;
+}
+
 export function workflowHealth(wf: Workflow): HealthReport {
   const db = getDb();
   const lines: HealthLine[] = [];
@@ -101,15 +173,22 @@ export function workflowHealth(wf: Workflow): HealthReport {
 
   // ── Ist die Abteilung überhaupt im Dienst? ──
   if (!wf.enabled) {
-    const fehlt = fehlendeVorlagen(wf);
+    const check = startklarLinien(wf);
+    const blocker = check.filter(l => l.level === 'down').length;
+    const offen = check.filter(l => l.level === 'warn').length;
     return {
-      level: fehlt ? 'down' : 'off',
-      headline: fehlt
-        ? 'Erst die Vorlagen klaeren – sonst faellt eine Stufe aus.'
-        : 'Die Strategie ist ausgeschaltet – es geht nichts raus.',
+      level: blocker ? 'down' : offen ? 'warn' : 'off',
+      headline: blocker
+        ? `Noch nicht startklar: ${blocker} Punkt(e) blockieren den Start.`
+        : offen
+          ? `Startklar – ${offen} Punkt(e) solltest du vorher noch erledigen.`
+          : 'Startklar. Auf „Strategie übernehmen" drücken, dann läuft es.',
       lines: [
-        { level: 'off' as HealthLevel, text: 'Zum Starten oben auf „Strategie übernehmen" drücken.' },
-        ...(fehlt ? [fehlt] : []),
+        ...check,
+        { level: (blocker ? 'down' : 'off') as HealthLevel,
+          text: blocker
+            ? 'Erst die roten Punkte klären, dann auf „Strategie übernehmen" drücken.'
+            : 'Zum Starten oben auf „Strategie übernehmen" drücken.' },
       ],
       sent_today: sentToday, cap_today: cap, last_send_at: lastSend, hours_since_send: hours,
       pending, active_runs: activeRuns, reichweite_tage: null,

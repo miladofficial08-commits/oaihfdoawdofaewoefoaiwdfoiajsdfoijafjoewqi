@@ -38,6 +38,8 @@ import { fetchInboxEmails, getImapStatus, markEmailSeen } from '../email/inbox';
 import { startReplyScanner, scanReplies, listReplies } from '../email/reply-scanner';
 import { getEmailTemplate, updateEmailTemplate, renderTemplate, listEmailTemplates, createEmailTemplate, deleteEmailTemplate, getTemplateById } from '../email/template';
 import { nurEigeneVorlagen } from '../email/template-cleanup';
+import { startklarLinien } from '../workflow/health';
+import { getWorkflow } from '../workflow/schema';
 import { startDailyEngine } from '../email/daily-engine';
 import { startAutoSender, recordSentEmail, sentTodayCount, GLOBAL_DAILY_CAP, ALLOWED_DAILY_LIMITS, SendJob } from '../email/auto-sender';
 import { startFollowupSender, getFollowupConfig, setFollowupConfig, followupStats } from '../email/followup-sender';
@@ -2193,6 +2195,21 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
 
   // Strategie-Workflow (visueller Baum im Autoversand)
   await registerWorkflowRoutes(app);
+
+  // Startklar-Bericht ins Protokoll. Ohne das muesste man sich einloggen, um zu
+  // sehen, ob die Kampagne loslaufen kann - so steht es bei jedem Start da.
+  try {
+    const wf = getWorkflow();
+    if (wf) {
+      const zeichen: Record<string, string> = { ok: '  OK  ', warn: ' TODO ', down: 'BLOCKT', off: '  --  ' };
+      console.log(`[startklar] Strategie "${wf.name}" ist ${wf.enabled ? 'AKTIV' : 'AUS'}`);
+      for (const l of startklarLinien(wf)) console.log(`[startklar] ${zeichen[l.level] || l.level} ${l.text}`);
+    } else {
+      console.log('[startklar] Es ist noch keine Strategie angelegt.');
+    }
+  } catch (err) {
+    console.log('[startklar] Bericht nicht moeglich: ' + (err as Error).message);
+  }
 
   // Hintergrund-Worker starten
   startAutoSender();
