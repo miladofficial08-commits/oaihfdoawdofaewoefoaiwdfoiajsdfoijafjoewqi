@@ -399,7 +399,12 @@ async function stepRun(wf: Workflow, run: RunRow, sendBudget: { left: number }):
 
   const node = findNode(wf.graph, run.node_id);
 
-  // 1) Abmelde-Schutz. Gesperrte Adressen dürfen die Sende-Sequenz nicht weiterlaufen.
+  // 1) Von Hand gesetzter Status (Anrufliste, CRM, Pipeline) zieht den Lauf nach.
+  //    Muss VOR der Sperrprüfung laufen: Ein auf "kein Interesse" gesetzter Lead
+  //    soll sichtbar in seiner Stage stehen, nicht wortlos aus dem Baum fallen.
+  if (syncStatusToStage(wf, run, lead)) return;
+
+  // 2) Abmelde-Schutz. Gesperrte Adressen dürfen die Sende-Sequenz nicht weiterlaufen.
   //    Auf einem Sperr- oder Stage-Knoten bleibt der Lauf dagegen bestehen: dort geht
   //    nichts mehr raus, und der Lead ist im Board sichtbar (z. B. "Kein Interesse").
   const SENDING_NODES = ['email', 'wait', 'trigger', 'check', 'snooze', 'pause'];
@@ -415,7 +420,7 @@ async function stepRun(wf: Workflow, run: RunRow, sendBudget: { left: number }):
     && nodeOutcomes(node).length === 0
     && !wf.graph.edges.some(e => e.from === node.id));
 
-  // 2) Neue Antwort? Abmeldung sofort umsetzen, sonst Weiche stellen.
+  // 3) Neue Antwort? Abmeldung sofort umsetzen, sonst Weiche stellen.
   const reaction = newReply(run);
   if (reaction) {
     setRun(run.id, { last_reaction_uid: reaction.uid });
@@ -435,14 +440,14 @@ async function stepRun(wf: Workflow, run: RunRow, sendBudget: { left: number }):
     if (!run.watch_off && !terminal && routeReaction(wf, run, lead, reaction.port, reaction.detail)) return;
   }
 
-  // 3) Bounce – die Adresse ist nachweislich ungültig.
+  // 4) Bounce – die Adresse ist nachweislich ungültig.
   if (!run.watch_off && !terminal && hasBounce(run.lead_id) && routeReaction(wf, run, lead, 'bounce', 'Zustellung fehlgeschlagen')) return;
 
-  // 4) Echter Klick ohne Antwort.
+  // 5) Echter Klick ohne Antwort.
   if (!run.watch_off && !terminal && hasRealClick(run.lead_id, parseTs(run.started_at))
       && routeReaction(wf, run, lead, 'clicked', 'Hat einen Link in der Mail geklickt')) return;
 
-  // 5) Fällig? Dann genau einen Knoten ausführen.
+  // 6) Fällig? Dann genau einen Knoten ausführen.
   if (parseTs(run.due_at) > Date.now()) return;
   if (!node) { finishRun(run, 'error', `Knoten "${run.node_id}" fehlt im Graphen`, lead); return; }
   if (node.type === 'email' && sendBudget.left <= 0) return;
@@ -484,6 +489,40 @@ function findCheckFor(graph: WorkflowGraph, fromId: string | null): WorkflowNode
     }
   }
   return graph.nodes.find(n => n.type === 'check') ?? null;
+}
+
+/**
+ * Zieht den Lauf nach, wenn der Status von Hand geändert wurde.
+ *
+ * Der Nutzer arbeitet nicht nur im Baum: In der Anrufliste, im CRM und in der
+ * Pipeline setzt er Ergebnisse („Termin gebucht", „Kein Interesse", „Gewonnen").
+ * Ohne diesen Abgleich liefe die Mail-Sequenz stur weiter, während er längst
+ * telefoniert hat – der Betrieb bekäme nach dem gebuchten Termin noch ein
+ * „Letzter Versuch". Die Prüfung läuft bei JEDEM Tick und wirkt deshalb
+ * unabhängig davon, an welcher Stelle der Status geändert wurde.
+ *
+ * Bewusst NICHT synchronisiert werden Zwischenstände wie 'contacted' oder
+ * 'manual_review' („nicht erreicht") – die sollen den Lauf nicht verschieben.
+ */
+function syncStatusToStage(wf: Workflow, run: RunRow, lead: Lead): boolean {
+  const ziele: string[] = [];
+  for (const n of wf.graph.nodes) {
+    if ((n.config as { status?: string }).status === lead.status) ziele.push(n.id);
+  }
+  if (!ziele.length) return false;
+  if (run.node_id && ziele.includes(run.node_id)) return false;   // steht schon richtig
+
+  // Innerhalb desselben Astes bleiben, wenn es dort eine passende Stage gibt.
+  const ast = String(run.node_id || '').split('_')[0] + '_';
+  const target = ziele.find(z => z.startsWith(ast)) ?? ziele[0];
+
+  setRun(run.id, { node_id: target, due_at: nowIso(), snooze_until: null, steps: run.steps + 1 });
+  logWorkflow({
+    run_id: run.id, lead_id: lead.id, lead_name: lead.name, node_id: target, node_type: 'stage',
+    action: 'Status von Hand geändert', level: 'hot',
+    detail: `Status "${lead.status}" → Lead steht jetzt auf "${findNode(wf.graph, target)?.title ?? target}"`,
+  });
+  return true;
 }
 
 /** Leitet den Lauf in den passenden Zweig der Reaktions-Weiche. true = umgeleitet. */
