@@ -105,25 +105,81 @@ function ownAddresses(): Set<string> {
   );
 }
 
-interface MatchedLead { id: string; name: string; status: LeadStatus; followup_stopped: number | null; }
+interface MatchedLead {
+  id: string; name: string; status: LeadStatus; followup_stopped: number | null;
+  /** Die Adresse, die wir angeschrieben haben – nicht zwingend die, von der geantwortet wurde. */
+  email?: string | null;
+  /** true = über die Firmen-Domain zugeordnet, nicht über die exakte Adresse. */
+  viaDomain?: boolean;
+}
 
-/** Findet den Lead zu einer Absenderadresse – nur wenn wir ihn tatsächlich angeschrieben haben. */
+/**
+ * Freemail- und Provider-Domains. Hier darf NIE über die Domain zugeordnet werden:
+ * hinter @gmail.com stecken Millionen Fremde, nicht eine Firma. Manche Betriebe
+ * nutzen so eine Adresse geschäftlich – die trifft dann weiterhin der exakte
+ * Abgleich, nur eben nicht die Domain-Regel.
+ */
+const FREEMAIL = new Set([
+  'gmail.com', 'googlemail.com', 'gmx.de', 'gmx.net', 'gmx.at', 'gmx.ch', 'web.de',
+  't-online.de', 'outlook.com', 'outlook.de', 'hotmail.com', 'hotmail.de', 'live.de',
+  'live.com', 'yahoo.com', 'yahoo.de', 'icloud.com', 'me.com', 'aol.com', 'aol.de',
+  'freenet.de', 'mail.de', 'posteo.de', 'mailbox.org', 'arcor.de', 'online.de',
+  'unity-mail.de', 'vodafone.de', 'ok.de', 'gmx.com', 'protonmail.com', 'proton.me',
+]);
+
+const domainOf = (email: string): string => (email.split('@')[1] || '').trim().toLowerCase();
+
+/**
+ * Findet den Lead zu einer Absenderadresse – nur wenn wir ihn tatsächlich angeschrieben haben.
+ *
+ * Der dritte Schritt ist der wichtige: Wir schreiben an info@firma.de, und der
+ * Chef antwortet von chef@firma.de. Ohne Domain-Abgleich sieht die Kampagne diese
+ * Antwort NICHT – sie schickt dem Mann, der gerade geantwortet hat, anschliessend
+ * noch „Letzter Versuch". Das ist der peinlichste Fehler, den dieses System machen
+ * kann, und er ist im Bestand messbar haeufig.
+ *
+ * Streng abgesichert, damit nicht das Gegenteil passiert:
+ *   • keine Freemail-Domains (dahinter steht keine Firma)
+ *   • nur Domains, an die wir wirklich gesendet haben
+ *   • nur wenn GENAU EIN Lead dieser Domain angeschrieben wurde – sonst waere
+ *     unklar, welche Firma gemeint ist, und Raten ist hier verboten.
+ */
 function findLeadForSender(fromEmail: string): MatchedLead | undefined {
   const db = getDb();
   const email = fromEmail.trim().toLowerCase();
   if (!email) return undefined;
+
   // 1) Über eine tatsächlich versendete Mail (sichere Zuordnung: wir haben ihn kontaktiert).
   const viaSent = db.prepare(
-    `SELECT l.id, l.name, l.status, l.followup_stopped
+    `SELECT l.id, l.name, l.status, l.followup_stopped, l.email
      FROM sent_emails se JOIN leads l ON l.id = se.lead_id
      WHERE LOWER(TRIM(se.to_email)) = ? AND se.lead_id IS NOT NULL
      ORDER BY se.sent_at DESC LIMIT 1`
   ).get(email) as MatchedLead | undefined;
   if (viaSent) return viaSent;
-  // 2) Fallback: direkte Übereinstimmung mit der Lead-Adresse.
-  return db.prepare(
-    `SELECT id, name, status, followup_stopped FROM leads WHERE LOWER(TRIM(email)) = ? LIMIT 1`
+
+  // 2) Direkte Übereinstimmung mit der Lead-Adresse.
+  const direkt = db.prepare(
+    `SELECT id, name, status, followup_stopped, email FROM leads WHERE LOWER(TRIM(email)) = ? LIMIT 1`
   ).get(email) as MatchedLead | undefined;
+  if (direkt) return direkt;
+
+  // 3) Gleiche Firma, andere Adresse.
+  const domain = domainOf(email);
+  if (!domain || FREEMAIL.has(domain)) return undefined;
+
+  const kandidaten = db.prepare(
+    `SELECT DISTINCT l.id, l.name, l.status, l.followup_stopped, l.email
+     FROM leads l
+     WHERE l.email IS NOT NULL AND l.email != ''
+       AND LOWER(TRIM(SUBSTR(l.email, INSTR(l.email,'@') + 1))) = @domain
+       AND EXISTS (SELECT 1 FROM sent_emails se WHERE se.success = 1
+                   AND LOWER(TRIM(se.to_email)) = LOWER(TRIM(l.email)))
+     LIMIT 2`
+  ).all({ domain }) as MatchedLead[];
+
+  if (kandidaten.length !== 1) return undefined;   // 0 = nie angeschrieben, 2+ = mehrdeutig
+  return { ...kandidaten[0], viaDomain: true };
 }
 
 function suppress(email: string, reason: string): void {
@@ -232,8 +288,17 @@ export async function scanReplies(limit = 60): Promise<ScanResult> {
       }
 
       // Klares Desinteresse zusätzlich global sperren (auch Auto-Versand meidet die Adresse).
+      //
+      // Beide Adressen sperren, nicht nur die des Absenders: Wenn der Chef von
+      // chef@firma.de absagt, wir aber an info@firma.de schreiben, wuerde eine
+      // Sperre auf chef@ gar nichts bremsen – die Kampagne schriebe munter weiter
+      // an info@. Eine Absage gilt der Firma, nicht dem Postfach.
       if (cls.category === 'not_interested') {
-        suppress(from, `Kein Interesse (Antwort): ${(m.snippet || '').slice(0, 120)}`);
+        const grund = `Kein Interesse (Antwort): ${(m.snippet || '').slice(0, 120)}`;
+        suppress(from, grund);
+        if (lead.email && lead.email.trim().toLowerCase() !== from) {
+          suppress(lead.email, `${grund} – Absage kam von ${from}`);
+        }
       }
 
       // Rechtsschutz: ein ausdrücklicher Widerspruch (Abmeldung, DSGVO, Anwalt …) sperrt
@@ -242,6 +307,11 @@ export async function scanReplies(limit = 60): Promise<ScanResult> {
       const optOut = detectOptOut(m.subject || '', m.body || '');
       if (optOut?.hard) {
         suppress(from, `Ausdrücklicher Widerspruch ("${optOut.phrase}")`);
+        // Auch hier: der Widerspruch gilt der Firma. Sonst laeuft die Kampagne
+        // nach einer Abmahnungsdrohung weiter an die Hauptadresse.
+        if (lead.email && lead.email.trim().toLowerCase() !== from) {
+          suppress(lead.email, `Ausdrücklicher Widerspruch ("${optOut.phrase}") – kam von ${from}`);
+        }
         if (!KEEP_STATUS.includes(lead.status)) {
           updateLeadStatus(lead.id, 'do_not_contact', {
             notiz: `Widerspruch erkannt ("${optOut.phrase}") – dauerhaft gesperrt`,
@@ -252,7 +322,9 @@ export async function scanReplies(limit = 60): Promise<ScanResult> {
       recordOutreachEvent({
         lead_id: lead.id, event_type: 'reply_received', channel: 'email',
         status: cls.category === 'not_interested' ? 'no_interest' : 'replied', user: 'reply-scan',
-        note: `Antwort (${cls.category}, ${cls.confidence}%) von ${from} | Betreff: "${m.subject}" | ${cls.reason}`,
+        note: `Antwort (${cls.category}, ${cls.confidence}%) von ${from}`
+          + (lead.viaDomain ? ` [über die Firmen-Domain zugeordnet, angeschrieben war ${lead.email}]` : '')
+          + ` | Betreff: "${m.subject}" | ${cls.reason}`,
       });
     }
 
