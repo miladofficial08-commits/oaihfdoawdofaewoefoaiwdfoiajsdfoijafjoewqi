@@ -1,6 +1,7 @@
 import { getDb } from '../db/schema';
 import { Workflow, effectiveDailyCap, getSetting, activeWorkflows } from './schema';
 import { pendingCount } from './enroll';
+import { findTemplateByName } from '../email/template';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Wächter über die E-Mail-Abteilung.
@@ -41,6 +42,29 @@ const hoursSince = (iso: string | null): number | null => {
   return Number.isFinite(t) ? Math.round((Date.now() - t) / 3_600_000) : null;
 };
 
+/**
+ * Die Strategie sucht ihre Vorlagen ueber den Namen. Wird eine nicht gefunden,
+ * faellt genau diese Mail lautlos aus und der Lead verliert eine Stufe. Deshalb
+ * pruefen wir das auch dann, wenn die Strategie noch gar nicht laeuft – der
+ * richtige Moment fuer diese Warnung ist VOR dem Uebernehmen.
+ */
+function fehlendeVorlagen(wf: Workflow): HealthLine | null {
+  const fehlend = new Set<string>();
+  for (const n of wf.graph.nodes) {
+    if (n.type !== 'email') continue;
+    const roh = (n.config as { template_match?: unknown }).template_match;
+    const namen = Array.isArray(roh) ? roh.map(String) : roh ? [String(roh)] : [];
+    for (const name of namen) if (!findTemplateByName(name)) fehlend.add(name);
+  }
+  if (!fehlend.size) return null;
+  return {
+    level: 'down',
+    text: `Diese Vorlagen findet die Strategie nicht: ${[...fehlend].join(', ')}. `
+        + 'Entweder heissen sie unter „Vorlagen" anders, oder sie fehlen. '
+        + 'Solange das so ist, faellt genau diese Mail aus.',
+  };
+}
+
 export function workflowHealth(wf: Workflow): HealthReport {
   const db = getDb();
   const lines: HealthLine[] = [];
@@ -74,10 +98,16 @@ export function workflowHealth(wf: Workflow): HealthReport {
 
   // ── Ist die Abteilung überhaupt im Dienst? ──
   if (!wf.enabled) {
+    const fehlt = fehlendeVorlagen(wf);
     return {
-      level: 'off',
-      headline: 'Die Strategie ist ausgeschaltet – es geht nichts raus.',
-      lines: [{ level: 'off', text: 'Zum Starten oben auf „Strategie übernehmen" drücken.' }],
+      level: fehlt ? 'down' : 'off',
+      headline: fehlt
+        ? 'Erst die Vorlagen klaeren – sonst faellt eine Stufe aus.'
+        : 'Die Strategie ist ausgeschaltet – es geht nichts raus.',
+      lines: [
+        { level: 'off' as HealthLevel, text: 'Zum Starten oben auf „Strategie übernehmen" drücken.' },
+        ...(fehlt ? [fehlt] : []),
+      ],
       sent_today: sentToday, cap_today: cap, last_send_at: lastSend, hours_since_send: hours,
       pending, active_runs: activeRuns, reichweite_tage: null,
     };
@@ -180,6 +210,10 @@ export function workflowHealth(wf: Workflow): HealthReport {
     });
     worse('warn');
   }
+
+  // ── Vorlagen ──
+  const vorlagenWarnung = fehlendeVorlagen(wf);
+  if (vorlagenWarnung) { lines.push(vorlagenWarnung); worse('down'); }
 
   // ── Offene Aufgaben (dein Teil) ──
   const dueTasks = one(`SELECT COUNT(*) n FROM tasks WHERE status = 'open' AND due_at <= datetime('now')`);
