@@ -1,7 +1,9 @@
 import { getDb } from '../db/schema';
-import { fetchInboxEmails, InboxEmail } from './inbox';
+import { fetchInboxEmails, InboxEmail, purgeInboxNoise } from './inbox';
 import { updateLeadStatus, recordOutreachEvent } from '../db/leads-repo';
 import { LeadStatus } from '../types';
+import { isNoise } from './noise-filter';
+import { detectOptOut } from '../workflow/optout';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Antwort-Scanner: liest eingehende Antworten aus dem Postfach, ordnet sie dem
@@ -187,6 +189,10 @@ export async function scanReplies(limit = 60): Promise<ScanResult> {
     const from = (m.from || '').trim().toLowerCase();
     if (!from || mine.has(from)) continue;          // eigene / leere Absender überspringen
     if (isDeliveryNotification(m)) continue;         // Bounces macht der Bounce-Scan
+    // Defense-in-depth: fetchInboxEmails filtert Rauschen bereits vor, aber falls
+    // jemand die Funktion mal umgeht, verhindern wir hier False-Positive-"heiße Antworten"
+    // (z. B. italienische "Verifica profilo"-Challenge → würde Follow-up fälschlich stoppen).
+    if (isNoise({ fromEmail: from, fromName: m.fromName, subject: m.subject })) continue;
     if (seen.get(m.uid)) continue;                   // schon verarbeitet (idempotent)
 
     const cls = classifyReply(m.subject || '', m.body || '');
@@ -228,6 +234,19 @@ export async function scanReplies(limit = 60): Promise<ScanResult> {
       // Klares Desinteresse zusätzlich global sperren (auch Auto-Versand meidet die Adresse).
       if (cls.category === 'not_interested') {
         suppress(from, `Kein Interesse (Antwort): ${(m.snippet || '').slice(0, 120)}`);
+      }
+
+      // Rechtsschutz: ein ausdrücklicher Widerspruch (Abmeldung, DSGVO, Anwalt …) sperrt
+      // die Adresse IMMER – auch wenn die Heuristik oben die Antwort als Rückfrage
+      // eingeordnet hat. Lieber eine Adresse zu viel gesperrt als eine Abmahnung.
+      const optOut = detectOptOut(m.subject || '', m.body || '');
+      if (optOut?.hard) {
+        suppress(from, `Ausdrücklicher Widerspruch ("${optOut.phrase}")`);
+        if (!KEEP_STATUS.includes(lead.status)) {
+          updateLeadStatus(lead.id, 'do_not_contact', {
+            notiz: `Widerspruch erkannt ("${optOut.phrase}") – dauerhaft gesperrt`,
+          });
+        }
       }
 
       recordOutreachEvent({
@@ -313,6 +332,16 @@ export function startReplyScanner(): void {
       const r = await scanReplies();
       if (r.processed > 0) {
         console.log(`[reply-scan] ${r.processed} neue Antworten verarbeitet (${r.not_interested} Absagen, ${r.interested} Interesse, ${r.stopped} Follow-ups gestoppt)`);
+      }
+      // Nach dem Scan: Bounces / Auto-Reply / Verifica-Challenges / System-Noise
+      // direkt aus dem Postfach räumen. Standard: aktiv (opt-out über INBOX_AUTO_CLEAN=false).
+      if (process.env.INBOX_AUTO_CLEAN !== 'false') {
+        try {
+          const purge = await purgeInboxNoise(200);
+          if (purge.deleted > 0) console.log(`[reply-scan] Posteingang geräumt: ${purge.deleted} Rauschmail(s) gelöscht`);
+        } catch (err) {
+          console.error('[reply-scan] Purge-Fehler:', err instanceof Error ? err.message : err);
+        }
       }
     } catch (err) {
       console.error('[reply-scan] Fehler:', err instanceof Error ? err.message : err);

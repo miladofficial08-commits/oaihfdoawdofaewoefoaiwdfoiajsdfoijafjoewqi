@@ -3,6 +3,7 @@ import { sendLeadEmail } from './mailer';
 import { getTemplateById, renderTemplate } from './template';
 import { verticalPresets } from '../config/markets';
 import { Lead } from '../types';
+import { NOT_IN_ACTIVE_WORKFLOW_SQL } from '../workflow/schema';
 import { v4 as uuid } from 'uuid';
 
 // ── Sicherheits-Limits (Schutz vor SMTP-Account-Sperrung) ──────────────────
@@ -144,6 +145,7 @@ function pickNextLead(job: SendJob): Lead | undefined {
   const params: Record<string, unknown> = { jobTrack: job.track || 'voice_agent' };
   const sql = `SELECT * FROM leads
                WHERE email IS NOT NULL AND email != '' AND ${statusOk} AND ${ALREADY_CONTACTED_SQL}
+                 AND ${NOT_IN_ACTIVE_WORKFLOW_SQL}
                  AND COALESCE(track,'voice_agent') = @jobTrack`
     + brancheClause(terms, params)
     + ` ORDER BY CASE prioritaet WHEN 'A' THEN 0 WHEN 'B' THEN 1 ELSE 2 END, score_gesamt DESC LIMIT 1`;
@@ -155,7 +157,7 @@ function availableLeadCounts(job: SendJob): { branche: number; total: number } {
   const db = getDb();
   const statusOk = `status IN ('new','checked','draft_ready','approved','manual_review')`;
   const trackClause = ` AND COALESCE(track,'voice_agent') = @jobTrack`;
-  const base = `SELECT COUNT(*) as n FROM leads WHERE email IS NOT NULL AND email != '' AND ${statusOk} AND ${ALREADY_CONTACTED_SQL}${trackClause}`;
+  const base = `SELECT COUNT(*) as n FROM leads WHERE email IS NOT NULL AND email != '' AND ${statusOk} AND ${ALREADY_CONTACTED_SQL} AND ${NOT_IN_ACTIVE_WORKFLOW_SQL}${trackClause}`;
   const jobTrack = job.track || 'voice_agent';
   const total = (db.prepare(base).get({ jobTrack }) as { n: number }).n;
   const params: Record<string, unknown> = { jobTrack };

@@ -362,6 +362,52 @@ const tests = [
     assert.match(html, /sendEmail/);
     assert.match(html, /Diese eine freigegebene E-Mail wirklich ueber SMTP senden/);
   }],
+  ['workflow blocks contacts that explicitly opted out', () => {
+    const { detectOptOut } = require(path.join(__dirname, '..', 'dist', 'workflow', 'optout'));
+    assert.strictEqual(detectOptOut('', 'Ich widerspreche der weiteren Kontaktaufnahme.').hard, true);
+    assert.strictEqual(detectOptOut('', 'Bitte um Loeschung meiner Daten').hard, true);
+    assert.strictEqual(detectOptOut('', 'Kein Interesse, danke').hard, false);
+    assert.strictEqual(detectOptOut('Re: Angebot', 'Klingt gut, wann haetten Sie Zeit?'), null);
+  }],
+  ['workflow reads the return date from an out-of-office reply', () => {
+    const { parseReturnDate } = require(path.join(__dirname, '..', 'dist', 'workflow', 'reactions'));
+    const now = new Date('2026-08-18T10:00:00Z');
+    const d = parseReturnDate('Bin im Urlaub, ab 25.09. wieder da.', now);
+    assert.ok(d, 'Datum sollte erkannt werden');
+    assert.strictEqual(d.getMonth(), 8);
+    assert.strictEqual(d.getDate(), 25);
+    assert.strictEqual(parseReturnDate('Vielen Dank fuer Ihre Nachricht', now), null);
+  }],
+  ['workflow graph sanitizer drops broken nodes and dangling edges', () => {
+    const { sanitizeGraph, defaultGraph } = require(path.join(__dirname, '..', 'dist', 'workflow', 'schema'));
+    const clean = sanitizeGraph({
+      nodes: [{ id: 'a', type: 'email', title: 'A', x: 0, y: 0, config: {} }, { id: 'b', type: 'kaputt', title: 'B', x: 0, y: 0 }],
+      edges: [{ from: 'a', port: 'out', to: 'b' }, { from: 'a', port: 'out', to: 'a' }],
+    });
+    assert.strictEqual(clean.nodes.length, 1);
+    assert.strictEqual(clean.edges.length, 1, 'Kante auf einen entfernten Knoten muss verschwinden');
+    const base = sanitizeGraph(defaultGraph());
+    assert.ok(base.nodes.some(n => n.type === 'check'), 'Standard-Strategie braucht die Reaktions-Weiche');
+    assert.ok(base.nodes.some(n => n.type === 'suppress'), 'Standard-Strategie braucht den Sperr-Knoten');
+  }],
+  ['dashboard script parses – kein Syntaxfehler im Frontend', () => {
+    // Ein einziger kaputter String legt das GESAMTE Dashboard lahm: keine Daten,
+    // kein Knopf funktioniert. Genau das ist am 19.08. passiert, weil ein
+    // Bestaetigungstext einen echten Zeilenumbruch enthielt. Dieser Test prueft
+    // deshalb bei jedem Lauf, ob das Inline-Skript ueberhaupt parsebar ist.
+    const vm = require('vm');
+    const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'approval', 'views', 'dashboard.html'), 'utf8');
+    const start = html.lastIndexOf('<script>');
+    const end = html.lastIndexOf('</script>');
+    assert.ok(start > 0 && end > start, 'Skriptblock im Dashboard nicht gefunden');
+    const code = html.slice(start + '<script>'.length, end);
+    assert.ok(code.length > 1000, 'Skriptblock verdaechtig klein');
+    try {
+      new vm.Script(code, { filename: 'dashboard-inline.js' });
+    } catch (err) {
+      assert.fail('Syntaxfehler im Dashboard-Skript: ' + err.message);
+    }
+  }],
 ];
 
 let failures = 0;

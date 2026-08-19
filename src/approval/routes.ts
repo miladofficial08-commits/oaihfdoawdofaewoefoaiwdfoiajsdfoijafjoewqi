@@ -36,7 +36,7 @@ import { v4 as uuid } from 'uuid';
 import { getDb } from '../db/schema';
 import { fetchInboxEmails, getImapStatus, markEmailSeen } from '../email/inbox';
 import { startReplyScanner, scanReplies, listReplies } from '../email/reply-scanner';
-import { getEmailTemplate, updateEmailTemplate, renderTemplate, listEmailTemplates, createEmailTemplate, deleteEmailTemplate, getTemplateById, seedFollowupTemplates, seedOutreachTemplates, seedConsultTemplates } from '../email/template';
+import { getEmailTemplate, updateEmailTemplate, renderTemplate, listEmailTemplates, createEmailTemplate, deleteEmailTemplate, getTemplateById, seedFollowupTemplates, seedOutreachTemplates, seedConsultTemplates, seedWorkflowTemplates, seedReengageTemplates } from '../email/template';
 import { startDailyEngine } from '../email/daily-engine';
 import { startAutoSender, recordSentEmail, sentTodayCount, GLOBAL_DAILY_CAP, ALLOWED_DAILY_LIMITS, SendJob } from '../email/auto-sender';
 import { startFollowupSender, getFollowupConfig, setFollowupConfig, followupStats } from '../email/followup-sender';
@@ -44,6 +44,11 @@ import { classifyOpenEvent, isOpenLikeEvent, isReliableOpen, secondsBetween, cou
 import { classifyEmailDelivery } from '../email/email-status';
 import { startScheduledSender } from '../email/scheduled-sender';
 import { startBrevoSync, applyBrevoWebhookBody, verifyWebhookSecret, verifiedSendCounts, getBrevoAggregateCached, refreshBrevoAggregate, ensureBrevoWebhook } from '../email/brevo-sync';
+import { scrapeHandwerkRegion, handwerkProgress, HANDWERK_CRAFTS } from '../scraper/osm';
+import { harvestEmails, harvestProgress, stopHarvest, offeneWebsites } from '../scraper/email-harvester';
+import { startSupplyWorker, supplyStatus, setSupplyAuto } from '../scraper/supply-worker';
+import { registerWorkflowRoutes } from '../workflow/routes';
+import { startWorkflowEngine } from '../workflow/engine';
 
 const BERLIN_TZ = 'Europe/Berlin';
 
@@ -1164,11 +1169,20 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     if (fCampaign) { where.push(fCampaign === '__none__' ? `s.campaign IS NULL` : `s.campaign = @camp`); if (fCampaign !== '__none__') params.camp = fCampaign; }
     if (q.track && q.track !== 'all') { where.push(`COALESCE(s.track,'voice_agent') = @track`); params.track = q.track; }
     // Datumsvergleich robust über parseDbTime unten nochmal; SQL-Grobfilter reicht als Vorauswahl.
+    // Obergrenze schützt vor Speicher-/Laufzeitproblemen. WICHTIG: Die Gesamtzahl im
+    // Zeitraum wird separat gezählt, damit sichtbar wird, wenn die Auswertung nur einen
+    // Ausschnitt zeigt – eine still abgeschnittene Statistik wäre schlimmer als gar keine.
+    const ANALYTICS_ROW_LIMIT = 20000;
+    const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
+    const totalInRange = (db.prepare(
+      `SELECT COUNT(*) n FROM sent_emails s ${whereSql}`
+    ).get(params) as { n: number }).n;
     const rows = db.prepare(
       `SELECT s.id, s.to_email, s.to_name, s.subject, s.success, s.error, s.sent_at, s.job_id, s.scheduled_id, s.campaign, s.template_id
-       FROM sent_emails s ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-       ORDER BY s.sent_at DESC LIMIT 2000`
+       FROM sent_emails s ${whereSql}
+       ORDER BY s.sent_at DESC LIMIT ${ANALYTICS_ROW_LIMIT}`
     ).all(params) as any[];
+    const truncated = totalInRange > rows.length;
     const baseRows = rows.filter(r =>
       (!fromIso && !toIso ? true : inRange(r.sent_at)) &&
       (!fSearch || `${r.to_name || ''} ${r.to_email || ''} ${r.subject || ''}`.toLowerCase().includes(fSearch))
@@ -1176,12 +1190,15 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     const idSet = new Set(baseRows.map(r => r.id));
 
     // ── Events für dieses Set laden ──
-    const allEvents = idSet.size
+    // Über JOIN statt IN-Liste: eine IN-Liste mit tausenden Platzhaltern sprengt das
+    // Parameterlimit von SQLite, sobald genug Mails im Zeitraum liegen.
+    const allEventsRaw = idSet.size
       ? (db.prepare(
           `SELECT e.sent_email_id, e.event_type, e.url, e.user_agent, e.ip, e.created_at
-           FROM email_events e WHERE e.sent_email_id IN (${[...idSet].map(() => '?').join(',')})`
-        ).all(...idSet) as Array<{ sent_email_id: string; event_type: string; url?: string | null; user_agent?: string | null; ip?: string | null; created_at: string }>)
+           FROM email_events e JOIN sent_emails s ON s.id = e.sent_email_id ${whereSql}`
+        ).all(params) as Array<{ sent_email_id: string; event_type: string; url?: string | null; user_agent?: string | null; ip?: string | null; created_at: string }>)
       : [];
+    const allEvents = allEventsRaw.filter(e => idSet.has(e.sent_email_id));
     const evByMail = new Map<string, typeof allEvents>();
     for (const e of allEvents) {
       const arr = evByMail.get(e.sent_email_id) || [];
@@ -1408,6 +1425,9 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
       open_rate: pct(openedUnique, delivered || okCount),
       click_rate: pct(clickedUnique, delivered || okCount),
       previous: prev,
+      // Ehrlichkeits-Flag: sagt dem Dashboard, ob die Kennzahlen den ganzen Zeitraum
+      // abdecken oder nur einen Ausschnitt (dann wird oben gewarnt).
+      coverage: { total_in_range: totalInRange, analyzed: rows.length, truncated },
       filters: { templates: templateOptions, campaigns: campaignOptions },
       top_templates: topTemplates,
       top_campaigns: topCampaigns,
@@ -2126,11 +2146,51 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     };
   });
 
+  // ── Kostenloser Lead-Nachschub: Handwerk aus OpenStreetMap ────────────────
+  // Läuft im Hintergrund weiter; der Aufruf antwortet sofort. 20 Gewerke × Overpass
+  // dauern mehrere Minuten – ein HTTP-Request würde vorher abbrechen.
+  app.post<{ Body: { region?: string; onlyWithWebsite?: boolean } }>('/api/leads/osm-handwerk', async (req) => {
+    const p = handwerkProgress();
+    if (p.laeuft) return { ok: false, ...p };
+    scrapeHandwerkRegion({
+      isoRegion: req.body?.region || 'DE-NW',
+      onlyWithWebsite: req.body?.onlyWithWebsite !== false,
+    }).catch(err => console.error('[osm-handwerk]', err));
+    return { ok: true, gestartet: true, gewerke: HANDWERK_CRAFTS.length, ...handwerkProgress() };
+  });
+
+  app.get('/api/leads/osm-handwerk', async () => handwerkProgress());
+
+  // ── E-Mail-Ernte: aus den Websites die Kontaktadressen holen ──────────────
+  app.post<{ Body: { track?: string; max?: number } }>('/api/leads/harvest-emails', async (req) => {
+    const p = harvestProgress();
+    if (p.laeuft) return { ok: false, ...p };
+    harvestEmails({ track: req.body?.track, max: req.body?.max })
+      .catch(err => console.error('[email-harvest]', err));
+    return { ok: true, gestartet: true, ...harvestProgress() };
+  });
+
+  app.get('/api/leads/harvest-emails', async () => harvestProgress());
+  app.post('/api/leads/harvest-emails/stop', async () => { stopHarvest(); return { ok: true }; });
+  app.get('/api/leads/offene-websites', async () => ({ offen: offeneWebsites() }));
+
+  // Nachschub-Automatik: Status und Schalter
+  app.get('/api/leads/nachschub', async () => supplyStatus());
+  app.put<{ Body: { automatik?: boolean } }>('/api/leads/nachschub', async (req) => {
+    setSupplyAuto(req.body?.automatik !== false);
+    return supplyStatus();
+  });
+
   // Fertige Follow-up- + Erstkontakt-Vorlagen bereitstellen (idempotent).
   // seedOutreachTemplates repariert zusätzlich die beschädigte Standard-Vorlage.
   seedFollowupTemplates();
   seedOutreachTemplates();
   seedConsultTemplates();
+  seedWorkflowTemplates();
+  seedReengageTemplates();
+
+  // Strategie-Workflow (visueller Baum im Autoversand)
+  await registerWorkflowRoutes(app);
 
   // Hintergrund-Worker starten
   startAutoSender();
@@ -2139,6 +2199,8 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
   startDailyEngine();
   startBrevoSync();
   startReplyScanner();
+  startWorkflowEngine();
+  startSupplyWorker();
 }
 
 function enrichLeads(leads: Lead[]) {

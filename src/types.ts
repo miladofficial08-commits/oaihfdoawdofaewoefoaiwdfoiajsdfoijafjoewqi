@@ -102,6 +102,15 @@ export interface Lead {
   manual_call_done?: number;
   notiz?: string;
 
+  telefon_direkt?: string;
+  telefon_direkt_typ?: string;
+  telefon_notdienst?: string;
+  impressum_url?: string;
+  impressum_checked_at?: string;
+
+  wiedervorlage_at?: string;
+  wiedervorlage_grund?: string;
+
   followup_stage?: number;
   followup_last_at?: string;
   followup_stopped?: number;

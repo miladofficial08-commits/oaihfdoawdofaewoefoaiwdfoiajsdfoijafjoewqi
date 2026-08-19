@@ -351,3 +351,175 @@ export function seedConsultTemplates(): void {
     upgradeStaleTemplate(t.id, t.subject, t.body, now);
   }
 }
+
+// ── WORKFLOW-Vorlagen ────────────────────────────────────────────────────────
+// Vorlagen, die ausschließlich die Strategie-Engine (src/workflow) nutzt.
+// Bewusst ohne erfundene Referenzkunden: Der einzige belastbare Beweis, den wir
+// heute haben, ist die Demo-Nummer – die kann der Empfänger sofort selbst anrufen.
+// {termin_link} wird zur Laufzeit durch den hinterlegten Cal.com-Link ersetzt.
+const WORKFLOW_TEMPLATES: Array<{ id: string; name: string; subject: string; body: string }> = [
+  {
+    id: 'wf-proof',
+    name: 'Workflow – Mail 3: Rechnen Sie mit',
+    subject: 'Kurz nachgerechnet, {name}',
+    body: `{gruss},
+
+eine Zahl, die die meisten {branche}-Betriebe überrascht: Wenn pro Woche nur drei Anrufer nicht durchkommen und einer davon ein Auftrag gewesen wäre, summiert sich das übers Jahr auf einen fünfstelligen Betrag – ohne dass es je in einer Auswertung auftaucht.
+
+Genau diese Anrufe fängt unser KI-Assistent ab: Er geht ran, wenn niemand kann, nimmt Anliegen und Rückrufwunsch auf und meldet Ihnen nur, was wirklich wichtig ist.
+
+Sie müssen mir das nicht glauben – rufen Sie einfach an und sprechen Sie selbst mit ihm: ${DEMO_PHONE}
+
+Wenn Sie danach 10 Minuten Zeit haben, zeige ich Ihnen, wie das bei Ihnen aussehen würde. Antworten Sie einfach mit „Ja".
+
+Mit freundlichen Grüßen
+Tawano
+www.tawano.de | info@tawano.de`,
+  },
+  {
+    id: 'wf-termin',
+    name: 'Workflow – Antwort auf Interesse (Termin)',
+    subject: 'Gerne – hier direkt ein Termin, {name}',
+    body: `{gruss},
+
+danke für Ihre Rückmeldung, das freut mich.
+
+Suchen Sie sich einfach einen Zeitpunkt aus, der Ihnen passt – 10 Minuten reichen:
+{termin_link}
+
+Im Gespräch klären wir drei Dinge: welche Anrufe bei Ihnen verloren gehen, was der Assistent genau übernehmen soll und was es kostet. Wenn es nicht passt, sagen wir beide das offen.
+
+Falls Ihnen ein kurzer Rückruf lieber ist, schreiben Sie mir einfach Ihre Nummer und eine gute Uhrzeit.
+
+Mit freundlichen Grüßen
+Tawano
+www.tawano.de | info@tawano.de`,
+  },
+  {
+    id: 'wf-reactivate',
+    name: 'Workflow – Reaktivierung nach 60 Tagen',
+    subject: 'Nochmal kurz gefragt, {name}',
+    body: `{gruss},
+
+ich hatte Ihnen vor einigen Wochen geschrieben – damals war es offenbar nicht das Thema. Kein Problem, ich hake nur einmal nach, weil sich seitdem etwas getan hat.
+
+Unser Telefonassistent bucht inzwischen Termine direkt in den Kalender und beantwortet die typischen Standardfragen selbst. Für Betriebe, bei denen niemand dauerhaft am Telefon sitzen kann, ist das der interessanteste Teil.
+
+Selbst anhören: ${DEMO_PHONE}
+
+Passt ein kurzes Gespräch jetzt besser? Dann antworten Sie einfach mit „Ja". Wenn nicht, melde ich mich nicht wieder.
+
+Mit freundlichen Grüßen
+Tawano
+www.tawano.de | info@tawano.de`,
+  },
+  {
+    id: 'wf-angebot',
+    name: 'Workflow – Angebot nach dem Termin',
+    subject: 'Ihr Angebot, {name}',
+    body: `{gruss},
+
+danke für das Gespräch. Wie besprochen hier die Zusammenfassung:
+
+• Der Assistent nimmt Ihre Anrufe an, wenn bei Ihnen niemand rangeht
+• Er erfasst Anliegen, Name und Rückrufwunsch und schickt Ihnen alles als Nachricht
+• Wichtige Anrufe leitet er direkt an Sie weiter
+• Einrichtung übernehme ich komplett, Sie müssen nichts umstellen
+
+Die Konditionen und den Ablauf finden Sie im Anhang beziehungsweise unten. Wenn das so passt, geben Sie mir kurz Bescheid – dann starten wir.
+
+Falls noch etwas offen ist, rufen Sie mich einfach an oder antworten Sie auf diese Mail.
+
+Mit freundlichen Grüßen
+Tawano
+www.tawano.de | info@tawano.de`,
+  },
+];
+
+/** Legt die Workflow-Vorlagen an (Kategorie 'Workflow'). Überschreibt nichts Bearbeitetes. */
+export function seedWorkflowTemplates(): void {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const insert = db.prepare(
+    `INSERT OR IGNORE INTO email_templates (id, name, subject, body, category, updated_at) VALUES (?, ?, ?, ?, 'Workflow', ?)`
+  );
+  for (const t of WORKFLOW_TEMPLATES) insert.run(t.id, t.name, t.subject, t.body, now);
+}
+
+// ── NEUANLAUF-Vorlagen ───────────────────────────────────────────────────────
+// Für Betriebe, die bereits eine oder mehrere Mails der ALTEN Kampagne bekommen
+// haben. Sie dürfen nicht dieselbe Ansprache noch einmal sehen – das wäre der
+// sicherste Weg in den Spam-Ordner und in eine Beschwerde. Deshalb:
+//   • kurz statt Verkaufstext, jede Mail passt auf ein Handy-Display
+//   • offenes Eingeständnis, dass wir schon geschrieben haben (nimmt der
+//     Wiederholung die Zudringlichkeit und ist der ehrlichste Aufhänger)
+//   • genau EINE Frage pro Mail, beantwortbar mit einem Wort
+//   • jede Mail nennt den Ausstieg – rechtlich sauber und senkt Beschwerden
+const REENGAGE_TEMPLATES: Array<{ id: string; name: string; subject: string; body: string }> = [
+  {
+    id: 'wf-neu-1',
+    name: 'Neuanlauf 1 – Ehrlicher Neustart',
+    subject: 'Mein letzter Anlauf war schlecht, {name}',
+    body: `{gruss},
+
+ich habe Ihnen vor einiger Zeit geschrieben. Die Mail war ehrlich gesagt nicht gut – zu lang und zu viel über uns.
+
+Deshalb kurz und nur eine Frage: Gehen bei Ihnen Anrufe verloren, wenn alle im Einsatz sind?
+
+Falls ja, nehme ich Ihnen die ab. Unser Assistent geht rund um die Uhr ran, notiert das Anliegen und schickt es Ihnen. Hören Sie selbst, wie er klingt: ${DEMO_PHONE}
+
+Antwort mit einem Wort reicht: „Ja" oder „Nein".
+
+Mit freundlichen Grüßen
+Tawano
+www.tawano.de | Keine weiteren Mails? Kurz „Stopp" antworten, dann ist Schluss.`,
+  },
+  {
+    id: 'wf-neu-2',
+    name: 'Neuanlauf 2 – Die Rechnung',
+    subject: 'Eine Zahl, {name}',
+    body: `{gruss},
+
+nur eine Rechnung, dann lasse ich Sie in Ruhe:
+
+Drei Anrufer pro Woche, die nicht durchkommen. Einer davon wäre ein Auftrag gewesen. Übers Jahr ist das ein fünfstelliger Betrag, der in keiner Auswertung auftaucht, weil er nie sichtbar wird.
+
+Genau diese Anrufe fängt unser Assistent ab. Kein Vertrag, kein Umbau – Sie behalten Ihre Nummer.
+
+Selbst testen: ${DEMO_PHONE}
+
+Wenn die Rechnung bei Ihnen nicht aufgeht, sagen Sie es mir einfach.
+
+Mit freundlichen Grüßen
+Tawano
+www.tawano.de | Keine weiteren Mails? Kurz „Stopp" antworten, dann ist Schluss.`,
+  },
+  {
+    id: 'wf-neu-3',
+    name: 'Neuanlauf 3 – Schlusspunkt',
+    subject: 'Ich hake nicht wieder nach, {name}',
+    body: `{gruss},
+
+das ist meine letzte Mail an Sie – unabhängig davon, ob Sie antworten.
+
+Falls verpasste Anrufe bei Ihnen nie ein Thema waren: Entschuldigung für die Störung, ich streiche Sie aus der Liste.
+
+Falls doch, und es ging bisher nur unter: Ein Wort genügt, dann melde ich mich mit zwei Terminvorschlägen. Zehn Minuten, danach wissen Sie, ob sich das für Sie rechnet.
+
+Ich wünsche Ihnen so oder so viel Erfolg.
+
+Mit freundlichen Grüßen
+Tawano
+www.tawano.de | info@tawano.de`,
+  },
+];
+
+/** Legt die Neuanlauf-Vorlagen an (Kategorie 'Neuanlauf'). Überschreibt nichts Bearbeitetes. */
+export function seedReengageTemplates(): void {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const insert = db.prepare(
+    `INSERT OR IGNORE INTO email_templates (id, name, subject, body, category, updated_at) VALUES (?, ?, ?, ?, 'Neuanlauf', ?)`
+  );
+  for (const t of REENGAGE_TEMPLATES) insert.run(t.id, t.name, t.subject, t.body, now);
+}

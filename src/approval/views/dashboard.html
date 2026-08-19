@@ -808,7 +808,134 @@
   .an-chip b { font-variant-numeric: tabular-nums; }
   @media (max-width: 1200px) { .an-detail { grid-template-columns: 1fr; } .sched-row { grid-template-columns: 1fr; } }
   @media (max-width: 700px) { .an-kpis { grid-template-columns: repeat(2, 1fr); } .an-toolbar { gap: 8px; } .an-table { font-size: 11px; } }
-  </style>
+    /* ─── Strategie-Workflow (n8n-artiger Baum) ─── */
+  .wf-stats { display:flex; gap:18px; flex-wrap:wrap; font-size:13px; color:var(--txt2); margin-bottom:10px; }
+  .wf-stats b { color:var(--txt); font-size:15px; }
+  .wf-toolbar { display:flex; align-items:center; gap:7px; flex-wrap:wrap; padding:8px 0 10px; border-bottom:1px solid var(--line); margin-bottom:10px; }
+  .wf-toolbar .lbl { font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:var(--txt3); font-weight:700; margin-right:2px; }
+  .wf-chip { border:1px solid var(--line2); background:var(--surf); border-radius:8px; padding:5px 9px; font-size:12px; cursor:pointer; color:var(--txt2); }
+  .wf-chip:hover { border-color:var(--b); color:var(--b); }
+  .wf-main { display:grid; grid-template-columns:1fr 330px; gap:12px; }
+  @media (max-width:1100px) { .wf-main { grid-template-columns:1fr; } }
+  .wf-canvas { position:relative; overflow:hidden; height:580px; background:var(--elev); border:1px solid var(--line); border-radius:10px;
+               background-image:radial-gradient(var(--line2) 1px, transparent 1px); background-size:22px 22px; cursor:grab; }
+  .wf-canvas.panning { cursor:grabbing; }
+  .wf-stage { position:absolute; left:0; top:0; transform-origin:0 0; }
+  .wf-stage > svg { position:absolute; left:0; top:0; width:4000px; height:2400px; overflow:visible; }
+  .wf-edge { fill:none; stroke:var(--txt4); stroke-width:2; }
+  .wf-edge-hit { fill:none; stroke:transparent; stroke-width:14; cursor:pointer; }
+  .wf-edge-hit:hover + .wf-edge, .wf-edge.hot { stroke:var(--r); }
+  .wf-node { position:absolute; width:200px; box-sizing:border-box; background:var(--surf); border:1.5px solid var(--line2);
+             border-left-width:4px; border-radius:10px; padding:9px 11px; box-shadow:var(--shadow); cursor:grab; user-select:none; }
+  .wf-node.sel { border-color:var(--b); box-shadow:0 0 0 3px rgba(37,99,235,.16); }
+  .wf-node.wide { width:270px; }
+  .wf-node .wf-t { font-size:12.5px; font-weight:700; color:var(--txt); line-height:1.3; }
+  .wf-node .wf-s { font-size:11px; color:var(--txt3); margin-top:3px; line-height:1.3; }
+  .wf-node .wf-kind { font-size:9.5px; text-transform:uppercase; letter-spacing:.5px; color:var(--txt4); font-weight:700; margin-bottom:3px; }
+  .wf-badge { position:absolute; top:-10px; right:-10px; min-width:24px; height:24px; border-radius:12px; background:var(--b); color:#fff;
+              font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; padding:0 7px; cursor:pointer; box-shadow:var(--shadow); }
+  .wf-badge.zero { background:var(--surf); color:var(--txt4); border:1px solid var(--line2); }
+  .wf-port { position:absolute; width:12px; height:12px; border-radius:50%; background:var(--surf); border:2px solid var(--txt4); box-sizing:border-box; }
+  .wf-port.pin { top:-7px; left:50%; margin-left:-6px; }
+  .wf-port.pout { bottom:-7px; cursor:crosshair; }
+  .wf-port.pout:hover { border-color:var(--b); background:var(--bd); transform:scale(1.25); }
+  .wf-plabel { position:absolute; bottom:-25px; font-size:9.5px; color:var(--txt3); white-space:nowrap; transform:translateX(-50%); }
+  .wf-side { border:1px solid var(--line); border-radius:10px; background:var(--surf); padding:13px; overflow-y:auto; max-height:580px; }
+  .wf-side h4 { margin:0 0 4px; font-size:14px; color:var(--txt); }
+  .wf-side .hint { font-size:11.5px; color:var(--txt3); line-height:1.5; margin:0 0 12px; }
+  .wf-f { margin-bottom:10px; }
+  .wf-f label { display:block; font-size:10.5px; text-transform:uppercase; letter-spacing:.4px; color:var(--txt3); font-weight:700; margin-bottom:4px; }
+  .wf-f input, .wf-f select, .wf-f textarea { width:100%; box-sizing:border-box; border:1px solid var(--line2); border-radius:8px; padding:7px 9px; font-size:12.5px; font-family:inherit; background:var(--surf); color:var(--txt); }
+  .wf-leadrow { display:flex; align-items:center; gap:8px; padding:7px 0; border-top:1px solid var(--line); font-size:12px; }
+  .wf-leadrow .nm { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--txt); font-weight:600; }
+  .wf-leadrow .mt { font-size:10.5px; color:var(--txt3); }
+  .wf-log { max-height:320px; overflow-y:auto; }
+  .wf-logrow { display:flex; gap:9px; padding:7px 0; border-top:1px solid var(--line); font-size:12px; align-items:flex-start; }
+  .wf-logrow:first-child { border-top:0; }
+  .wf-dot { width:7px; height:7px; border-radius:50%; margin-top:5px; flex:0 0 auto; background:var(--txt4); }
+  .wf-dot.send { background:var(--b); } .wf-dot.hot { background:var(--g); } .wf-dot.warn { background:var(--o); }
+  .wf-logrow .tm { color:var(--txt4); font-size:10.5px; flex:0 0 auto; width:74px; }
+  .wf-task { display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--line); font-size:12.5px; }
+  .wf-task.due .tt { color:var(--r); }
+  .wf-task .tt { flex:1; min-width:0; }
+  .wf-settings { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-top:12px; padding-top:12px; border-top:1px solid var(--line); }
+
+  /* Strategie-Leiste (mehrere Strategien nebeneinander, wie Vorlagen) */
+  .wf-strats { display:flex; gap:8px; flex-wrap:wrap; align-items:center; padding-bottom:10px; margin-bottom:10px; border-bottom:1px solid var(--line); }
+  .wf-strat { display:flex; align-items:center; gap:8px; border:1.5px solid var(--line2); background:var(--surf); border-radius:10px; padding:7px 11px; cursor:pointer; }
+  .wf-strat:hover { border-color:var(--b); }
+  .wf-strat.cur { border-color:var(--b); background:var(--bd); }
+  .wf-strat .sn { font-size:12.5px; font-weight:700; color:var(--txt); }
+  .wf-strat .sm { font-size:10.5px; color:var(--txt3); }
+  .wf-live { display:inline-flex; align-items:center; gap:5px; font-size:10.5px; font-weight:700; padding:2px 7px; border-radius:20px; }
+  .wf-live.on { background:var(--gd); color:var(--g2); }
+  .wf-live.off { background:var(--elev); color:var(--txt3); }
+  .wf-live .pt { width:6px; height:6px; border-radius:50%; background:currentColor; }
+
+  /* Vollbild – der Knoten-Editor bekommt den ganzen Bildschirm */
+  .wf-panel.wf-full { position:fixed; top:0; left:0; right:0; bottom:0; z-index:9000; margin:0 !important; border-radius:0; overflow:hidden; background:var(--bg); display:flex; flex-direction:column; }
+  .wf-panel.wf-full .sp-body { flex:1; display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+  .wf-panel.wf-full .wf-main { flex:1; min-height:0; }
+  .wf-panel.wf-full .wf-canvas { height:100%; }
+  .wf-panel.wf-full .wf-side { max-height:none; height:100%; }
+  .wf-panel.wf-full .wf-settings, .wf-panel.wf-full .wf-stats, .wf-panel.wf-full .sp-head p { display:none; }
+  .wf-panel.wf-full .sp-head { padding-bottom:8px; }
+
+  /* Knoten-Karten: je Typ eine eigene Form, nicht nur eine andere Farbe */
+  .wf-node { display:flex; gap:9px; align-items:flex-start; border-left-width:1.5px; padding:9px 11px 9px 10px; }
+  .wf-ic { width:26px; height:26px; border-radius:7px; flex:0 0 auto; display:flex; align-items:center; justify-content:center; font-size:13px; color:#fff; }
+  .wf-body { min-width:0; flex:1; }
+  .wf-node.compact { width:158px; padding:7px 10px; align-items:center; }
+  .wf-node.compact .wf-ic { width:22px; height:22px; border-radius:6px; font-size:11px; }
+  .wf-node.compact .wf-t { font-size:12px; }
+  .wf-node.compact .wf-s { font-size:10.5px; margin-top:0; }
+  .wf-node.tiny { width:120px; }
+  .wf-node.wide { width:290px; }
+  .wf-node.start { border-radius:18px 10px 10px 18px; }
+  .wf-node.terminal { border-style:dashed; background:var(--elev); }
+  .wf-pending { display:inline-block; margin-top:5px; font-size:10px; font-weight:700; padding:2px 7px; border-radius:20px; background:var(--gd); color:var(--g2); }
+
+  /* Übernehmen-Leiste */
+  .wf-adopt { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:12px; margin-bottom:12px; }
+  .wf-adopt .step { border:1px solid var(--line2); border-radius:10px; padding:11px 13px; background:var(--surf); }
+  .wf-adopt .step b { display:block; font-size:13px; color:var(--txt); margin-bottom:4px; }
+  .wf-adopt .step span { display:block; font-size:11.5px; color:var(--txt3); line-height:1.5; margin-bottom:9px; }
+  .wf-bf { border:1px solid var(--line2); border-radius:10px; padding:11px 13px; margin-bottom:12px; font-size:12.5px; background:var(--elev); }
+  .wf-bf.ok { border-color:var(--g); background:var(--gd); }
+  .wf-bftable { width:100%; border-collapse:collapse; margin-top:8px; font-size:12px; }
+  .wf-bftable td { padding:4px 6px; border-top:1px solid var(--line); }
+  /* Ergebnis-Ausgänge im Inspector */
+  .wf-out { display:flex; align-items:center; gap:7px; font-size:12px; color:var(--txt2); padding:4px 0; }
+  .wf-out .dot { width:8px; height:8px; border-radius:50%; flex:0 0 auto; }
+  /* Lead-Detail */
+  .wf-leadmodal { display:none; position:fixed; inset:0; z-index:9500; background:rgba(16,24,40,.45); align-items:center; justify-content:center; padding:20px; }
+  .wf-leadcard { background:var(--surf); border-radius:14px; width:min(1000px,96vw); max-height:92vh; overflow-y:auto; padding:18px 20px; box-shadow:var(--shadow-lg); }
+  .wf-lead-head { display:flex; align-items:flex-start; gap:14px; padding-bottom:12px; border-bottom:1px solid var(--line); margin-bottom:14px; }
+  .wf-lead-head .mt { font-size:12px; color:var(--txt3); }
+  .wf-lead-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  @media (max-width:820px) { .wf-lead-grid { grid-template-columns:1fr; } }
+  .wf-lead-grid h4 { margin:0 0 8px; font-size:13px; color:var(--txt); }
+  .wf-lead-grid textarea, .wf-leadcard textarea { width:100%; box-sizing:border-box; border:1px solid var(--line2); border-radius:8px; padding:8px 10px; font-size:12.5px; font-family:inherit; resize:vertical; }
+  .wf-outbtns { display:flex; flex-wrap:wrap; gap:7px; }
+  .wf-outbtn { border:1.5px solid var(--line2); background:var(--surf); border-radius:9px; padding:8px 12px; font-size:12.5px; font-weight:700; cursor:pointer; }
+  .wf-outbtn:hover { filter:brightness(.94); }
+  .wf-timeline { max-height:300px; overflow-y:auto; border-top:1px solid var(--line); }
+  .wf-tl { display:flex; gap:9px; padding:8px 0; border-bottom:1px solid var(--line); font-size:12px; align-items:flex-start; }
+  .wf-tl .tm { color:var(--txt4); font-size:10.5px; flex:0 0 auto; width:78px; }
+  .wf-leadrow { cursor:pointer; }
+  .wf-leadrow:hover { background:var(--elev); }
+
+  .wf-health { border:1px solid var(--line2); border-left-width:5px; border-radius:10px; padding:12px 14px; margin-bottom:12px; background:var(--surf); }
+  .wf-health.ok   { border-left-color:var(--g); background:var(--gd); }
+  .wf-health.warn { border-left-color:var(--o); background:var(--od); }
+  .wf-health.down { border-left-color:var(--r); background:var(--rd); }
+  .wf-health.off  { border-left-color:var(--txt4); background:var(--elev); }
+  .wf-health h4 { margin:0 0 6px; font-size:14px; color:var(--txt); }
+  .wf-health ul { margin:0; padding-left:18px; }
+  .wf-health li { font-size:12.5px; color:var(--txt2); line-height:1.6; }
+  .wf-health li.down { color:var(--r); font-weight:600; }
+  .wf-health li.warn { color:var(--o); }
+</style>
 </head>
 <body>
 
@@ -1119,6 +1246,34 @@
   <!-- ─── AUTO-VERSAND ─── -->
   <!-- ─── LEADS (eigener Bereich) ─── -->
   <div class="page" id="p-leads">
+    <!-- ─── NAHRUNG: kostenloser Lead-Nachschub ─── -->
+    <div class="sender-panel" style="margin-bottom:14px">
+      <div class="sp-head">
+        <h3>🌾 Lead-Nachschub — kostenlos aus OpenStreetMap</h3>
+        <p>Handwerksbetriebe aus ganz NRW holen und aus deren Websites die E-Mail-Adressen lesen. Beides läuft im Hintergrund weiter, du kannst die Seite zumachen. Kostet nichts und braucht keinen Zugang.</p>
+      </div>
+      <div class="sp-body">
+        <div class="wf-adopt">
+          <div class="step">
+            <b>① Betriebe holen</b>
+            <span>20 Gewerke aus ganz NRW: Elektro, SHK, Dach, Schreiner, Maler und mehr. Gemessen: rund 4.900 Betriebe mit Website. Dauert ein paar Minuten.</span>
+            <button class="wf-chip" onclick="osmStart()">Betriebe holen</button>
+          </div>
+          <div class="step">
+            <b>② E-Mails ernten</b>
+            <span>Liest Impressum, Kontakt und Datenschutz jeder Website. Gemessen: 76 % Trefferquote. Läuft langsam und höflich – bei 4.900 Seiten rechne mit mehreren Stunden.</span>
+            <button class="wf-chip" onclick="harvestStart()">E-Mails ernten</button>
+            <button class="wf-chip" onclick="harvestStop()">Stopp</button>
+          </div>
+        </div>
+        <label style="display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--txt2);margin:4px 0 10px">
+          <input type="checkbox" id="nahrung-auto" onchange="nahrungAuto(this.checked)">
+          <span><b>Automatik:</b> hält den Vorrat von allein nach – erntet offene Websites und holt neue Betriebe, sobald es knapp wird. Du musst nichts drücken.</span>
+        </label>
+        <div id="nahrung-status" style="font-size:12.5px;color:var(--txt2)"></div>
+      </div>
+    </div>
+
     <!-- ─── CRM: ALLE LEADS (echte Liste) ─── -->
     <div class="sender-panel" style="margin-bottom:14px">
       <div class="sp-head" style="display:flex;align-items:flex-start;gap:14px">
@@ -1247,6 +1402,120 @@ info@nur-eine-adresse.de"></textarea>
       <b id="as-v-await">–</b> wartet auf Bestätigung ·
       <b id="as-v-suppressed">–</b> gesperrt
       <span id="as-v-brevo" style="margin-left:8px;color:#8a97ab"></span>
+    </div>
+
+    <!-- ─── STRATEGIE-WORKFLOW ─── -->
+    <div class="sender-panel wf-panel" id="wf-panel" style="margin-bottom:14px">
+      <div class="sp-head" style="display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap">
+        <div style="flex:1;min-width:280px">
+          <h3>🌳 Strategie-Workflow</h3>
+          <p>Der Weg, den jeder Kunde nimmt — von der ersten Mail bis zum Vertrag. <b>Knoten anklicken</b> zum Einstellen, den <b>Punkt unten am Knoten ziehen</b> zum Verbinden. Die Zahl am Knoten zeigt, wie viele Kunden gerade dort stehen — draufklicken und du siehst wer.</p>
+        </div>
+        <label class="fu-switch" title="Workflow an/aus">
+          <input type="checkbox" id="wf-enabled" onchange="wfToggle()">
+          <span id="wf-enabled-lbl">Aus</span>
+        </label>
+      </div>
+      <div class="sp-body">
+        <div id="wf-health"></div>
+        <div class="wf-strats" id="wf-strats"></div>
+        <div class="wf-adopt">
+          <div class="step">
+            <b>① Bestandsdaten einsortieren</b>
+            <span>Jeder vorhandene Lead landet auf der Stage, die zu seinen Daten passt — wer schon angeschrieben wurde, fängt nicht wieder von vorne an.</span>
+            <button class="wf-chip" onclick="wfBackfill(false)">Vorschau anzeigen</button>
+          </div>
+          <div class="step">
+            <b>② Strategie übernehmen</b>
+            <span>Ab dann ist diese Strategie zuständig: sie wird aktiviert, alte Auto-Kampagnen und der Follow-up-Worker werden gestoppt, der Bestand wird einsortiert.</span>
+            <button class="btn btn-solid" style="padding:8px 14px;font-size:12.5px" onclick="wfAdopt()">Strategie übernehmen</button>
+          </div>
+        </div>
+        <div id="wf-backfill"></div>
+        <div class="wf-stats" id="wf-stats"></div>
+
+        <div class="wf-toolbar">
+          <span class="lbl">Neuer Knoten</span>
+          <button class="wf-chip" onclick="wfAddNode('email')">✉ E-Mail</button>
+          <button class="wf-chip" onclick="wfAddNode('wait')">⏱ Warten</button>
+          <button class="wf-chip" onclick="wfAddNode('stage')">◆ Stage</button>
+          <button class="wf-chip" onclick="wfAddNode('call')">☎ Anruf</button>
+          <button class="wf-chip" onclick="wfAddNode('snooze')">⏳ Wiedervorlage</button>
+          <button class="wf-chip" onclick="wfAddNode('check')">⑂ Reaktions-Weiche</button>
+          <button class="wf-chip" onclick="wfAddNode('task')">☑ Aufgabe</button>
+          <button class="wf-chip" onclick="wfAddNode('status')">⚑ Status</button>
+          <button class="wf-chip" onclick="wfAddNode('pause')">⏸ Pause</button>
+          <button class="wf-chip" onclick="wfAddNode('suppress')">⛔ Sperren</button>
+          <button class="wf-chip" onclick="wfAddNode('stop')">■ Ende</button>
+          <div class="flex1"></div>
+          <button class="wf-chip" onclick="wfZoomBy(-0.15)">−</button>
+          <span id="wf-zoom-lbl" style="font-size:11.5px;color:var(--txt3);min-width:38px;text-align:center">100 %</span>
+          <button class="wf-chip" onclick="wfZoomBy(0.15)">+</button>
+          <button class="wf-chip" onclick="wfFit()">Ansicht zurücksetzen</button>
+          <button class="wf-chip" id="wf-full-btn" onclick="wfToggleFull()">⛶ Vollbild</button>
+          <button class="wf-chip" onclick="wfResetGraph()">Standard-Strategie</button>
+          <button class="wf-chip" onclick="wfTick()">▶ Jetzt prüfen</button>
+          <button class="btn btn-solid" style="padding:6px 14px;font-size:12px" id="wf-save-btn" onclick="wfSave()">Speichern</button>
+        </div>
+
+        <div class="wf-main">
+          <div class="wf-canvas" id="wf-canvas">
+            <div class="wf-stage" id="wf-stage">
+              <svg id="wf-edges"></svg>
+              <div id="wf-nodes"></div>
+            </div>
+          </div>
+          <aside class="wf-side" id="wf-side">
+            <h4>Kein Knoten ausgewählt</h4>
+            <p class="hint">Klick einen Knoten im Baum an, um ihn einzustellen und zu sehen, welche Kunden gerade dort stehen.</p>
+          </aside>
+        </div>
+
+        <div class="wf-settings">
+          <div class="wf-f" style="grid-column:1/-1;margin-bottom:0">
+            <label>Cal.com-Buchungslink (für die Terminmail)</label>
+            <input id="wf-cal" type="url" placeholder="https://cal.com/dein-name/10min" onchange="wfSaveCal()">
+            <div style="font-size:11px;color:var(--txt3);margin-top:5px" id="wf-cal-note">Ohne Link wird die Terminmail <b>nicht</b> automatisch verschickt — stattdessen legt das System eine Aufgabe mit fertigem Text an.</div>
+          </div>
+          <div class="wf-f"><label>Track</label>
+            <select id="wf-track" onchange="wfSaveSettings()">
+              <option value="voice_agent">Voice Agent (Tawano)</option>
+              <option value="consult">Consult (KI-Automatisierung)</option>
+            </select>
+          </div>
+          <div class="wf-f"><label>Max. Mails / Tag</label><input id="wf-cap" type="number" min="1" max="200" onchange="wfSaveSettings()"></div>
+          <div class="wf-f"><label>Sendefenster von</label><input id="wf-ws" type="number" min="0" max="23" onchange="wfSaveSettings()"></div>
+          <div class="wf-f"><label>Sendefenster bis</label><input id="wf-we" type="number" min="1" max="24" onchange="wfSaveSettings()"></div>
+          <div class="wf-f"><label>Abstand (Sekunden)</label><input id="wf-gap" type="number" min="15" max="3600" onchange="wfSaveSettings()"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="as-grid" style="margin-bottom:14px">
+      <div class="sender-panel">
+        <div class="sp-head" style="display:flex;align-items:flex-start;gap:14px">
+          <div style="flex:1">
+            <h3>📋 Live-Protokoll — was das System gerade tut</h3>
+            <p>Jede automatische Aktion mit Zeitstempel. So bist du bei jedem Schritt dabei, ohne selbst senden zu müssen.</p>
+          </div>
+          <button class="topbar-btn" onclick="wfLoadLog()">↻</button>
+        </div>
+        <div class="sp-body"><div class="wf-log" id="wf-loglist"></div></div>
+      </div>
+      <div class="sender-panel">
+        <div class="sp-head" style="display:flex;align-items:flex-start;gap:14px">
+          <div style="flex:1">
+            <h3>✅ Deine Aufgaben — heiße Spuren</h3>
+            <p>Jede heiße Reaktion landet hier als Aufgabe mit Frist. Nichts läuft mehr ins Leere.</p>
+          </div>
+          <button class="topbar-btn" onclick="wfLoadTasks()">↻</button>
+        </div>
+        <div class="sp-body"><div id="wf-tasklist"></div></div>
+      </div>
+    </div>
+
+    <div class="wf-leadmodal" id="wf-leadmodal" onclick="if(event.target===this)wfCloseLead()">
+      <div class="wf-leadcard"><div id="wf-leadbody"></div></div>
     </div>
 
     <!-- ─── FOLLOW-UP-SEQUENZ ─── -->
@@ -1858,7 +2127,7 @@ function setPage(name) {
   if (name === 'pipeline') { loadLeads(); renderIndustryPicker(); }
   if (name === 'sender') loadSenderPage();
   if (name === 'sent') loadSentPage();
-  if (name === 'leads') { loadCrmLeads(); loadInventory(); }
+  if (name === 'leads') { loadCrmLeads(); loadInventory(); nahrungStatus(); }
   if (name === 'autosend') loadAutoSend();
   if (name === 'calls') loadCallList();
   if (name === 'templates') loadTemplatesPage();
@@ -3550,6 +3819,7 @@ async function updateAutosendBadge() {
   } catch {}
 }
 async function loadAutoSend() {
+  loadWorkflow();
   const [stats, jobs, tpls] = await Promise.all([
     fetchJSON('/api/send-stats').catch(()=>({})),
     fetchJSON('/api/send-jobs').catch(()=>[]),
@@ -4179,6 +4449,27 @@ async function loadAnalytics(silent) {
   const upd = document.getElementById('an-updated');
   if (upd) upd.textContent = 'aktualisiert ' + new Date().toLocaleTimeString('de-DE');
 
+  // Warnen, wenn die Auswertung nicht den ganzen Zeitraum abdeckt. Eine still
+  // abgeschnittene Statistik sieht richtig aus und ist trotzdem falsch.
+  (function(){
+    const c = an.coverage;
+    let box = document.getElementById('an-coverage');
+    if (!box) {
+      const page = document.getElementById('p-analytics');
+      if (!page) return;
+      box = document.createElement('div');
+      box.id = 'an-coverage';
+      box.style.cssText = 'display:none;margin-bottom:12px;padding:10px 13px;border:1px solid var(--o);background:var(--od);border-radius:10px;font-size:12.5px;color:var(--txt)';
+      page.insertBefore(box, page.firstChild);
+    }
+    if (c && c.truncated) {
+      box.style.display = 'block';
+      box.innerHTML = '<b>⚠ Achtung: unvollständige Auswertung.</b> Im gewählten Zeitraum liegen <b>' + c.total_in_range +
+        '</b> gesendete E-Mails, ausgewertet wurden nur die neuesten <b>' + c.analyzed +
+        '</b>. Alle Zahlen unten beziehen sich nur auf diesen Ausschnitt — bitte den Zeitraum eingrenzen.';
+    } else { box.style.display = 'none'; }
+  })();
+
   // Filter-Dropdowns befüllen (Optionen aus Backend), Auswahl erhalten
   const tSel = document.getElementById('an-f-template');
   if (tSel && an.filters) {
@@ -4722,6 +5013,873 @@ function toast(msg, isErr) {
   el.className = isErr ? 'show err' : 'show';
   clearTimeout(el._t); el._t=setTimeout(()=>el.className='',2800);
 }
+
+
+// ════ STRATEGIE-WORKFLOW (n8n-artiger Baum) ════
+// Farbsprache: grün = positiv, rot = beendet, orange = warten, blau = aktive Aktion, grau = abgeschlossen.
+const WF_TONE = { positive:'#12a150', negative:'#d92d20', waiting:'#c2740a', active:'#2563eb', done:'#98a1af' };
+const WF_META = {
+  trigger:  { kind:'Start',    icon:'⚡', shape:'start' },
+  email:    { kind:'E-Mail',   icon:'✉', shape:'full' },
+  wait:     { kind:'Warten',   icon:'⏱', shape:'compact' },
+  check:    { kind:'Weiche',   icon:'⑂', shape:'wide' },
+  stage:    { kind:'Stage',    icon:'◆', shape:'full' },
+  call:     { kind:'Telefon',  icon:'☎', shape:'full' },
+  snooze:   { kind:'Wiedervorlage', icon:'⏳', shape:'compact' },
+  task:     { kind:'Aufgabe',  icon:'☑', shape:'full' },
+  status:   { kind:'Status',   icon:'⚑', shape:'compact' },
+  suppress: { kind:'Sperre',   icon:'⛔', shape:'compact' },
+  pause:    { kind:'Pause',    icon:'⏸', shape:'compact' },
+  stop:     { kind:'Ende',     icon:'■', shape:'tiny' },
+};
+const WF_SHAPE_CLASS = { start:'start', full:'', compact:'compact', wide:'wide', tiny:'compact tiny terminal' };
+const WF_STATUS_OPTS = [
+  ['contacted','Angeschrieben'],['replied','Hat geantwortet'],['demo_booked','Termin gebucht'],
+  ['proposal_sent','Angebot raus'],['won','Kunde'],['lost','Kein Kunde'],
+  ['no_interest','Kein Interesse'],['do_not_contact','Nicht kontaktieren'],['manual_review','Manuell prüfen'],
+];
+
+let WF = null, wfSel = null, wfDirty = false, wfScale = 1, wfPan = { x:24, y:24 }, wfTpls = [], wfInited = false;
+let wfCurrentId = 'main', wfFullscreen = false, wfLead = null;
+function wfQ(extra){ return '?id=' + encodeURIComponent(wfCurrentId) + (extra || ''); }
+
+function wfEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function wfNodeById(id){ return (WF && WF.graph.nodes.find(function(n){ return n.id === id; })) || null; }
+function wfMeta(n){ return WF_META[n.type] || WF_META.stop; }
+function wfColor(n){ var m = (WF && WF.node_meta && WF.node_meta[n.id]) || {}; return WF_TONE[m.tone] || WF_TONE.active; }
+function wfPorts(n){
+  var m = (WF && WF.node_meta && WF.node_meta[n.id]) || {};
+  if (m.ports) return m.ports;
+  return n.type === 'stop' ? [] : [{ key:'out', label:'', tone:'active' }];
+}
+function wfMarkDirty(){ wfDirty = true; var b=document.getElementById('wf-save-btn'); if(b) b.textContent='Speichern •'; }
+function wfClearDirty(){ wfDirty = false; var b=document.getElementById('wf-save-btn'); if(b) b.textContent='Speichern'; }
+function wfDate(v){ return v ? new Date(String(v).replace(' ','T') + (/[Z+]/.test(String(v))?'':'Z')).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : ''; }
+
+async function loadWorkflow(force){
+  try {
+    const res = await Promise.all([ fetchJSON('/api/workflow' + wfQ()), fetchJSON('/api/email-templates') ]);
+    const wfRes = res[0], tplRes = res[1];
+    wfTpls = Array.isArray(tplRes) ? tplRes : (tplRes.templates || []);
+    if (WF && wfDirty && !force) {
+      WF.counts = wfRes.counts; WF.pending = wfRes.pending; WF.stats = wfRes.stats; WF.strategies = wfRes.strategies;
+      wfRenderStats(); wfRenderBadges(); wfRenderStrategies();
+    } else { WF = wfRes; wfRenderAll(); }
+  } catch (e) { /* Panel bleibt leer, der Rest des Dashboards laeuft weiter */ }
+  wfLoadLog(); wfLoadTasks(); wfLoadHealth();
+}
+
+// Wächter-Banner: sagt in einem Satz, ob die E-Mail-Abteilung läuft.
+async function wfLoadHealth(){
+  try {
+    const h = await fetchJSON('/api/workflow/health' + wfQ());
+    const box = document.getElementById('wf-health'); if (!box) return;
+    const icon = h.level === 'ok' ? '✓' : h.level === 'warn' ? '!' : h.level === 'down' ? '✕' : '○';
+    box.className = 'wf-health ' + h.level;
+    box.innerHTML = '<h4>' + icon + ' ' + wfEsc(h.headline) + '</h4><ul>' +
+      (h.lines||[]).map(function(l){ return '<li class="' + wfEsc(l.level) + '">' + wfEsc(l.text) + '</li>'; }).join('') +
+      '</ul>';
+  } catch (e) {}
+}
+
+function wfRenderAll(){
+  if (!WF) return;
+  document.getElementById('wf-enabled').checked = !!WF.enabled;
+  document.getElementById('wf-enabled-lbl').textContent = WF.enabled ? 'An' : 'Aus';
+  document.getElementById('wf-cal').value = WF.cal_link || '';
+  document.getElementById('wf-track').value = WF.track || 'voice_agent';
+  document.getElementById('wf-cap').value = WF.daily_cap;
+  document.getElementById('wf-ws').value = WF.window_start;
+  document.getElementById('wf-we').value = WF.window_end;
+  document.getElementById('wf-gap').value = WF.min_gap_s;
+  const note = document.getElementById('wf-cal-note');
+  if (note) note.innerHTML = (WF.cal_link||'').trim()
+    ? '✓ Link hinterlegt — die Terminmail geht bei einer Interesse-Antwort automatisch raus.'
+    : 'Ohne Link wird die Terminmail <b>nicht</b> automatisch verschickt — stattdessen legt das System eine Aufgabe mit fertigem Text an.';
+  wfRenderStrategies(); wfRenderStats(); wfRenderNodes(); wfRenderSide(); wfInit();
+}
+
+function wfRenderStats(){
+  const s = WF.stats || {};
+  document.getElementById('wf-stats').innerHTML =
+    '<div><b>' + (s.active||0) + '</b> Kunden in der Strategie</div>' +
+    '<div title="Mails, die diese Strategie versendet hat"><b>' + (s.sent_today||0) + '</b> Mails heute · ' + (s.sent_total||0) + ' aus der Strategie</div>' +
+    '<div title="Mails aus der Zeit vor der Strategie – dieser Bestand ist eingerechnet"><b>' + (s.legacy_sent||0) + '</b> Mails vorher versendet</div>' +
+    '<div><b style="color:' + ((s.due_tasks||0) ? 'var(--r)' : 'var(--txt)') + '">' + (s.open_tasks||0) + '</b> offene Aufgaben' + ((s.due_tasks||0) ? ' (' + s.due_tasks + ' fällig)' : '') + '</div>' +
+    '<div><b>' + (s.done||0) + '</b> durchgelaufen · <b>' + (s.stopped||0) + '</b> gestoppt</div>' +
+    '<div title="Adressen, die nie wieder angeschrieben werden"><b>' + (s.suppressed||0) + '</b> gesperrt</div>';
+}
+
+function wfSubtitle(n){
+  const c = n.config || {};
+  if (n.type === 'trigger') return c.source === 'status'
+    ? 'Startet bei Status: ' + wfEsc(c.status || 'demo_booked')
+    : (c.requires_email === 'no' ? 'Leads ohne E-Mail' : 'Neue Leads mit E-Mail') + (c.branche ? ', ' + wfEsc(c.branche) : '');
+  if (n.type === 'email') { const t = wfTpls.find(function(x){ return x.id === c.template_id; }); return 'Vorlage: ' + wfEsc(t ? t.name : (c.template_id || '—')) + (c.urgent ? ' · sofort' : ''); }
+  if (n.type === 'wait') return (c.days != null ? c.days : 1) + ' Tage warten';
+  if (n.type === 'snooze') return 'Wiedervorlage · ' + (c.days != null ? c.days : 2) + ' Tage';
+  if (n.type === 'check') return 'Antwort, Bounce oder Klick leitet um';
+  if (n.type === 'stage' || n.type === 'call') {
+    const outs = wfPorts(n);
+    return outs.length ? outs.length + ' Ergebnisse zur Auswahl' : 'Endstation';
+  }
+  if (n.type === 'task') return wfEsc(c.title || 'Aufgabe für dich');
+  if (n.type === 'status') return 'Setzt Status: ' + wfEsc(c.status || 'replied');
+  if (n.type === 'pause') return 'Bis Rückkehr, sonst ' + (c.fallback_days != null ? c.fallback_days : 7) + ' Tage';
+  if (n.type === 'suppress') return 'Adresse dauerhaft sperren';
+  return 'Der Lauf endet hier';
+}
+
+function wfPortHtml(n, port, pct, single){
+  const col = WF_TONE[port.tone] || WF_TONE.active;
+  const lbl = single ? '' : '<div class="wf-plabel" style="left:' + (pct*100) + '%;color:' + col + '">' + wfEsc(port.label || port.key) + '</div>';
+  return '<div class="wf-port pout" data-port-node="' + n.id + '" data-port="' + wfEsc(port.key) + '" title="' + wfEsc(port.label || '') +
+         '" style="left:' + (pct*100) + '%;margin-left:-6px;border-color:' + col + '"></div>' + lbl;
+}
+
+function wfRenderNodes(){
+  const counts = WF.counts || {};
+  document.getElementById('wf-nodes').innerHTML = WF.graph.nodes.map(function(n){
+    const m = wfMeta(n), col = wfColor(n), c = counts[n.id] || 0;
+    const ports = wfPorts(n);
+    const single = ports.length === 1 && ports[0].key === 'out';
+    const outs = ports.map(function(p, i){ return wfPortHtml(n, p, (i+1)/(ports.length+1), single); }).join('');
+    const compact = m.shape === 'compact' || m.shape === 'tiny';
+    const pend = (WF.pending || {})[n.id];
+    const body = compact
+      ? '<div class="wf-body"><div class="wf-t">' + wfEsc(n.title) + '</div></div>'
+      : '<div class="wf-body"><div class="wf-kind" style="color:' + col + '">' + m.kind + '</div>' +
+        '<div class="wf-t">' + wfEsc(n.title) + '</div>' +
+        '<div class="wf-s">' + wfSubtitle(n) + '</div>' +
+        (pend != null ? '<div class="wf-pending" title="Leads, die auf Aufnahme warten - z. B. frisch importierte">' + pend + ' warten</div>' : '') +
+        '</div>';
+    return '<div class="wf-node ' + (WF_SHAPE_CLASS[m.shape] || '') + (wfSel===n.id?' sel':'') + '" data-node="' + n.id + '"' +
+      ' style="left:' + n.x + 'px;top:' + n.y + 'px;border-left-color:' + col + '">' +
+      '<div class="wf-ic" style="background:' + col + '">' + m.icon + '</div>' + body +
+      '<div class="wf-port pin"></div>' +
+      '<div class="wf-badge' + (c ? '' : ' zero') + '" data-badge="' + n.id + '" style="' + (c ? 'background:' + col : '') + '" title="Kunden in dieser Stage ansehen">' + c + '</div>' +
+      outs + '</div>';
+  }).join('');
+  wfApplyTransform();
+  requestAnimationFrame(function(){ wfDrawEdges(); });
+  setTimeout(function(){ wfDrawEdges(); }, 60);
+}
+
+function wfRenderBadges(){
+  const counts = WF.counts || {};
+  document.querySelectorAll('[data-badge]').forEach(function(b){
+    const id = b.getAttribute('data-badge'), c = counts[id] || 0, n = wfNodeById(id);
+    b.textContent = c;
+    b.className = 'wf-badge' + (c ? '' : ' zero');
+    b.style.background = c && n ? wfColor(n) : '';
+  });
+  wfRenderStats();
+}
+
+function wfNodeBox(id){
+  const el = document.querySelector('[data-node="' + id + '"]'), n = wfNodeById(id);
+  if (!el || !n) return null;
+  return { x:n.x, y:n.y, w:el.offsetWidth, h:el.offsetHeight };
+}
+
+function wfPortPct(node, portKey){
+  const ports = wfPorts(node);
+  const i = ports.findIndex(function(p){ return p.key === portKey; });
+  return i >= 0 ? (i+1)/(ports.length+1) : 0.5;
+}
+
+function wfDrawEdges(tempPath){
+  if (!WF) return;
+  const svg = document.getElementById('wf-edges');
+  let out = '';
+  for (const e of WF.graph.edges) {
+    const a = wfNodeBox(e.from), b = wfNodeBox(e.to), from = wfNodeById(e.from);
+    if (!a || !b || !from) continue;
+    const pct = wfPortPct(from, e.port);
+    const sx = a.x + a.w * pct, sy = a.y + a.h + 6;
+    const tx = b.x + b.w / 2, ty = b.y - 6;
+    const ports = wfPorts(from);
+    const p = ports.find(function(x){ return x.key === e.port; });
+    const col = p ? (WF_TONE[p.tone] || 'var(--txt4)') : 'var(--txt4)';
+    const d = 'M ' + sx + ' ' + sy + ' C ' + sx + ' ' + (sy + 55) + ', ' + tx + ' ' + (ty - 55) + ', ' + tx + ' ' + ty;
+    // Der Hauptweg (Mail → Warten → Weiche → nächste Mail) wird betont, alles
+    // andere tritt zurück. So erkennt man den Ablauf, ohne jede Linie zu verfolgen.
+    const spine = e.port === 'out' || e.port === 'no_reply';
+    out += '<path class="wf-edge-hit" data-edge="' + wfEsc(e.id) + '" d="' + d + '"></path>' +
+           '<path class="wf-edge" style="stroke:' + col + ';opacity:' + (spine ? '.75' : '.28') +
+           ';stroke-width:' + (spine ? '2.4' : '1.4') + '" d="' + d + '"></path>';
+  }
+  if (tempPath) out += '<path class="wf-edge hot" stroke-dasharray="5 4" d="' + tempPath + '"></path>';
+  svg.innerHTML = out;
+}
+
+function wfApplyTransform(){
+  document.getElementById('wf-stage').style.transform = 'translate(' + wfPan.x + 'px,' + wfPan.y + 'px) scale(' + wfScale + ')';
+  document.getElementById('wf-zoom-lbl').textContent = Math.round(wfScale * 100) + ' %';
+}
+function wfZoomBy(d){ wfScale = Math.max(0.3, Math.min(1.6, wfScale + d)); wfApplyTransform(); }
+function wfFit(){ wfScale = 0.6; wfPan = { x:24, y:24 }; wfApplyTransform(); }
+
+// ── Maus: verschieben, ziehen, verbinden ──
+function wfInit(){
+  if (wfInited) return;
+  wfInited = true;
+  const canvas = document.getElementById('wf-canvas');
+  let mode = null, dragId = null, dragOff = { x:0, y:0 }, panStart = null, moved = false, link = null;
+
+  const toStage = function(ev){
+    const r = canvas.getBoundingClientRect();
+    return { x:(ev.clientX - r.left - wfPan.x) / wfScale, y:(ev.clientY - r.top - wfPan.y) / wfScale };
+  };
+
+  canvas.addEventListener('mousedown', function(ev){
+    const port = ev.target.closest('.wf-port.pout');
+    const node = ev.target.closest('.wf-node');
+    const badge = ev.target.closest('.wf-badge');
+    moved = false;
+    if (badge) return;
+    if (port) { link = { from: port.getAttribute('data-port-node'), port: port.getAttribute('data-port') }; mode = 'link'; ev.preventDefault(); return; }
+    if (node) {
+      dragId = node.getAttribute('data-node');
+      const n = wfNodeById(dragId); const p = toStage(ev);
+      dragOff = { x: p.x - n.x, y: p.y - n.y };
+      mode = 'drag'; ev.preventDefault(); return;
+    }
+    panStart = { mx: ev.clientX, my: ev.clientY, px: wfPan.x, py: wfPan.y };
+    mode = 'pan'; canvas.classList.add('panning');
+  });
+
+  window.addEventListener('mousemove', function(ev){
+    if (!mode) return;
+    if (ev.buttons === 0) { mode = null; link = null; dragId = null; panStart = null; canvas.classList.remove('panning'); wfDrawEdges(); return; }
+    moved = true;
+    if (mode === 'pan') {
+      wfPan = { x: panStart.px + (ev.clientX - panStart.mx), y: panStart.py + (ev.clientY - panStart.my) };
+      wfApplyTransform(); return;
+    }
+    if (mode === 'drag') {
+      const n = wfNodeById(dragId); if (!n) return;
+      const p = toStage(ev);
+      n.x = Math.round(p.x - dragOff.x); n.y = Math.round(p.y - dragOff.y);
+      const el = document.querySelector('[data-node="' + dragId + '"]');
+      if (el) { el.style.left = n.x + 'px'; el.style.top = n.y + 'px'; }
+      wfDrawEdges(); return;
+    }
+    if (mode === 'link') {
+      const a = wfNodeBox(link.from); if (!a) return;
+      const from = wfNodeById(link.from);
+      const pct = wfPortPct(from, link.port);
+      const sx = a.x + a.w * pct, sy = a.y + a.h + 6;
+      const p = toStage(ev);
+      wfDrawEdges('M ' + sx + ' ' + sy + ' C ' + sx + ' ' + (sy+55) + ', ' + p.x + ' ' + (p.y-55) + ', ' + p.x + ' ' + p.y);
+    }
+  });
+
+  window.addEventListener('mouseup', function(ev){
+    if (mode === 'link') {
+      const el = document.elementFromPoint(ev.clientX, ev.clientY);
+      const target = el && el.closest ? el.closest('.wf-node') : null;
+      const to = target ? target.getAttribute('data-node') : null;
+      if (to && to !== link.from) {
+        WF.graph.edges = WF.graph.edges.filter(function(e){ return !(e.from === link.from && e.port === link.port); });
+        WF.graph.edges.push({ id: link.from + ':' + link.port + '->' + to, from: link.from, port: link.port, to: to });
+        wfMarkDirty();
+      }
+      wfDrawEdges();
+    }
+    if (mode === 'drag' && moved) wfMarkDirty();
+    if (mode === 'drag' && !moved) wfSelect(dragId);
+    mode = null; link = null; dragId = null; panStart = null;
+    canvas.classList.remove('panning');
+  });
+
+  canvas.addEventListener('click', function(ev){
+    const badge = ev.target.closest('.wf-badge');
+    if (badge) { wfSelect(badge.getAttribute('data-badge')); return; }
+    const hit = ev.target.closest('.wf-edge-hit');
+    if (hit && confirm('Diese Verbindung löschen?')) {
+      const id = hit.getAttribute('data-edge');
+      WF.graph.edges = WF.graph.edges.filter(function(e){ return e.id !== id; });
+      wfMarkDirty(); wfDrawEdges();
+    }
+  });
+
+  canvas.addEventListener('wheel', function(ev){
+    if (!ev.ctrlKey) return;
+    ev.preventDefault(); wfZoomBy(ev.deltaY > 0 ? -0.1 : 0.1);
+  }, { passive:false });
+}
+
+// ── Inspector ──
+function wfSelect(id){
+  wfSel = id;
+  document.querySelectorAll('.wf-node').forEach(function(el){ el.classList.toggle('sel', el.getAttribute('data-node') === id); });
+  wfRenderSide();
+}
+function wfField(label, inner){ return '<div class="wf-f"><label>' + label + '</label>' + inner + '</div>'; }
+
+function wfRenderSide(){
+  const side = document.getElementById('wf-side');
+  const n = wfNodeById(wfSel);
+  if (!n) {
+    side.innerHTML = '<h4>Keine Stage ausgewählt</h4><p class="hint">Klick eine Stage im Baum an: links stellst du sie ein, unten siehst du, welche Kunden gerade dort stehen.</p>';
+    return;
+  }
+  const c = n.config || {}, m = wfMeta(n), col = wfColor(n);
+  let form = wfField('Name', '<input value="' + wfEsc(n.title) + '" oninput="wfSetTitle(this.value)">');
+
+  if (n.type === 'trigger') {
+    form += wfField('Startet bei', '<select onchange="wfSetCfg(\'source\', this.value)">' +
+      '<option value="new_lead"' + (c.source !== 'status' ? ' selected' : '') + '>Neuen Leads</option>' +
+      '<option value="status"' + (c.source === 'status' ? ' selected' : '') + '>Statuswechsel</option></select>');
+    if (c.source === 'status') {
+      form += wfField('Status', '<select onchange="wfSetCfg(\'status\', this.value)">' +
+        WF_STATUS_OPTS.map(function(o){ return '<option value="' + o[0] + '"' + (c.status === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>');
+    } else {
+      form += wfField('Kontaktweg', '<select onchange="wfSetCfg(\'requires_email\', this.value)">' +
+        '<option value="yes"' + (c.requires_email !== 'no' ? ' selected' : '') + '>Leads mit E-Mail</option>' +
+        '<option value="no"' + (c.requires_email === 'no' ? ' selected' : '') + '>Leads ohne E-Mail (Telefon)</option></select>');
+      form += wfField('Nur Branche (leer = alle)', '<input value="' + wfEsc(c.branche || '') + '" oninput="wfSetCfg(\'branche\', this.value)" placeholder="z. B. elektr">');
+    }
+  }
+  if (n.type === 'email') {
+    form += wfField('Vorlage', '<select onchange="wfSetCfg(\'template_id\', this.value)">' +
+      wfTpls.map(function(t){ return '<option value="' + wfEsc(t.id) + '"' + (c.template_id === t.id ? ' selected' : '') + '>' + wfEsc(t.name) + '</option>'; }).join('') + '</select>');
+    form += '<label style="display:flex;gap:8px;align-items:center;font-size:12px;color:var(--txt2);margin-bottom:10px">' +
+      '<input type="checkbox"' + (c.urgent ? ' checked' : '') + ' onchange="wfSetCfg(\'urgent\', this.checked)"> Sofort senden (ignoriert Sendefenster und Abstand)</label>';
+  }
+  if (n.type === 'wait') form += wfField('Tage warten', '<input type="number" min="0" step="0.5" value="' + (c.days != null ? c.days : 1) + '" onchange="wfSetCfg(\'days\', parseFloat(this.value))">');
+  if (n.type === 'snooze') form += wfField('Standard-Wiedervorlage (Tage)', '<input type="number" min="1" max="365" value="' + (c.days != null ? c.days : 2) + '" onchange="wfSetCfg(\'days\', parseInt(this.value,10))">');
+  if (n.type === 'task') {
+    form += wfField('Aufgabentext', '<input value="' + wfEsc(c.title || '') + '" oninput="wfSetCfg(\'title\', this.value)">');
+    form += wfField('Fällig in (Stunden)', '<input type="number" min="1" max="720" value="' + (c.due_hours != null ? c.due_hours : 24) + '" onchange="wfSetCfg(\'due_hours\', parseInt(this.value,10))">');
+  }
+  if (n.type === 'stage' || n.type === 'call' || n.type === 'status') {
+    form += wfField('Status setzen (optional)', '<select onchange="wfSetCfg(\'status\', this.value)">' +
+      '<option value="">— nicht ändern —</option>' +
+      WF_STATUS_OPTS.map(function(o){ return '<option value="' + o[0] + '"' + (c.status === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>');
+  }
+  if (n.type === 'stage' || n.type === 'call') {
+    const outs = wfPorts(n);
+    form += '<div class="wf-f"><label>Ergebnisse (Ausgänge)</label>' +
+      (outs.length ? outs.map(function(o){ return '<div class="wf-out"><span class="dot" style="background:' + (WF_TONE[o.tone]||WF_TONE.active) + '"></span>' + wfEsc(o.label) + '</div>'; }).join('')
+                   : '<div class="hint" style="margin:0">Endstation – der Lead bleibt hier stehen.</div>') +
+      '<button class="wf-chip" style="margin-top:8px" onclick="wfAddOutcome()">+ Ergebnis</button></div>';
+  }
+  if (n.type === 'pause') form += wfField('Wenn kein Datum erkennbar: Tage', '<input type="number" min="1" max="90" value="' + (c.fallback_days != null ? c.fallback_days : 7) + '" onchange="wfSetCfg(\'fallback_days\', parseInt(this.value,10))">');
+  if (n.type === 'check') form += '<p class="hint">Läuft dauerhaft mit: Antwort, Bounce oder echter Klick leiten den Kunden sofort auf den passenden Ausgang um – egal, wo er gerade steht.</p>';
+  if (n.type === 'suppress') form += '<p class="hint">Die Adresse wird dauerhaft gesperrt und von <b>keinem</b> Versandweg mehr angeschrieben.</p>';
+
+  side.innerHTML =
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">' +
+      '<span style="width:9px;height:9px;border-radius:50%;background:' + col + '"></span>' +
+      '<h4 style="margin:0">' + wfEsc(n.title) + '</h4></div>' +
+    '<p class="hint">' + m.kind + ' · ' + wfSubtitle(n) + '</p>' + form +
+    '<button class="wf-chip" style="color:var(--r);border-color:var(--r)" onclick="wfDeleteNode()">Stage löschen</button>' +
+    '<div style="margin-top:16px;border-top:1px solid var(--line);padding-top:12px">' +
+      '<h4>Kunden hier <span id="wf-lead-n" style="color:var(--txt3);font-weight:400"></span></h4>' +
+      '<div id="wf-leadlist" class="hint">Wird geladen …</div></div>';
+  wfLoadNodeLeads(n.id);
+}
+
+function wfSetTitle(v){ const n = wfNodeById(wfSel); if (!n) return; n.title = v; wfMarkDirty(); wfRenderNodes(); }
+function wfSetCfg(key, val){
+  const n = wfNodeById(wfSel); if (!n) return;
+  n.config = n.config || {};
+  if (val === '' && key === 'status') delete n.config.status; else n.config[key] = val;
+  wfMarkDirty();
+  if (WF.node_meta && WF.node_meta[n.id]) WF.node_meta[n.id].ports = wfPorts(n);
+  wfRenderNodes(); wfRenderSide();
+}
+function wfAddOutcome(){
+  const n = wfNodeById(wfSel); if (!n) return;
+  const label = prompt('Wie soll das Ergebnis heißen?', 'Neues Ergebnis');
+  if (!label) return;
+  const tone = prompt('Farbe: positive, negative, waiting, active oder done', 'active') || 'active';
+  const key = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 24) + '_' + Math.random().toString(36).slice(2, 5);
+  const outs = Array.isArray(n.config.outcomes) ? n.config.outcomes.slice() : [];
+  outs.push({ key: key, label: label, tone: tone });
+  n.config.outcomes = outs;
+  if (!WF.node_meta) WF.node_meta = {};
+  WF.node_meta[n.id] = { tone: (WF.node_meta[n.id]||{}).tone || 'active', ports: outs.map(function(o){ return { key:o.key, label:o.label, tone:o.tone }; }) };
+  wfMarkDirty(); wfRenderNodes(); wfRenderSide();
+}
+function wfAddNode(type){
+  if (!WF) return;
+  const id = type + '_' + Math.random().toString(36).slice(2, 7);
+  const defaults = {
+    email:{ template_id:'default' }, wait:{ days:3 }, snooze:{ days:2 },
+    task:{ kind:'todo', title:'Aufgabe', due_hours:24 }, status:{ status:'replied' },
+    pause:{ fallback_days:7 }, trigger:{ source:'new_lead', requires_email:'yes' },
+    stage:{ tone:'waiting', outcomes:[{key:'weiter',label:'Weiter',tone:'active'}] },
+    call:{ outcomes:[{key:'interesse',label:'Interesse',tone:'positive'},{key:'kein_interesse',label:'Kein Interesse',tone:'negative'},{key:'nicht_erreicht',label:'Nicht erreicht',tone:'waiting'}] },
+  };
+  const titles = { email:'Neue E-Mail', wait:'Warten', check:'Reaktions-Weiche', stage:'Neue Stage', call:'Anruf',
+                   snooze:'Wiedervorlage', task:'Neue Aufgabe', status:'Status setzen', pause:'Pause', suppress:'Sperren', stop:'Ende', trigger:'Start' };
+  const cfg = defaults[type] || {};
+  WF.graph.nodes.push({ id:id, type:type, title: titles[type] || type, config: cfg,
+    x: Math.round((-wfPan.x + 320) / wfScale), y: Math.round((-wfPan.y + 240) / wfScale) });
+  if (!WF.node_meta) WF.node_meta = {};
+  const outs = Array.isArray(cfg.outcomes) ? cfg.outcomes : null;
+  WF.node_meta[id] = {
+    tone: cfg.tone || (type==='stop'?'done':type==='suppress'?'negative':(type==='wait'||type==='snooze'||type==='pause'||type==='check')?'waiting':'active'),
+    ports: type === 'stop' ? [] : (outs ? outs.map(function(o){ return {key:o.key,label:o.label,tone:o.tone}; }) : (type==='check' ? (WF.check_ports||[]).map(function(p){ return {key:p,label:(WF.port_labels||{})[p]||p,tone:(WF.port_tones||{})[p]||'active'}; }) : [{key:'out',label:'',tone:'active'}])),
+  };
+  wfMarkDirty(); wfRenderNodes(); wfSelect(id);
+}
+function wfDeleteNode(){
+  const n = wfNodeById(wfSel); if (!n) return;
+  if (!confirm('Stage "' + n.title + '" wirklich löschen?')) return;
+  WF.graph.nodes = WF.graph.nodes.filter(function(x){ return x.id !== n.id; });
+  WF.graph.edges = WF.graph.edges.filter(function(e){ return e.from !== n.id && e.to !== n.id; });
+  wfSel = null; wfMarkDirty(); wfRenderNodes(); wfRenderSide();
+}
+
+async function wfLoadNodeLeads(nodeId){
+  try {
+    const r = await fetchJSON('/api/workflow/node/' + encodeURIComponent(nodeId) + '/leads' + wfQ());
+    const box = document.getElementById('wf-leadlist'); if (!box) return;
+    const cnt = document.getElementById('wf-lead-n'); if (cnt) cnt.textContent = '(' + r.leads.length + ')';
+    if (!r.leads.length) { box.className = 'hint'; box.textContent = 'Hier steht gerade niemand.'; return; }
+    box.className = '';
+    box.innerHTML = r.leads.map(function(l){
+      const when = l.snooze_until || l.due_at;
+      return '<div class="wf-leadrow" onclick="wfOpenLead(\'' + l.lead_id + '\')" title="Lead öffnen">' +
+        '<div style="flex:1;min-width:0"><div class="nm">' + wfEsc(l.name) + '</div>' +
+        '<div class="mt">' + wfEsc(l.branche || '') + (l.stadt ? ' · ' + wfEsc(l.stadt) : '') +
+        (when && when.slice(0,4) !== '9999' ? ' · weiter ' + wfDate(when) : '') + '</div></div>' +
+        '<span class="wf-chip">öffnen</span></div>';
+    }).join('');
+  } catch (e) {}
+}
+
+async function wfStopLead(leadId){
+  if (!confirm('Diesen Kunden aus der Strategie nehmen? Er bekommt dann keine automatischen Mails mehr.')) return;
+  await post('/api/workflow/stop-lead', { leadId: leadId });
+  toast('Kunde aus der Strategie genommen');
+  wfCloseLead(); loadWorkflow(true);
+}
+
+// ── Lead-Detail: Daten, Verlauf, Aktionen ──
+async function wfOpenLead(leadId){
+  const box = document.getElementById('wf-leadmodal');
+  box.style.display = 'flex';
+  document.getElementById('wf-leadbody').innerHTML = '<div class="hint" style="padding:20px">Wird geladen …</div>';
+  try {
+    wfLead = await fetchJSON('/api/workflow/lead/' + encodeURIComponent(leadId));
+    wfRenderLead();
+  } catch (e) {
+    document.getElementById('wf-leadbody').innerHTML = '<div class="hint" style="padding:20px;color:var(--r)">Konnte nicht geladen werden.</div>';
+  }
+}
+function wfCloseLead(){ document.getElementById('wf-leadmodal').style.display = 'none'; wfLead = null; }
+
+function wfRenderLead(){
+  const d = wfLead, l = d.lead;
+  const tel = l.telefon_direkt || l.telefon;
+  const outcomes = d.outcomes || [];
+  const stageLine = d.node
+    ? '<span class="wf-live on" style="background:transparent;color:' + (WF_TONE[d.node.tone]||WF_TONE.active) + '"><span class="pt"></span>' + wfEsc(d.node.title) + '</span>'
+    : '<span class="wf-live off"><span class="pt"></span>läuft in keiner Strategie</span>';
+
+  const timeline = []
+    .concat((d.emails||[]).map(function(e){ return { t:e.sent_at, k:'mail', title:'✉ ' + (e.subject||'(ohne Betreff)'), sub:(e.success? (e.delivery_status==='delivered'?'zugestellt':'versendet') : 'Fehler: ' + (e.error||'')) + (e.campaign? ' · ' + e.campaign : '') }; }))
+    .concat((d.replies||[]).map(function(r){ return { t:r.received_at||r.created_at, k:'reply', title:'← ' + (r.subject||'Antwort'), sub:(r.category||'') + ' · ' + (r.snippet||'').slice(0,90) }; }))
+    .concat((d.events||[]).filter(function(e){ return e.event_type==='manual_call' || e.event_type==='note' || e.event_type==='manual_contact'; })
+      .map(function(e){ return { t:e.created_at, k:e.event_type==='manual_call'?'call':'note', title:(e.event_type==='manual_call'?'☎ Anruf':'✎ Notiz'), sub:(e.note||'').slice(0,140) }; }))
+    .sort(function(a,b){ return String(b.t||'').localeCompare(String(a.t||'')); }).slice(0, 40);
+
+  document.getElementById('wf-leadbody').innerHTML =
+    '<div class="wf-lead-head">' +
+      '<div style="flex:1;min-width:0"><h3 style="margin:0 0 3px">' + wfEsc(l.name) + '</h3>' +
+      '<div class="mt">' + wfEsc(l.branche||'') + (l.stadt? ' · ' + wfEsc(l.stadt):'') + (l.geschaeftsfuehrer? ' · ' + wfEsc(l.geschaeftsfuehrer):'') + '</div>' +
+      '<div class="mt">' + (l.email? wfEsc(l.email):'keine E-Mail') + (tel? ' · ' + wfEsc(tel):'') + '</div></div>' +
+      '<div style="text-align:right">' + stageLine +
+      '<div class="mt" style="margin-top:5px">Status: <b>' + wfEsc(l.status) + '</b></div>' +
+      (l.wiedervorlage_at ? '<div class="mt">Wiedervorlage: ' + wfDate(l.wiedervorlage_at) + '</div>' : '') + '</div>' +
+      '<button class="wf-chip" onclick="wfCloseLead()">✕</button>' +
+    '</div>' +
+
+    '<div class="wf-lead-grid">' +
+      '<div>' +
+        '<h4>Nächste Aktion</h4>' +
+        (outcomes.length
+          ? '<div class="wf-outbtns">' + outcomes.map(function(o){
+              return '<button class="wf-outbtn" style="border-color:' + (WF_TONE[o.tone]||WF_TONE.active) + ';color:' + (WF_TONE[o.tone]||WF_TONE.active) + '" onclick="wfLeadAdvance(\'' + o.key + '\',\'' + wfEsc(o.label).replace(/'/g,"") + '\')">' + wfEsc(o.label) + '</button>';
+            }).join('') + '</div>'
+          : '<p class="hint">Diese Stage hat keine Ergebnisse zur Auswahl – der Lead wartet auf die Automatik oder ist am Ende angekommen.</p>') +
+        '<div class="wf-f" style="margin-top:12px"><label>Wiedervorlage setzen</label>' +
+          '<div style="display:flex;gap:6px"><input type="datetime-local" id="wf-l-wv">' +
+          '<button class="wf-chip" onclick="wfLeadSnooze()">Setzen</button></div></div>' +
+        '<div class="wf-f"><label>Status ändern</label><select id="wf-l-status" onchange="wfLeadStatus(this.value)">' +
+          '<option value="">— wählen —</option>' +
+          WF_STATUS_OPTS.map(function(o){ return '<option value="' + o[0] + '"' + (l.status===o[0]?' selected':'') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+          '<button class="wf-chip" onclick="wfLeadRunNow()">▶ Jetzt weiterlaufen</button>' +
+          (tel ? '<a class="wf-chip" href="tel:' + wfEsc(tel) + '">☎ Anrufen</a>' : '') +
+          '<button class="wf-chip" onclick="wfLeadPark()">Passt nicht &middot; zu Sonstige</button>' +
+          '<button class="wf-chip" style="color:var(--r);border-color:var(--r)" onclick="wfStopLead(\'' + l.id + '\')">Aus Strategie nehmen</button>' +
+        '</div>' +
+
+        '<h4 style="margin-top:16px">Notiz</h4>' +
+        '<textarea id="wf-l-note" rows="3" placeholder="Was ist passiert?"></textarea>' +
+        '<button class="wf-chip" style="margin-top:6px" onclick="wfLeadNote()">Notiz speichern</button>' +
+      '</div>' +
+
+      '<div>' +
+        '<h4>E-Mail schreiben</h4>' +
+        '<div class="wf-f"><label>Vorlage</label><select id="wf-l-tpl" onchange="wfLeadFillTpl()">' +
+          '<option value="">— frei schreiben —</option>' +
+          wfTpls.map(function(t){ return '<option value="' + wfEsc(t.id) + '">' + wfEsc(t.name) + '</option>'; }).join('') + '</select></div>' +
+        '<div class="wf-f"><label>Betreff</label><input id="wf-l-subj"></div>' +
+        '<div class="wf-f"><label>Text</label><textarea id="wf-l-body" rows="8"></textarea></div>' +
+        '<button class="btn btn-solid" style="padding:9px 14px;font-size:12.5px" onclick="wfLeadSend()"' + (l.email?'':' disabled') + '>' +
+          (l.email ? 'E-Mail jetzt senden' : 'Keine E-Mail-Adresse') + '</button>' +
+      '</div>' +
+    '</div>' +
+
+    '<h4 style="margin-top:14px">Verlauf</h4>' +
+    '<div class="wf-timeline">' + (timeline.length ? timeline.map(function(t){
+      return '<div class="wf-tl"><span class="wf-dot ' + (t.k==='reply'?'hot':t.k==='mail'?'send':t.k==='call'?'warn':'') + '"></span>' +
+        '<span class="tm">' + wfDate(t.t) + '</span>' +
+        '<span style="flex:1;min-width:0"><b>' + wfEsc(t.title) + '</b>' +
+        (t.sub ? '<div style="color:var(--txt3);font-size:11.5px">' + wfEsc(t.sub) + '</div>' : '') + '</span></div>';
+    }).join('') : '<div class="hint">Noch nichts passiert.</div>') + '</div>';
+}
+
+async function wfLeadAdvance(port, label){
+  if (!wfLead) return;
+  const note = (document.getElementById('wf-l-note') || {}).value || '';
+  const r = await (await fetch('/api/workflow/lead/' + wfLead.lead.id + '/advance', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ port: port, note: note ? label + ': ' + note : label })
+  })).json();
+  if (!r.ok) { toast(r.error || 'Ging nicht', true); return; }
+  toast('Weiter zu: ' + (r.node_title || 'nächster Schritt'));
+  await wfOpenLead(wfLead.lead.id); loadWorkflow(true);
+}
+async function wfLeadSnooze(){
+  const v = document.getElementById('wf-l-wv').value;
+  if (!v) { toast('Bitte ein Datum wählen', true); return; }
+  const r = await (await fetch('/api/workflow/lead/' + wfLead.lead.id + '/snooze', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ until: new Date(v).toISOString(), grund: (document.getElementById('wf-l-note')||{}).value || '' })
+  })).json();
+  toast(r.ok ? 'Wiedervorlage gesetzt' : (r.error || 'Ging nicht'), !r.ok);
+  await wfOpenLead(wfLead.lead.id); loadWorkflow(true);
+}
+async function wfLeadPark(){
+  const note = (document.getElementById('wf-l-note')||{}).value || '';
+  if (!confirm('Diesen Lead auf "Sonstige" schieben? Er bekommt dann nichts mehr, bleibt aber sichtbar.')) return;
+  const r = await (await fetch('/api/workflow/lead/' + wfLead.lead.id + '/move', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ nodeId: 'sonstige', note: note || 'Passt nicht in diese Kampagne' })
+  })).json();
+  if (!r.ok) { toast(r.error || 'Ging nicht', true); return; }
+  toast('Auf "Sonstige" geschoben');
+  await wfOpenLead(wfLead.lead.id); loadWorkflow(true);
+}
+async function wfLeadRunNow(){
+  const r = await (await fetch('/api/workflow/lead/' + wfLead.lead.id + '/run-now', { method:'POST' })).json();
+  toast(r.ok ? 'Läuft beim nächsten Durchlauf weiter' : (r.error || 'Ging nicht'), !r.ok);
+}
+async function wfLeadNote(){
+  const note = document.getElementById('wf-l-note').value.trim();
+  if (!note) { toast('Notiz ist leer', true); return; }
+  await fetch('/api/workflow/lead/' + wfLead.lead.id + '/note', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ note: note })
+  });
+  toast('Notiz gespeichert');
+  await wfOpenLead(wfLead.lead.id);
+}
+async function wfLeadStatus(status){
+  if (!status) return;
+  await post('/api/status', { id: wfLead.lead.id, status: status });
+  toast('Status gesetzt');
+  await wfOpenLead(wfLead.lead.id); loadWorkflow(true);
+}
+function wfLeadFillTpl(){
+  const id = document.getElementById('wf-l-tpl').value;
+  const t = wfTpls.find(function(x){ return x.id === id; });
+  if (!t) return;
+  const l = wfLead.lead;
+  const fill = function(s){ return String(s||'')
+    .replace(/\{name\}/g, l.name || '').replace(/\{branche\}/g, l.branche || '')
+    .replace(/\{stadt\}/g, l.stadt || '').replace(/\{gruss\}/g, l.geschaeftsfuehrer ? 'Guten Tag ' + l.geschaeftsfuehrer : 'Guten Tag')
+    .replace(/\{termin_link\}/g, (WF && WF.cal_link) || ''); };
+  document.getElementById('wf-l-subj').value = fill(t.subject);
+  document.getElementById('wf-l-body').value = fill(t.body);
+}
+async function wfLeadSend(){
+  const subject = document.getElementById('wf-l-subj').value.trim();
+  const body = document.getElementById('wf-l-body').value.trim();
+  if (!subject || !body) { toast('Betreff und Text ausfüllen', true); return; }
+  if (!confirm('Diese E-Mail jetzt an ' + wfLead.lead.email + ' senden?')) return;
+  const r = await post('/api/send-email', { id: wfLead.lead.id, to: wfLead.lead.email, subject: subject, body: body });
+  const j = await r.json().catch(function(){ return {}; });
+  toast(r.ok ? 'E-Mail gesendet' : (j.error || 'Versand fehlgeschlagen'), !r.ok);
+  if (r.ok) await wfOpenLead(wfLead.lead.id);
+}
+
+// ── Strategien: umschalten, anlegen, übernehmen ──
+function wfRenderStrategies(){
+  const box = document.getElementById('wf-strats');
+  if (!box || !WF) return;
+  const list = WF.strategies || [];
+  box.innerHTML = list.map(function(st){
+    return '<div class="wf-strat' + (st.id === wfCurrentId ? ' cur' : '') + '" onclick="wfSwitchStrategy(\'' + st.id + '\')">' +
+      '<div><div class="sn">' + wfEsc(st.name) + '</div><div class="sm">' + st.nodes + ' Stages · ' + st.active_leads + ' Kunden</div></div>' +
+      '<span class="wf-live ' + (st.enabled ? 'on' : 'off') + '" onclick="event.stopPropagation();wfSetStrategyActive(\'' + st.id + '\',' + (st.enabled ? 'false' : 'true') + ')" title="' +
+        (st.enabled ? 'Läuft – klicken zum Pausieren' : 'Pausiert – klicken zum Aktivieren') + '">' +
+        '<span class="pt"></span>' + (st.enabled ? 'aktiv' : 'inaktiv') + '</span></div>';
+  }).join('') +
+  '<button class="wf-chip" onclick="wfNewStrategy()">+ Neue Strategie</button>' +
+  '<button class="wf-chip" onclick="wfStrategyForTrack()">+ Strategie für den anderen Bereich</button>' +
+  '<button class="wf-chip" onclick="wfDuplicateStrategy()">Kopie</button>' +
+  '<button class="wf-chip" onclick="wfRenameStrategy()">Umbenennen</button>' +
+  (list.find(function(x){ return x.id === wfCurrentId && x.removable; })
+    ? '<button class="wf-chip" style="color:var(--r);border-color:var(--r)" onclick="wfDeleteStrategy()">Löschen</button>' : '');
+}
+
+async function wfSwitchStrategy(id){
+  if (id === wfCurrentId) return;
+  if (wfDirty && !confirm('Ungespeicherte Änderungen gehen verloren. Trotzdem wechseln?')) return;
+  wfCurrentId = id; wfSel = null; wfClearDirty();
+  await loadWorkflow(true);
+}
+async function wfSetStrategyActive(id, on){
+  const r = await fetch('/api/workflow?id=' + encodeURIComponent(id), { method:'PUT',
+    headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ enabled: on }) });
+  if (!r.ok) { toast('Umschalten fehlgeschlagen', true); return; }
+  toast(on ? 'Strategie aktiviert' : 'Strategie pausiert');
+  await loadWorkflow(true);
+}
+async function wfNewStrategy(){
+  const name = prompt('Name der neuen Strategie:', 'Strategie ' + new Date().toLocaleDateString('de-DE'));
+  if (!name) return;
+  const j = await (await fetch('/api/workflows', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name: name }) })).json();
+  wfCurrentId = j.id; wfSel = null; wfClearDirty(); await loadWorkflow(true);
+  toast('Strategie angelegt');
+}
+// Ein Klick: Kopie dieser Strategie für den anderen Angebots-Bereich. Damit laufen
+// auch die dort schon angeschriebenen Firmen weiter, statt liegen zu bleiben.
+async function wfStrategyForTrack(){
+  const ziel = (WF && WF.track === 'consult') ? 'voice_agent' : 'consult';
+  const label = ziel === 'consult' ? 'Consult (KI-Automatisierung)' : 'Voice Agent (Tawano)';
+  if (!confirm('Eine Kopie dieser Strategie für „' + label + '" anlegen? Sie startet ausgeschaltet – du kannst sie in Ruhe ansehen und dann übernehmen.')) return;
+  const j = await (await fetch('/api/workflows', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ name: 'Strategie · ' + label, copyFrom: wfCurrentId }) })).json();
+  await fetch('/api/workflow?id=' + encodeURIComponent(j.id), { method:'PUT',
+    headers:{'Content-Type':'application/json'}, body: JSON.stringify({ track: ziel }) });
+  wfCurrentId = j.id; wfSel = null; wfClearDirty();
+  await loadWorkflow(true);
+  toast('Strategie für ' + label + ' angelegt – noch ausgeschaltet');
+}
+
+async function wfDuplicateStrategy(){
+  const name = prompt('Name der Kopie:', (WF ? WF.name : 'Strategie') + ' (Kopie)');
+  if (!name) return;
+  const j = await (await fetch('/api/workflows', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name: name, copyFrom: wfCurrentId }) })).json();
+  wfCurrentId = j.id; wfSel = null; wfClearDirty(); await loadWorkflow(true);
+  toast('Kopie angelegt');
+}
+async function wfRenameStrategy(){
+  const name = prompt('Neuer Name:', WF ? WF.name : '');
+  if (!name) return;
+  await fetch('/api/workflow' + wfQ(), { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name: name }) });
+  await loadWorkflow(true);
+}
+async function wfDeleteStrategy(){
+  if (!confirm('Diese Strategie löschen? Laufende Kunden werden aus ihr herausgenommen.')) return;
+  const j = await (await fetch('/api/workflows/' + encodeURIComponent(wfCurrentId), { method:'DELETE' })).json();
+  if (!j.ok) { toast(j.error || 'Löschen fehlgeschlagen', true); return; }
+  wfCurrentId = 'main'; wfSel = null; wfClearDirty(); await loadWorkflow(true);
+  toast('Strategie gelöscht');
+}
+
+// ── ① Bestandsdaten einsortieren  ② Strategie übernehmen ──
+async function wfBackfill(apply){
+  const j = await (await fetch('/api/workflow/backfill' + wfQ(), {
+    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ apply: !!apply })
+  })).json();
+  if (j.error) { toast(j.error, true); return; }
+  const rows = (j.rows||[]).map(function(r){
+    return '<tr><td>' + wfEsc(r.node_title) + '</td><td style="text-align:right"><b>' + r.count + '</b></td><td style="color:var(--txt3)">' + wfEsc(r.reason) + '</td></tr>';
+  }).join('');
+  document.getElementById('wf-backfill').innerHTML =
+    '<div class="wf-bf">' +
+      '<b>' + (apply ? 'Eingeordnet' : 'Vorschau') + ':</b> ' + j.assigned + ' von ' + j.total + ' Leads bekommen eine Stage, ' +
+      j.skipped + ' starten regulär über den Start-Knoten.' +
+      (rows ? '<table class="wf-bftable">' + rows + '</table>' : '') +
+      (apply ? '' : '<button class="btn btn-solid" style="padding:8px 14px;font-size:12.5px;margin-top:8px" onclick="wfBackfill(true)">Jetzt wirklich einsortieren</button>') +
+    '</div>';
+  if (apply) { toast(j.assigned + ' Leads einsortiert'); loadWorkflow(true); }
+}
+
+async function wfAdopt(){
+  if (!confirm('Ab jetzt läuft alles nach dieser Strategie.\n\n• Diese Strategie wird aktiviert\n• Andere Strategien werden pausiert\n• Laufende Auto-Kampagnen und der alte Follow-up-Worker werden gestoppt\n• Bestehende Leads werden ihrer Stage zugeordnet\n\nÜbernehmen?')) return;
+  const j = await (await fetch('/api/workflow/adopt' + wfQ(), { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' })).json();
+  if (!j.ok) { toast(j.error || 'Übernehmen fehlgeschlagen', true); return; }
+  document.getElementById('wf-backfill').innerHTML =
+    '<div class="wf-bf ok"><b>✓ "' + wfEsc(j.strategie) + '" ist jetzt zuständig.</b>' +
+    '<div style="margin-top:6px">' + j.einsortiert + ' Leads einsortiert' +
+    (j.gestoppte_kampagnen && j.gestoppte_kampagnen.length ? ' · ' + j.gestoppte_kampagnen.length + ' Auto-Kampagne(n) gestoppt' : '') +
+    (j.followup_worker_gestoppt ? ' · alter Follow-up-Worker aus' : '') +
+    (j.deaktivierte_strategien && j.deaktivierte_strategien.length ? ' · ' + j.deaktivierte_strategien.length + ' andere Strategie(n) pausiert' : '') +
+    '</div></div>';
+  toast('Strategie übernommen — sie ist ab jetzt zuständig');
+  await loadWorkflow(true);
+}
+
+// ── Vollbild ──
+let wfHomeAnchor = null;
+function wfToggleFull(){
+  const panel = document.getElementById('wf-panel');
+  wfFullscreen = !wfFullscreen;
+  if (wfFullscreen) {
+    // Die Seite hat eine Einblend-Animation mit transform. Ein transformierter
+    // Vorfahre wird zum Bezugsrahmen fuer position:fixed – der Editor haenge sonst
+    // in der Seite statt im Bildschirm. Deshalb im Vollbild direkt an <body>.
+    wfHomeAnchor = document.createComment('wf-panel');
+    panel.parentNode.insertBefore(wfHomeAnchor, panel);
+    document.body.appendChild(panel);
+    panel.classList.add('wf-full');
+    document.body.style.overflow = 'hidden';
+  } else {
+    panel.classList.remove('wf-full');
+    if (wfHomeAnchor && wfHomeAnchor.parentNode) {
+      wfHomeAnchor.parentNode.insertBefore(panel, wfHomeAnchor);
+      wfHomeAnchor.parentNode.removeChild(wfHomeAnchor);
+    }
+    wfHomeAnchor = null;
+    document.body.style.overflow = '';
+  }
+  document.getElementById('wf-full-btn').textContent = wfFullscreen ? '⤡ Vollbild verlassen' : '⛶ Vollbild';
+  setTimeout(function(){ wfDrawEdges(); }, 60);
+}
+document.addEventListener('keydown', function(ev){
+  if (ev.key !== 'Escape') return;
+  if (document.getElementById('wf-leadmodal') && document.getElementById('wf-leadmodal').style.display === 'flex') { wfCloseLead(); return; }
+  if (wfFullscreen) wfToggleFull();
+});
+
+async function wfSave(){
+  const r = await fetch('/api/workflow' + wfQ(), { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ graph: WF.graph }) });
+  if (!r.ok) { toast('Speichern fehlgeschlagen', true); return; }
+  WF = await r.json(); wfClearDirty(); wfRenderAll(); toast('Strategie gespeichert ✓');
+}
+async function wfToggle(){
+  const on = document.getElementById('wf-enabled').checked;
+  const r = await fetch('/api/workflow' + wfQ(), { method:'PUT', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ enabled: on, graph: WF ? WF.graph : undefined }) });
+  WF = await r.json(); wfClearDirty(); wfRenderAll();
+  toast(on ? 'Strategie läuft' : 'Strategie gestoppt');
+}
+async function wfSaveSettings(){
+  const body = {
+    track: document.getElementById('wf-track').value,
+    daily_cap: parseInt(document.getElementById('wf-cap').value, 10),
+    window_start: parseInt(document.getElementById('wf-ws').value, 10),
+    window_end: parseInt(document.getElementById('wf-we').value, 10),
+    min_gap_s: parseInt(document.getElementById('wf-gap').value, 10),
+  };
+  const saved = await (await fetch('/api/workflow' + wfQ(), { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })).json();
+  if (WF) { WF.track = saved.track; WF.daily_cap = saved.daily_cap; WF.window_start = saved.window_start; WF.window_end = saved.window_end; WF.min_gap_s = saved.min_gap_s; }
+  toast('Einstellungen gespeichert');
+}
+async function wfSaveCal(){
+  const link = document.getElementById('wf-cal').value.trim();
+  const j = await (await fetch('/api/workflow/settings', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ cal_link: link }) })).json();
+  if (!j.ok) { toast(j.error || 'Link konnte nicht gespeichert werden', true); return; }
+  if (WF) WF.cal_link = j.cal_link;
+  wfRenderAll(); toast('Terminlink gespeichert');
+}
+async function wfResetGraph(){
+  if (!confirm('Den Baum auf die Standard-Strategie zurücksetzen? Eigene Stages gehen verloren.')) return;
+  WF = await (await fetch('/api/workflow/reset' + wfQ(), { method:'POST' })).json();
+  wfSel = null; wfClearDirty(); wfRenderAll(); toast('Standard-Strategie geladen');
+}
+async function wfTick(){
+  const j = await (await fetch('/api/workflow/tick' + wfQ(), { method:'POST' })).json();
+  if (WF) { WF.counts = j.counts; WF.pending = j.pending; WF.stats = j.stats; WF.strategies = j.strategies; }
+  wfRenderBadges(); wfRenderStrategies(); wfLoadLog(); wfLoadTasks();
+  toast(j.enrolled ? j.enrolled + ' neue Kunden aufgenommen' : 'Durchlauf erledigt');
+}
+
+async function wfLoadLog(){
+  try {
+    const r = await fetchJSON('/api/workflow/log?limit=60');
+    const box = document.getElementById('wf-loglist'); if (!box) return;
+    if (!r.entries.length) { box.innerHTML = '<div style="padding:14px 0;color:var(--txt3);font-size:12.5px">Noch nichts passiert. Sobald die Strategie läuft, steht hier jede Aktion.</div>'; return; }
+    box.innerHTML = r.entries.map(function(e){
+      return '<div class="wf-logrow"><span class="wf-dot ' + wfEsc(e.level || 'info') + '"></span>' +
+      '<span class="tm">' + wfDate(e.created_at) + '</span>' +
+      '<span style="flex:1;min-width:0"><b>' + wfEsc(e.action) + '</b>' + (e.lead_name ? ' · ' + wfEsc(e.lead_name) : '') +
+      (e.detail ? '<div style="color:var(--txt3);font-size:11.5px;margin-top:2px">' + wfEsc(e.detail) + '</div>' : '') + '</span></div>';
+    }).join('');
+  } catch (e) {}
+}
+
+async function wfLoadTasks(){
+  try {
+    const r = await fetchJSON('/api/tasks?status=open');
+    const box = document.getElementById('wf-tasklist'); if (!box) return;
+    if (!r.tasks.length) { box.innerHTML = '<div style="padding:14px 0;color:var(--txt3);font-size:12.5px">Keine offenen Aufgaben.</div>'; return; }
+    const now = Date.now();
+    box.innerHTML = r.tasks.map(function(t){
+      const due = t.due_at ? new Date(t.due_at).getTime() : 0;
+      const tel = t.telefon_direkt || t.telefon;
+      return '<div class="wf-task' + (due && due <= now ? ' due' : '') + '">' +
+        '<div class="tt"' + (t.lead_id ? ' onclick="wfOpenLead(\'' + t.lead_id + '\')" style="cursor:pointer"' : '') + '><b>' + wfEsc(t.title) + '</b>' + (t.lead_name ? ' — ' + wfEsc(t.lead_name) : '') +
+        '<div style="color:var(--txt3);font-size:11px;margin-top:2px">' + (due ? 'fällig ' + wfDate(t.due_at) : '') + (tel ? ' · ' + wfEsc(tel) : '') + '</div></div>' +
+        (tel ? '<a class="wf-chip" href="tel:' + wfEsc(tel) + '">Anrufen</a>' : '') +
+        '<button class="wf-chip" onclick="wfTaskDone(\'' + t.id + '\')">Erledigt</button></div>';
+    }).join('');
+  } catch (e) {}
+}
+async function wfTaskDone(id){ await fetch('/api/tasks/' + id + '/done', { method:'POST' }); wfLoadTasks(); loadWorkflow(); }
+
+
+// ── Lead-Nachschub: Betriebe holen + E-Mails ernten ──
+let nahrungTimer = null;
+async function osmStart(){
+  if (!confirm('Handwerksbetriebe aus ganz NRW holen? Das dauert einige Minuten und legt rund 4.900 neue Leads an. Es wird nichts verschickt.')) return;
+  const j = await (await fetch('/api/leads/osm-handwerk', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ region:'DE-NW' }) })).json();
+  toast(j.ok ? 'Läuft – Fortschritt siehst du unten' : 'Läuft bereits');
+  nahrungWatch();
+}
+async function harvestStart(){
+  if (!confirm('E-Mails aus den Websites lesen? Läuft im Hintergrund und kann Stunden dauern. Es wird nichts verschickt.')) return;
+  const j = await (await fetch('/api/leads/harvest-emails', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' })).json();
+  toast(j.ok ? 'Ernte gestartet' : 'Läuft bereits');
+  nahrungWatch();
+}
+async function harvestStop(){ await fetch('/api/leads/harvest-emails/stop', { method:'POST' }); toast('Ernte wird angehalten'); }
+
+async function nahrungAuto(on){
+  await fetch('/api/leads/nachschub', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ automatik: on }) });
+  toast(on ? 'Automatik an – der Vorrat füllt sich von allein' : 'Automatik aus');
+  nahrungStatus();
+}
+async function nahrungStatus(){
+  const box = document.getElementById('nahrung-status'); if (!box) return;
+  try {
+    const r = await Promise.all([ fetchJSON('/api/leads/osm-handwerk'), fetchJSON('/api/leads/harvest-emails'), fetchJSON('/api/leads/nachschub') ]);
+    const o = r[0], h = r[1], n = r[2];
+    const auto = document.getElementById('nahrung-auto'); if (auto) auto.checked = !!n.automatik;
+    const teile = [];
+    if (o.laeuft) teile.push('<b>Betriebe holen:</b> ' + o.erledigt + '/' + o.gesamt + ' Gewerke · aktuell ' + wfEsc(o.gewerk) + ' · ' + o.gefunden + ' gefunden, ' + o.neu + ' neu');
+    else if (o.fertig) teile.push('<b>Betriebe:</b> fertig – ' + o.gefunden + ' gefunden, ' + o.neu + ' neu angelegt, ' + o.mitWebsite + ' mit Website');
+    if (h.laeuft) teile.push('<b>E-Mail-Ernte:</b> ' + h.geprueft + ' Seiten geprüft, <b style="color:var(--g)">' + h.gefunden + ' E-Mails</b> gefunden · noch ' + h.offen + ' offen · aktuell ' + wfEsc(h.aktuell));
+    else if (h.fertig) teile.push('<b>E-Mail-Ernte:</b> fertig – ' + h.gefunden + ' E-Mails aus ' + h.geprueft + ' Seiten, noch ' + h.offen + ' offen');
+    else teile.push(h.offen + ' Websites warten noch auf die E-Mail-Ernte.');
+    teile.push('<b>Vorrat:</b> ' + n.vorrat + ' versandfähige Leads (mit E-Mail, noch nie angeschrieben)'
+      + (h.chefs ? ' · ' + h.chefs + ' Chef-Namen und ' + h.direktnummern + ' Direktnummern in diesem Lauf' : ''));
+    box.innerHTML = teile.join('<br>');
+    if (!o.laeuft && !h.laeuft && nahrungTimer) { clearInterval(nahrungTimer); nahrungTimer = null; }
+  } catch (e) {}
+}
+function nahrungWatch(){ nahrungStatus(); if (!nahrungTimer) nahrungTimer = setInterval(nahrungStatus, 4000); }
 
 // ════ INIT ════
 applyTrackUI();

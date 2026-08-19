@@ -4,6 +4,8 @@ import { recordSentEmail, sentTodayCount, GLOBAL_DAILY_CAP } from './auto-sender
 import { recordOutreachEvent } from '../db/leads-repo';
 import { isRealClick } from './tracking';
 import { Lead } from '../types';
+import { NOT_SUPPRESSED_SQL } from '../workflow/optout';
+import { NOT_IN_ACTIVE_WORKFLOW_SQL } from '../workflow/schema';
 import { v4 as uuid } from 'uuid';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -186,6 +188,8 @@ export function dueFollowupCandidate(cfg: FollowupConfig = getFollowupConfig(), 
     `SELECT * FROM leads
      WHERE status = 'contacted' AND email IS NOT NULL AND email != ''
        AND COALESCE(followup_stopped,0) = 0
+       AND ${NOT_SUPPRESSED_SQL}
+       AND ${NOT_IN_ACTIVE_WORKFLOW_SQL}
        AND COALESCE(followup_stage,0) < @maxStages
        AND ${FOLLOWUP_TRACK_SQL}
      ORDER BY COALESCE(followup_last_at, gesendet_at, contacted_at, updated_at) ASC

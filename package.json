@@ -16,7 +16,8 @@
     "leadgen:impressum": "npm run build && node scripts/enrich-impressum.cjs",
     "test": "npm run build && node tests/run-tests.cjs",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "deploy": "node scripts/deploy.cjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

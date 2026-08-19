@@ -242,6 +242,10 @@ function initSchema(db: Database.Database) {
       sent_at     TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_sent_emails_date ON sent_emails(sent_at);
+    -- Der Abgleich "wurde diese Adresse schon angeschrieben?" laeuft ueber to_email
+    -- (Dedup, Einsortieren der Bestandsleads). Ohne Index wird das mit wachsendem
+    -- Sende-Log spuerbar langsam.
+    CREATE INDEX IF NOT EXISTS idx_sent_emails_to ON sent_emails(to_email);
     CREATE INDEX IF NOT EXISTS idx_sent_emails_job ON sent_emails(job_id);
 
     CREATE TABLE IF NOT EXISTS email_events (

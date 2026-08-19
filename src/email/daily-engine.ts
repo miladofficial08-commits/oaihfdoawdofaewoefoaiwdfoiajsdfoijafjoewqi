@@ -3,6 +3,7 @@ import { runPipeline } from '../pipeline';
 import { verticalPresets } from '../config/markets';
 import { OUTREACH_TEMPLATE_IDS } from './template';
 import { setFollowupConfig, getFollowupConfig } from './followup-sender';
+import { activeWorkflows } from '../workflow/schema';
 import { v4 as uuid } from 'uuid';
 
 /**
@@ -72,6 +73,15 @@ function todayLocal(): string {
 /** Stellt genau EINEN laufenden Send-Job über alle Branchen sicher (idempotent). */
 function ensureSendJob(cfg: EngineConfig): void {
   const db = getDb();
+
+  // WICHTIG: Läuft eine Strategie, ist SIE für den Versand zuständig. Der Tagesmotor
+  // darf dann keinen eigenen Job anlegen – sonst würden zwei Systeme dieselben Leads
+  // anschreiben, mit unterschiedlichen Texten und ohne gemeinsames Limit.
+  // Der Lead-Nachschub (Scrape) läuft davon unberührt weiter.
+  try {
+    if (activeWorkflows().length > 0) return;
+  } catch { /* Workflow-Tabellen noch nicht da – dann greift die alte Logik */ }
+
   const running = (db.prepare(`SELECT COUNT(*) n FROM send_jobs WHERE status = 'running'`).get() as { n: number }).n;
   if (running > 0) return; // es läuft bereits ein Job – nicht doppeln
 
@@ -96,6 +106,10 @@ function ensureSendJob(cfg: EngineConfig): void {
 
 /** Aktiviert die Follow-up-Sequenz genau einmal (respektiert spätere manuelle Deaktivierung). */
 function ensureFollowupInitialized(): void {
+  // Auch hier gilt: Eine aktive Strategie macht die Nachfass-Mails selbst.
+  try {
+    if (activeWorkflows().length > 0) return;
+  } catch { /* siehe oben */ }
   if (stateGet('followup_initialized') === '1') return;
   const cfg = getFollowupConfig();
   if (!cfg.enabled) {

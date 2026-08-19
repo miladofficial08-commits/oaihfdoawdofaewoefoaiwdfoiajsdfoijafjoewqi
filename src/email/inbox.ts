@@ -1,4 +1,5 @@
 import { ImapFlow } from 'imapflow';
+import { isNoise } from './noise-filter';
 
 export interface InboxEmail {
   uid: number;
@@ -78,10 +79,21 @@ export async function fetchInboxEmails(limit = 40): Promise<InboxEmail[]> {
         uid: true,
         envelope: true,
         flags: true,
+        headers: ['auto-submitted', 'x-autoreply', 'x-autorespond', 'precedence', 'list-unsubscribe', 'list-id'],
         bodyParts: ['1', 'TEXT'],
       } as any)) {
         const env = msg.envelope;
         const fromAddr = env?.from?.[0];
+        const headersBuf = (msg as any).headers;
+        const headers = headersBuf ? Buffer.from(headersBuf).toString('utf-8') : '';
+        // Rausch-Mails (Bounces, Auto-Reply, „Verifica profilo", Newsletter, System-Noise)
+        // gar nicht erst ins UI schleusen.
+        if (isNoise({
+          fromEmail: fromAddr?.address || '',
+          fromName: fromAddr?.name || '',
+          subject: env?.subject || '',
+          headers,
+        })) continue;
         const bodyBuf = (msg as any).bodyParts?.get('1') || (msg as any).bodyParts?.get('TEXT');
         const raw = bodyBuf ? Buffer.from(bodyBuf).toString('utf-8') : '';
         const clean = raw
@@ -107,6 +119,53 @@ export async function fetchInboxEmails(limit = 40): Promise<InboxEmail[]> {
   } finally {
     await client.logout().catch(() => {});
   }
+}
+
+/**
+ * Löscht Rausch-Mails (Bounces, Auto-Reply, „Verifica"-Challenges, Newsletter,
+ * System-Noise, eigene Loops) direkt aus dem IMAP-Posteingang. Läuft periodisch
+ * mit dem Reply-Scan (siehe reply-scanner.ts), damit der Posteingang sauber bleibt.
+ * Gibt zurück, wie viele UIDs gelöscht wurden.
+ */
+export async function purgeInboxNoise(scanLimit = 200): Promise<{ deleted: number; scanned: number }> {
+  const cfg = getImapCfg();
+  if (!cfg.user || !cfg.pass || !cfg.host) return { deleted: 0, scanned: 0 };
+  const client = mkClient(cfg);
+  let scanned = 0;
+  const noiseUids: number[] = [];
+  try {
+    await client.connect();
+    const lock = await client.getMailboxLock('INBOX');
+    try {
+      const st = await client.status('INBOX', { messages: true });
+      const total = st.messages || 0;
+      if (!total) return { deleted: 0, scanned: 0 };
+      const start = Math.max(1, total - scanLimit + 1);
+      for await (const msg of client.fetch(`${start}:*`, {
+        uid: true,
+        envelope: true,
+        headers: ['auto-submitted', 'x-autoreply', 'x-autorespond', 'precedence', 'list-unsubscribe', 'list-id'],
+      } as any)) {
+        scanned++;
+        const env = (msg as any).envelope || {};
+        const fromAddr = env.from?.[0] || {};
+        const headersBuf = (msg as any).headers;
+        const headers = headersBuf ? Buffer.from(headersBuf).toString('utf-8') : '';
+        if (isNoise({
+          fromEmail: fromAddr.address || '',
+          fromName: fromAddr.name || '',
+          subject: env.subject || '',
+          headers,
+        })) noiseUids.push(msg.uid);
+      }
+      if (noiseUids.length) await client.messageDelete(noiseUids, { uid: true } as any);
+    } finally {
+      lock.release();
+    }
+  } finally {
+    await client.logout().catch(() => {});
+  }
+  return { deleted: noiseUids.length, scanned };
 }
 
 export async function markEmailSeen(uid: number): Promise<void> {
