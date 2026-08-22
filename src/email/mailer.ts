@@ -211,7 +211,26 @@ export async function getSmtpStatus(): Promise<SmtpStatus> {
  * Das ist kein Komfort-Check, sondern Rechtsschutz. Deshalb steht er am Nadelöhr
  * und nicht am Rand.
  */
+/**
+ * Not-Aus. Ein Schalter, der jeden Versand blockiert – sofort, ohne Deploy.
+ *
+ * Bewusst NUR eine Umgebungsvariable, ohne jeden Datenbankzugriff. Am 20.–22.08.
+ * hat eine volle Festplatte dazu geführt, dass 41 Praxen je 23 Mails bekamen.
+ * Ein Not-Aus, der zum Abschalten erst die Datenbank fragen muss, versagt genau
+ * in dem Moment, in dem man ihn braucht.
+ *
+ * Setzen:  VERSAND_STOPP=an   (Railway → Variables) – wirkt beim Neustart sofort.
+ */
+export function versandGestoppt(env: NodeJS.ProcessEnv = process.env): boolean {
+  const v = (env.VERSAND_STOPP || '').trim().toLowerCase();
+  return ['1', 'true', 'on', 'an', 'ja', 'stop', 'stopp'].includes(v);
+}
+
 function pruefeSperre(to: string): SendResult | null {
+  if (versandGestoppt()) {
+    console.warn(`[email] NOT-AUS aktiv – Versand an ${to} blockiert`);
+    return { success: false, to, error: 'Not-Aus aktiv (VERSAND_STOPP): Es wird derzeit keine E-Mail versendet.' };
+  }
   if (!isSuppressed(to)) return null;
   const grund = suppressionReason(to);
   console.warn(`[email] BLOCKIERT: ${to} steht auf der Sperrliste${grund ? ' (' + grund + ')' : ''}`);

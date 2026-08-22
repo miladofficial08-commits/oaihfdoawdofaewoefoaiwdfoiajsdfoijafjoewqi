@@ -419,6 +419,15 @@ const tests = [
     const raus = renderTemplate(tpl, { name: 'X', lead: bLead }).body;
     assert.equal(raus, tpl.body, 'Gruppe B darf NICHT veraendert werden');
   }],
+  ['Not-Aus blockiert jeden Versand ohne Datenbank', () => {
+    const mailer = require('../dist/email/mailer');
+    // Muss allein aus der Umgebungsvariable entscheiden – am 20.08. war die
+    // Datenbank voll, ein Not-Aus mit DB-Abfrage waere genau dann nutzlos.
+    assert.equal(mailer.versandGestoppt({}), false);
+    assert.equal(mailer.versandGestoppt({ VERSAND_STOPP: '' }), false);
+    for (const v of ['an', 'AN', 'true', '1', 'on', 'ja', 'stop', 'stopp'])
+      assert.equal(mailer.versandGestoppt({ VERSAND_STOPP: v }), true, 'nicht erkannt: ' + v);
+  }],
   ['dashboard template preview renders markdown links instead of literal syntax', () => {
     const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'approval', 'views', 'dashboard.html'), 'utf8');
     assert.match(html, /function renderPreviewBodyHtml/);

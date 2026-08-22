@@ -8,3 +8,6 @@ data/exports/
 *.db-wal
 *.log
 .railway-supabase-temp.json
+
+# Vorfall 20.-22.08.2026: Betroffenenliste enthaelt Kundendaten, gehoert nicht ins Repo
+betroffene-*.csv

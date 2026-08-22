@@ -337,6 +337,30 @@ function pickTemplateId(node: WorkflowNode): string {
   return String(cfg.template_id || 'default');
 }
 
+/**
+ * Schreibprobe: Nimmt die Datenbank überhaupt noch etwas an?
+ *
+ * Eine volle Platte meldet sich erst beim Schreiben – Lesen funktioniert weiter.
+ * Deshalb wird hier bewusst geschrieben, nicht gelesen. Schlägt es fehl, wird
+ * einmal pro Stunde gewarnt statt bei jedem Tick, damit das Log nicht zuläuft
+ * (was die Lage nur verschlimmern würde).
+ */
+let letzteSchreibwarnung = 0;
+function kannProtokollieren(): boolean {
+  try {
+    setSetting('wf_schreibprobe', nowIso());
+    return true;
+  } catch (err) {
+    if (Date.now() - letzteSchreibwarnung > 3_600_000) {
+      letzteSchreibwarnung = Date.now();
+      console.error('[workflow] VERSAND ANGEHALTEN – Datenbank nicht beschreibbar: '
+        + (err instanceof Error ? err.message : String(err))
+        + ' | Solange nichts protokolliert werden kann, geht keine Mail raus.');
+    }
+    return false;
+  }
+}
+
 async function sendNodeEmail(wf: Workflow, run: RunRow, node: WorkflowNode, lead: Lead): Promise<boolean> {
   const cfg = node.config as { template_id?: string; urgent?: boolean };
   if (!lead.email) {
@@ -358,6 +382,22 @@ async function sendNodeEmail(wf: Workflow, run: RunRow, node: WorkflowNode, lead
 
   if (!checkSendGate(wf, Boolean(cfg.urgent)).ok) {
     setRun(run.id, { due_at: new Date(Date.now() + 5 * 60_000).toISOString() });
+    return false;
+  }
+
+  // Kann die Datenbank überhaupt noch schreiben?
+  //
+  // Der teuerste Fehler dieses Systems: Am 20.–22.08. war die Festplatte voll.
+  // Die Mail ging raus, der Eintrag in sent_emails schlug fehl, der Lauf rückte
+  // nicht weiter – und der nächste Tick schickte dieselbe Mail erneut. 41 Praxen
+  // bekamen je 23 Mails. Beide Tageslimits zählen aus sent_emails und waren
+  // deshalb blind.
+  //
+  // Ab jetzt wird VOR dem Versand geprüft, ob geschrieben werden kann. Kann es
+  // das nicht, geht nichts raus. Lieber gar keine Mail als eine, die wir nicht
+  // protokollieren und damit auch nicht begrenzen können.
+  if (!kannProtokollieren()) {
+    setRun(run.id, { due_at: new Date(Date.now() + 15 * 60_000).toISOString() });
     return false;
   }
 
@@ -393,12 +433,23 @@ async function sendNodeEmail(wf: Workflow, run: RunRow, node: WorkflowNode, lead
     result = { success: false, error: err instanceof Error ? err.message : String(err) };
   }
 
-  recordSentEmail({
-    id: trackingId, lead_id: lead.id, campaign: `wf-${node.id}`, to_email: lead.email, to_name: lead.name,
-    subject, body, template_id: tpl.id,
-    success: result.success, error: result.error, message_id: (result as { messageId?: string }).messageId,
-    ab_gruppe: abGruppe(lead.id),
-  });
+  try {
+    recordSentEmail({
+      id: trackingId, lead_id: lead.id, campaign: `wf-${node.id}`, to_email: lead.email, to_name: lead.name,
+      subject, body, template_id: tpl.id,
+      success: result.success, error: result.error, message_id: (result as { messageId?: string }).messageId,
+      ab_gruppe: abGruppe(lead.id),
+    });
+  } catch (err) {
+    // Die Mail ist raus, aber wir konnten sie nicht festhalten. Diesen Lauf hier
+    // beenden – auf keinen Fall erneut versuchen. Genau diese Wiederholung hat
+    // 41 Praxen je 23 Mails eingebracht.
+    finishRun(run, 'error',
+      'Versand konnte nicht protokolliert werden – Lauf angehalten, damit die Mail sich nicht wiederholt: '
+      + (err instanceof Error ? err.message : String(err)), lead);
+    console.error('[workflow] Mail an ' + lead.email + ' ging raus, konnte aber nicht protokolliert werden. Lauf gestoppt.');
+    return true;
+  }
 
   if (result.success) {
     setSetting(LAST_SEND_KEY, nowIso());
