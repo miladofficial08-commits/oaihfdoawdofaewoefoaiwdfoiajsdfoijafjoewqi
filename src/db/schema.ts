@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { buildIdentity } from '../utils/identity';
+import { pruefeUndBefreiePlatz } from './disk-guard';
 import { Lead } from '../types';
 
 export function resolveDbPath(
@@ -20,6 +21,10 @@ export function getDb(): Database.Database {
   if (!db) {
     const dbPath = resolveDbPath();
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+    // Platz pruefen, BEVOR die Datenbank geoeffnet wird. Auf einer vollen Platte
+    // stirbt sonst schon das Anlegen der Tabellen – und dann kommt der Server
+    // nie wieder hoch, auch nicht um sich selbst zu reparieren.
+    pruefeUndBefreiePlatz(dbPath);
     db = new Database(dbPath);
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
