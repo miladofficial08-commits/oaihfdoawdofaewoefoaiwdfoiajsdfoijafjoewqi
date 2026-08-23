@@ -449,6 +449,7 @@ function initSchema(db: Database.Database) {
       + (err instanceof Error ? err.message : String(err))
       + ' | Der Server startet trotzdem.');
   }
+  berichteTabellengroessen(db);
   backfillContactPoints(db);
   backfillOutreachEvents(db);
 }
@@ -598,5 +599,57 @@ function backfillOutreachEvents(db: Database.Database) {
         created_at: lead.gesendet_at ?? null,
       });
     }
+  }
+}
+
+/**
+ * Welche Tabelle frisst den Platz?
+ *
+ * Läuft einmal beim Start und schreibt es ins Log. Reine Lesevorgänge – bei
+ * einer vollen Platte darf hier nichts geschrieben werden. Ohne diese Zahlen
+ * wäre jedes Aufräumen Raten, und Raten heisst hier: womöglich Beweismaterial
+ * löschen, das man nach dem Vorfall vom 20.–22.08. noch braucht.
+ */
+function berichteTabellengroessen(db: Database.Database): void {
+  try {
+    const tabellen = (db.prepare(
+      `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`
+    ).all() as Array<{ name: string }>).map(t => t.name);
+
+    // dbstat ist die genaue Quelle, ist aber nicht in jedem Build vorhanden.
+    let genau: Array<{ name: string; bytes: number }> | null = null;
+    try {
+      genau = db.prepare(
+        `SELECT name, SUM(pgsize) AS bytes FROM dbstat GROUP BY name ORDER BY bytes DESC`
+      ).all() as Array<{ name: string; bytes: number }>;
+    } catch { genau = null; }
+
+    const mb = (b: number) => (b / 1024 / 1024).toFixed(1).padStart(8) + ' MB';
+    console.log('[groesse] Was belegt die Datenbank?');
+
+    if (genau) {
+      for (const r of genau.slice(0, 12)) console.log('[groesse] ' + mb(r.bytes) + '  ' + r.name);
+      return;
+    }
+
+    // Ersatz: Zeilen zählen und die dicken Textspalten messen.
+    for (const t of tabellen) {
+      try {
+        const n = (db.prepare(`SELECT COUNT(*) n FROM "${t}"`).get() as { n: number }).n;
+        if (!n) continue;
+        const spalten = (db.prepare(`PRAGMA table_info("${t}")`).all() as Array<{ name: string; type: string }>)
+          .filter(c => /TEXT|BLOB/i.test(c.type));
+        let bytes = 0;
+        for (const c of spalten) {
+          try {
+            bytes += (db.prepare(`SELECT COALESCE(SUM(LENGTH("${c.name}")), 0) s FROM "${t}"`)
+              .get() as { s: number }).s;
+          } catch { /* Spalte ueberspringen */ }
+        }
+        console.log('[groesse] ' + mb(bytes) + '  ' + t + '  (' + n + ' Zeilen)');
+      } catch { /* Tabelle ueberspringen */ }
+    }
+  } catch (err) {
+    console.warn('[groesse] Konnte nicht ermittelt werden: ' + (err instanceof Error ? err.message : String(err)));
   }
 }
