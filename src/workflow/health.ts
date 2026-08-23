@@ -2,6 +2,7 @@ import { getDb } from '../db/schema';
 import { Workflow, effectiveDailyCap, getSetting, activeWorkflows } from './schema';
 import { pendingCount } from './enroll';
 import { findTemplateByName } from '../email/template';
+import { stoppStatus } from '../email/stopp';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Wächter über die E-Mail-Abteilung.
@@ -142,6 +143,11 @@ export function baumLinien(wf: Workflow): HealthLine[] {
 export function startklarLinien(wf: Workflow): HealthLine[] {
   const db = getDb();
   const raus: HealthLine[] = [];
+
+  // Der Not-Aus gehoert an die erste Stelle. Wer aufs Dashboard schaut, muss
+  // sofort sehen, dass nichts rausgeht – und nicht erst danach suchen.
+  const stopp = stoppStatus();
+  if (stopp.gestoppt) raus.push({ level: 'down', text: stopp.text });
   const one = (sql: string, ...a: unknown[]) => (db.prepare(sql).get(...a) as { n: number }).n;
 
   // Statik des Baums zuerst: ohne sie nuetzen Vorlagen und Zugaenge nichts.

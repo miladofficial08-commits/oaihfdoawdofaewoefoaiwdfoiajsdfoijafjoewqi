@@ -39,6 +39,7 @@ import { startReplyScanner, scanReplies, listReplies } from '../email/reply-scan
 import { runReplyRepairOnBoot, repairStoredReplies } from '../email/reply-repair';
 import { abBericht } from '../email/ab-test';
 import { startPruner } from '../db/prune';
+import { erzwingeVersandStopp, stoppStatus } from '../email/stopp';
 import { getEmailTemplate, updateEmailTemplate, renderTemplate, listEmailTemplates, createEmailTemplate, deleteEmailTemplate, getTemplateById } from '../email/template';
 import { nurEigeneVorlagen } from '../email/template-cleanup';
 import { startklarLinien } from '../workflow/health';
@@ -716,6 +717,9 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
   // ── Antwort-Scanner: Antworten lesen, klassifizieren, Follow-ups sperren ────
   // Ergebnis des A/B-Tests: Bringt der personalisierte Satz Antworten?
   app.get('/api/ab-test', async () => abBericht());
+
+  // Zeigt im Dashboard, ob der Not-Aus laeuft.
+  app.get('/api/versand-status', async () => stoppStatus());
 
   app.post('/api/inbox/scan-replies', async () => scanReplies());
 
@@ -2337,6 +2341,9 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
   // Altlasten zuerst: kodiert gespeicherte Antworten entschluesseln und neu
   // bewerten, BEVOR ein Worker laeuft. Sonst koennte die Engine im selben Moment
   // eine Mail an jemanden schicken, dessen "STOP" noch unerkannt in der DB liegt.
+  // Not-Aus zuerst: alle Schalter umlegen, bevor irgendein Worker anspringt.
+  erzwingeVersandStopp();
+
   // Erst Platz schaffen, dann alles Weitere. Am 23.08. lief das Volume voll und
   // hat den Versand in eine Wiederholschleife getrieben.
   startPruner();
