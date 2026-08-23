@@ -76,6 +76,29 @@ function berichteEvents(db: ReturnType<typeof getDb>): void {
     for (const t of typen) console.log('[events]   ' + mb(t.b).padStart(9) + '  ' + String(t.n).padStart(7) + 'x  ' + t.event_type);
     const alt = db.prepare(`SELECT MIN(created_at) a, MAX(created_at) b FROM outreach_events`).get() as { a: string; b: string };
     console.log('[events]   Zeitraum ' + String(alt.a).slice(0, 10) + ' bis ' + String(alt.b).slice(0, 10));
+
+    // Woher kommen 221.382 manual_contact-Zeilen, wenn Brevo nur 1.893 Mails kennt?
+    // Die Notiz verraet den Urheber: sendLeadEmail schreibt "E-Mail versendet an
+    // ... | Server: ...", recordManualContact schreibt "Manuell per ... markiert.
+    // Kein echter Versand". Ausserdem: an wie vielen Tagen und an wie vielen
+    // verschiedenen Leads haengen sie?
+    const urheber = db.prepare(
+      `SELECT SUBSTR(COALESCE(note,'(ohne Notiz)'), 1, 42) AS anfang, COUNT(*) n,
+              COUNT(DISTINCT lead_id) leads, MIN(created_at) von, MAX(created_at) bis
+       FROM outreach_events WHERE event_type = 'manual_contact'
+       GROUP BY anfang ORDER BY n DESC LIMIT 6`
+    ).all() as Array<{ anfang: string; n: number; leads: number; von: string; bis: string }>;
+    console.log('[events] Urheber der manual_contact-Zeilen:');
+    for (const u of urheber) {
+      console.log('[events]   ' + String(u.n).padStart(7) + 'x  ueber ' + String(u.leads).padStart(5)
+        + ' Leads  ' + String(u.von).slice(0, 16) + ' bis ' + String(u.bis).slice(0, 16));
+      console.log('[events]           "' + u.anfang.replace(/\s+/g, ' ') + '"');
+    }
+    const proTag = db.prepare(
+      `SELECT DATE(created_at) tag, COUNT(*) n FROM outreach_events
+       WHERE event_type = 'manual_contact' GROUP BY tag ORDER BY n DESC LIMIT 6`
+    ).all() as Array<{ tag: string; n: number }>;
+    console.log('[events] Spitzentage: ' + proTag.map(t => t.tag + '=' + t.n).join('  '));
   } catch (err) {
     console.warn('[events] nicht ermittelbar: ' + (err instanceof Error ? err.message : String(err)));
   }

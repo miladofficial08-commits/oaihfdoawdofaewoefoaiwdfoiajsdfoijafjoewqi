@@ -453,6 +453,9 @@ export function classifySmtpError(err: unknown): string {
 
 /** Sendet eine echte Test-Mail ueber den aktiven SMTP-Server (Verbindung + Auth + Versand live pruefen). */
 export async function sendTestEmail(to?: string): Promise<SendResult & { host?: string; port?: number }> {
+  // Auch Testmails. Der Endpunkt nimmt einen beliebigen Empfaenger entgegen –
+  // waehrend eines Not-Aus darf hier so wenig rausgehen wie ueberall sonst.
+  if (versandGestoppt()) return { success: false, error: 'Not-Aus aktiv (VERSAND_STOPP): auch Testmails sind blockiert.' };
   const cfg0 = getSharedSmtpConfig();
   if (!cfg0) return { success: false, error: 'SMTP nicht konfiguriert (SMTP_HOST/USER/PASS fehlen in den Variablen).' };
   const target = (to && to.trim()) || cfg0.user;
@@ -475,6 +478,10 @@ export async function sendTestEmail(to?: string): Promise<SendResult & { host?: 
 
 /** Sendet eine echte Test-Mail ueber die Brevo Transactional Email API. */
 export async function sendBrevoTestEmail(to?: string): Promise<SendResult & { apiKeySet: boolean; provider: string }> {
+  if (versandGestoppt()) {
+    return { success: false, error: 'Not-Aus aktiv (VERSAND_STOPP): auch Testmails sind blockiert.',
+             apiKeySet: Boolean(process.env.BREVO_API_KEY?.trim()), provider: 'brevo' };
+  }
   const apiKeySet = Boolean(process.env.BREVO_API_KEY?.trim());
   if (!apiKeySet) {
     console.error('[brevo] Test fehlgeschlagen: BREVO_API_KEY fehlt (BREVO_API_KEY_SET=false)');

@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import { Lead } from '../types';
+import { versandGestoppt } from './mailer';
 
 export interface SmtpConfig {
   host: string;
@@ -57,6 +58,10 @@ export function assertLeadCanBeEmailed(lead: Lead) {
 }
 
 export async function sendApprovedLeadEmail(lead: Lead, subject?: string) {
+  // Diese Funktion wird derzeit nirgends aufgerufen, kann aber senden. Genau
+  // solche vergessenen Wege sind gefaehrlich: Der Not-Aus muss auch dann halten,
+  // wenn jemand sie spaeter wieder verdrahtet.
+  if (versandGestoppt()) throw new Error('Not-Aus aktiv (VERSAND_STOPP): Es wird keine E-Mail versendet.');
   assertLeadCanBeEmailed(lead);
   const cfg = getSmtpConfig();
   if (!cfg) throw new Error('SMTP ist nicht konfiguriert.');
