@@ -29,10 +29,18 @@ import { getDb } from './schema';
 const HAEPPCHEN = 2000;
 const MAX_RUNDEN = 400;
 
-/** Tage, nach denen der doppelte Mailtext entbehrlich ist. */
-const TEXT_TAGE = 14;
-/** Tage, die das Maschinen-Protokoll aufgehoben wird. */
-const LOG_TAGE = 30;
+// Fristen bewusst kurz.
+//
+// Gemessen: 443.877 Zeilen fuer 1.893 tatsaechlich versendete Mails, davon
+// 221.382 manual_contact mit 197 MB doppelten Mailtexten und 221.484
+// status_changed. Fast alles juenger als 14 Tage – deshalb hat der erste
+// Versuch mit grosszuegigen Fristen nur 561 Zeilen erwischt.
+//
+// Der Mailtext steht vollstaendig in sent_emails; in der Historie ist er eine
+// Kopie. Zwei Tage reichen, um im Dashboard noch nachzulesen, was rausging.
+const TEXT_TAGE = 2;
+/** Statuswechsel sind Maschinen-Rauschen, kein Beweis. */
+const LOG_TAGE = 7;
 
 export interface PruneErgebnis {
   texte_geleert: number;
