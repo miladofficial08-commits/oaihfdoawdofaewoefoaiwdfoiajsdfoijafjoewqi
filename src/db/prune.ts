@@ -40,9 +40,37 @@ export interface PruneErgebnis {
   fehler?: string;
 }
 
+/**
+ * Was steckt wirklich in outreach_events?
+ *
+ * Der erste Aufräum-Lauf hat nur 561 Texte gefunden, die Tabelle ist aber
+ * 293 MB gross. Also liegt der Platz woanders – und ohne diese Aufschlüsselung
+ * würde man ins Blaue löschen.
+ */
+function berichteEvents(db: ReturnType<typeof getDb>): void {
+  try {
+    const n = (db.prepare('SELECT COUNT(*) n FROM outreach_events').get() as { n: number }).n;
+    const spalten = (db.prepare(
+      `SELECT COALESCE(SUM(LENGTH(message)),0) m, COALESCE(SUM(LENGTH(note)),0) no FROM outreach_events`
+    ).get() as { m: number; no: number });
+    const mb = (b: number) => (b / 1024 / 1024).toFixed(1) + ' MB';
+    console.log('[events] ' + n + ' Zeilen | message ' + mb(spalten.m) + ' | note ' + mb(spalten.no));
+    const typen = db.prepare(
+      `SELECT event_type, COUNT(*) n, COALESCE(SUM(LENGTH(message)),0)+COALESCE(SUM(LENGTH(note)),0) b
+       FROM outreach_events GROUP BY event_type ORDER BY b DESC LIMIT 8`
+    ).all() as Array<{ event_type: string; n: number; b: number }>;
+    for (const t of typen) console.log('[events]   ' + mb(t.b).padStart(9) + '  ' + String(t.n).padStart(7) + 'x  ' + t.event_type);
+    const alt = db.prepare(`SELECT MIN(created_at) a, MAX(created_at) b FROM outreach_events`).get() as { a: string; b: string };
+    console.log('[events]   Zeitraum ' + String(alt.a).slice(0, 10) + ' bis ' + String(alt.b).slice(0, 10));
+  } catch (err) {
+    console.warn('[events] nicht ermittelbar: ' + (err instanceof Error ? err.message : String(err)));
+  }
+}
+
 export function pruneTelemetrie(): PruneErgebnis {
   const db = getDb();
   const raus: PruneErgebnis = { texte_geleert: 0, log_zeilen_geloescht: 0 };
+  berichteEvents(db);
 
   try {
     // 1. Doppelte Mailtexte aus der Historie nehmen. Die Zeile bleibt stehen,
@@ -59,6 +87,26 @@ export function pruneTelemetrie(): PruneErgebnis {
     for (let i = 0; i < MAX_RUNDEN; i++) {
       const n = leeren.run().changes;
       raus.texte_geleert += n;
+      if (n < HAEPPCHEN) break;
+    }
+
+    // 1b. Reines Rauschen ganz entfernen.
+    //
+    // 'note' und 'status_changed' entstehen bei jedem Tick, in dem sich
+    // irgendetwas bewegt – das sind Hunderttausende Zeilen ohne Beweiswert.
+    // Was wirklich zählt, bleibt: email_sent, reply_received, manual_call,
+    // manual_contact. Daran hängt die Nachvollziehbarkeit, wer wann Post bekam.
+    const rauschen = db.prepare(
+      `DELETE FROM outreach_events WHERE rowid IN (
+         SELECT rowid FROM outreach_events
+         WHERE event_type IN ('note', 'status_changed')
+           AND created_at < datetime('now', '-${LOG_TAGE} days')
+         LIMIT ${HAEPPCHEN}
+       )`
+    );
+    for (let i = 0; i < MAX_RUNDEN; i++) {
+      const n = rauschen.run().changes;
+      raus.log_zeilen_geloescht += n;
       if (n < HAEPPCHEN) break;
     }
 
