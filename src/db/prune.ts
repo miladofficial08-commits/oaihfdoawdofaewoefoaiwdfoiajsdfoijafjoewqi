@@ -26,8 +26,14 @@ import { getDb } from './schema';
 // selbst wieder am Platzmangel scheitert.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const HAEPPCHEN = 2000;
-const MAX_RUNDEN = 400;
+// Winzige Haeppchen mit sofortiger WAL-Rueckgabe.
+//
+// Der erste Versuch mit 2000 Zeilen scheiterte an "database or disk is full":
+// Auch ein Loeschvorgang braucht Platz fuer sein Journal, und bei 4,7 MB frei
+// ist er groesser als die Luecke, die er schliessen soll. Also klein arbeiten
+// und nach jeder Runde den Platz zurueckgeben.
+const HAEPPCHEN = 100;
+const MAX_RUNDEN = 6000;
 
 // Fristen bewusst kurz.
 //
@@ -75,65 +81,57 @@ function berichteEvents(db: ReturnType<typeof getDb>): void {
   }
 }
 
+/**
+ * Eine Anweisung in Runden ausfuehren und nach jeder Runde die WAL zurueckgeben.
+ * Ohne den Checkpoint waechst die WAL waehrend des Aufraeumens schneller, als
+ * das Aufraeumen Platz schafft – und bricht mitten drin ab.
+ */
+function inRunden(db: ReturnType<typeof getDb>, sql: string): number {
+  const stmt = db.prepare(sql);
+  let gesamt = 0;
+  for (let i = 0; i < MAX_RUNDEN; i++) {
+    let n = 0;
+    try { n = stmt.run().changes; }
+    catch (err) {
+      // Kein Platz mehr fuer diese Runde: Platz zurueckgeben und nochmal.
+      try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch { /* nichts zu holen */ }
+      try { n = stmt.run().changes; } catch { break; }
+    }
+    gesamt += n;
+    try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch { /* nicht kritisch */ }
+    if (n < HAEPPCHEN) break;
+  }
+  return gesamt;
+}
+
 export function pruneTelemetrie(): PruneErgebnis {
   const db = getDb();
   const raus: PruneErgebnis = { texte_geleert: 0, log_zeilen_geloescht: 0 };
   berichteEvents(db);
 
   try {
-    // 1. Doppelte Mailtexte aus der Historie nehmen. Die Zeile bleibt stehen,
-    //    nur das grosse Textfeld wird geleert.
-    const leeren = db.prepare(
-      `UPDATE outreach_events SET message = NULL
-       WHERE rowid IN (
-         SELECT rowid FROM outreach_events
-         WHERE message IS NOT NULL AND message != ''
-           AND created_at < datetime('now', '-${TEXT_TAGE} days')
-         LIMIT ${HAEPPCHEN}
-       )`
-    );
-    for (let i = 0; i < MAX_RUNDEN; i++) {
-      const n = leeren.run().changes;
-      raus.texte_geleert += n;
-      if (n < HAEPPCHEN) break;
-    }
-
-    // 1b. Reines Rauschen ganz entfernen.
-    //
-    // 'note' und 'status_changed' entstehen bei jedem Tick, in dem sich
-    // irgendetwas bewegt – das sind Hunderttausende Zeilen ohne Beweiswert.
-    // Was wirklich zählt, bleibt: email_sent, reply_received, manual_call,
-    // manual_contact. Daran hängt die Nachvollziehbarkeit, wer wann Post bekam.
-    const rauschen = db.prepare(
+    // Reihenfolge nach Wirkung pro Aufwand:
+    // Erst die Statuswechsel loeschen – viele Zeilen, wenig Daten, aber sie
+    // haengen an 42 MB Indizes. Danach die doppelten Mailtexte leeren.
+    raus.log_zeilen_geloescht += inRunden(db,
       `DELETE FROM outreach_events WHERE rowid IN (
          SELECT rowid FROM outreach_events
          WHERE event_type IN ('note', 'status_changed')
            AND created_at < datetime('now', '-${LOG_TAGE} days')
-         LIMIT ${HAEPPCHEN}
-       )`
-    );
-    for (let i = 0; i < MAX_RUNDEN; i++) {
-      const n = rauschen.run().changes;
-      raus.log_zeilen_geloescht += n;
-      if (n < HAEPPCHEN) break;
-    }
+         LIMIT ${HAEPPCHEN})`);
 
-    // 2. Altes Maschinen-Protokoll wegräumen.
-    const loeschen = db.prepare(
+    raus.texte_geleert += inRunden(db,
+      `UPDATE outreach_events SET message = NULL WHERE rowid IN (
+         SELECT rowid FROM outreach_events
+         WHERE message IS NOT NULL AND message != ''
+           AND created_at < datetime('now', '-${TEXT_TAGE} days')
+         LIMIT ${HAEPPCHEN})`);
+
+    raus.log_zeilen_geloescht += inRunden(db,
       `DELETE FROM workflow_log WHERE rowid IN (
          SELECT rowid FROM workflow_log
          WHERE created_at < datetime('now', '-${LOG_TAGE} days')
-         LIMIT ${HAEPPCHEN}
-       )`
-    );
-    for (let i = 0; i < MAX_RUNDEN; i++) {
-      const n = loeschen.run().changes;
-      raus.log_zeilen_geloescht += n;
-      if (n < HAEPPCHEN) break;
-    }
-
-    // WAL zurückgeben, sonst wächst die Datei durch das Aufräumen erst recht.
-    try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch { /* nicht kritisch */ }
+         LIMIT ${HAEPPCHEN})`);
   } catch (err) {
     raus.fehler = err instanceof Error ? err.message : String(err);
   }
