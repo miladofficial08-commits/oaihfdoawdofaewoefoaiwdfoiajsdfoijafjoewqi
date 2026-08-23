@@ -431,8 +431,24 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_inbound_replies_lead ON inbound_replies(lead_id);
     CREATE INDEX IF NOT EXISTS idx_inbound_replies_cat  ON inbound_replies(category);
   `);
-  migrateStatuses(db);
-  backfillLeadIdentity(db);
+  // Diese beiden Schritte sind Aufräumarbeiten am Bestand, kein Fundament.
+  //
+  // Sie sind der Grund, warum der Server bei voller Platte gar nicht mehr
+  // hochkam: Beide schreiben, beide liefen VOR dem HTTP-Server, und ein
+  // SQLITE_FULL hier hat den ganzen Start gekippt. Ohne laufenden Server kommt
+  // man aber nicht mehr an die Platte, um Platz zu schaffen.
+  //
+  // Schlagen sie fehl, läuft das System trotzdem an – nur eben ohne diese
+  // Nachbesserung. Ein Dashboard, das startet und den Fehler zeigt, ist immer
+  // mehr wert als eines, das gar nicht erst erscheint.
+  try {
+    migrateStatuses(db);
+    backfillLeadIdentity(db);
+  } catch (err) {
+    console.error('[schema] Bestands-Nachbesserung uebersprungen: '
+      + (err instanceof Error ? err.message : String(err))
+      + ' | Der Server startet trotzdem.');
+  }
   backfillContactPoints(db);
   backfillOutreachEvents(db);
 }

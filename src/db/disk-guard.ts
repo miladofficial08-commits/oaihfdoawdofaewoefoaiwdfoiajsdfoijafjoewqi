@@ -85,6 +85,21 @@ export function pruefeUndBefreiePlatz(dbPfad: string): void {
 
     console.warn('[platz] ENG – es wird aufgeraeumt, sonst startet der Server nicht.');
 
+    // Zuerst das Billigste: Datenbank-Dateien, die gar nicht die unsere sind.
+    // Auf dem Volume lag neben der echten Datenbank (leadgen.sqlite, 418 MB)
+    // noch eine verwaiste leads.db aus einer frueheren Konfiguration. Die kostet
+    // nichts, bringt aber genau die paar MB Luft, die SQLite zum Arbeiten braucht.
+    const unsere = path.basename(dbPfad);
+    for (const f of liste) {
+      const istDb = /\.(sqlite|db)(-wal|-shm)?$/.test(f.name);
+      const gehoertUns = f.name === unsere || f.name.startsWith(unsere + '-');
+      if (!istDb || gehoertUns) continue;
+      try {
+        fs.unlinkSync(path.join(dir, f.name));
+        console.warn('[platz] verwaiste Datei geloescht: ' + f.name + ' (' + mb(f.size) + ')');
+      } catch { /* egal, weiter */ }
+    }
+
     // 1. Sauberer Weg: WAL in die Hauptdatei uebertragen und abschneiden.
     let befreit = 0;
     try {
