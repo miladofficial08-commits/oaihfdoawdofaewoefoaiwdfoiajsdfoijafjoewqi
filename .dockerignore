@@ -2,3 +2,9 @@
 node_modules
 dist
 .git
+# Vorfall-Betroffenenliste: Kundendaten. Wird ueber das Dashboard eingelesen,
+# nicht per Deploy mitgeschickt.
+betroffene-*.csv
+
+# Lokale Arbeitsdatenbank. Produktion nutzt das Volume unter /data.
+data

@@ -40,6 +40,9 @@ import { runReplyRepairOnBoot, repairStoredReplies } from '../email/reply-repair
 import { abBericht } from '../email/ab-test';
 import { startPruner } from '../db/prune';
 import { erzwingeVersandStopp, stoppStatus } from '../email/stopp';
+import { druckeVersandBericht } from '../db/versand-bericht';
+import { probeLauf, probeZeilen, probeBericht, probeLoeschen, probelaufErzwungen, PROBE_STATUS } from '../email/probelauf';
+import { vorfallBericht, vorfallImportCsv, vorfallLoeschen, vorfallAusDateiLaden, versandStand, vorfallAusschlussSql, vorfallSperre } from '../db/vorfall';
 import { getEmailTemplate, updateEmailTemplate, renderTemplate, listEmailTemplates, createEmailTemplate, deleteEmailTemplate, getTemplateById } from '../email/template';
 import { nurEigeneVorlagen } from '../email/template-cleanup';
 import { startklarLinien } from '../workflow/health';
@@ -822,11 +825,15 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     };
   });
 
-  app.post<{ Body: { name?: string; verticalId?: string; totalTarget: number; dailyLimit?: number; templateIds?: string[]; windowStart?: number; windowEnd?: number; gapSeconds?: number; startAt?: string; track?: string } }>(
+  app.post<{ Body: { name?: string; verticalId?: string; totalTarget: number; dailyLimit?: number; templateIds?: string[]; windowStart?: number; windowEnd?: number; gapSeconds?: number; startAt?: string; track?: string; probelauf?: boolean } }>(
     '/api/send-jobs',
     async (req, reply) => {
       const { name, verticalId, totalTarget, dailyLimit = 100, templateIds = ['default'], windowStart = 8, windowEnd = 24, gapSeconds, startAt } = req.body;
       const track = req.body.track === 'consult' ? 'consult' : 'voice_agent';
+      // Solange der Not-Aus läuft, ist JEDER Job ein Probelauf – unabhängig davon,
+      // was der Browser mitschickt. Ein Häkchen im Dashboard darf den Stopp nicht
+      // aushebeln, sonst ist der Stopp nur eine Anzeige und keine Sperre.
+      const probelauf = probelaufErzwungen() || req.body.probelauf === true;
       if (!totalTarget || totalTarget < 1) return reply.status(400).send({ error: 'Anzahl E-Mails fehlt' });
       if (totalTarget > 5000) return reply.status(400).send({ error: 'Maximal 5000 E-Mails pro Job' });
       const safeDaily = ALLOWED_DAILY_LIMITS.includes(dailyLimit) ? dailyLimit : 100;
@@ -840,12 +847,13 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
       const vertical = [...verticalPresets, ...consultVerticals].find(v => v.id === verticalId);
       const id = uuid();
       getDb().prepare(
-        `INSERT INTO send_jobs (id, name, vertical_id, branche_terms, template_ids, total_target, daily_limit, min_gap_s, max_gap_s, window_start, window_end, track, status, next_send_at)
-         VALUES (@id, @name, @vertical_id, @branche_terms, @template_ids, @total_target, @daily_limit, @min_gap_s, @max_gap_s, @window_start, @window_end, @track, 'running', ${startProvided ? '@next_send_at' : "datetime('now')"})`
+        `INSERT INTO send_jobs (id, name, vertical_id, branche_terms, template_ids, total_target, daily_limit, min_gap_s, max_gap_s, window_start, window_end, track, probelauf, status, next_send_at)
+         VALUES (@id, @name, @vertical_id, @branche_terms, @template_ids, @total_target, @daily_limit, @min_gap_s, @max_gap_s, @window_start, @window_end, @track, @probelauf, ${probelauf ? `'${PROBE_STATUS}'` : `'running'`}, ${startProvided ? '@next_send_at' : "datetime('now')"})`
       ).run({
         id,
         track,
-        name: name || (vertical ? vertical.label : 'Alle Branchen') + ' – ' + totalTarget + ' E-Mails',
+        probelauf: probelauf ? 1 : 0,
+        name: (name || (vertical ? vertical.label : 'Alle Branchen') + ' – ' + totalTarget + ' E-Mails') + (probelauf ? ' · Probelauf' : ''),
         vertical_id: verticalId ?? null,
         branche_terms: vertical ? JSON.stringify(vertical.searchTerms) : null,
         template_ids: JSON.stringify(templateIds.length ? templateIds : ['default']),
@@ -857,15 +865,64 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
         window_end: Math.max(1, Math.min(24, windowEnd)),
         ...(startProvided ? { next_send_at: new Date(startAt as string).toISOString() } : {}),
       });
-      return { id, ok: true };
+
+      if (!probelauf) return { id, ok: true, probelauf: false };
+
+      // Probelauf sofort durchrechnen: er wartet nicht auf einen Worker, sondern
+      // legt die komplette Liste hin. Man will nach dem Klick sehen, wer Post
+      // bekäme – nicht 50 Minuten später Zeile für Zeile.
+      const job = getDb().prepare('SELECT * FROM send_jobs WHERE id = ?').get(id) as SendJob;
+      let bericht;
+      try {
+        bericht = probeLauf(job);
+      } catch (err) {
+        // Kein halber Probelauf: der Job verschwindet wieder, und der Grund steht
+        // im Klartext da. Eine Liste, in der die Haelfte "Vorlage nicht gefunden"
+        // heisst, ist schlimmer als gar keine.
+        getDb().prepare('DELETE FROM send_jobs WHERE id = ?').run(id);
+        probeLoeschen(id);
+        return reply.status(400).send({ error: err instanceof Error ? err.message : 'Probelauf fehlgeschlagen' });
+      }
+      getDb().prepare(`UPDATE send_jobs SET note = @note, finished_at = datetime('now') WHERE id = @id`).run({
+        id,
+        note: `Probelauf: ${bericht.geplant} Mails an ${bericht.adressen} Adressen geplant – es wurde nichts versendet`,
+      });
+      return {
+        id, ok: true, probelauf: true, bericht,
+        hinweis: probelaufErzwungen()
+          ? 'Not-Aus aktiv: Es kann derzeit ausschliesslich ein Probelauf gestartet werden.'
+          : 'Probelauf – es wurde nichts versendet.',
+      };
     }
   );
+
+  // ── Probelauf ansehen und wieder loswerden ────────────────────────────────
+  app.get<{ Querystring: { job?: string; limit?: string } }>('/api/probelauf', async (req, reply) => {
+    if (!req.query.job) return reply.status(400).send({ error: 'job fehlt' });
+    const job = getDb().prepare('SELECT total_target FROM send_jobs WHERE id = ?').get(req.query.job) as { total_target?: number } | undefined;
+    return {
+      bericht: probeBericht(req.query.job, job?.total_target ?? 0),
+      zeilen: probeZeilen(req.query.job, Math.min(2000, Number(req.query.limit || 500))),
+    };
+  });
+
+  app.delete<{ Querystring: { job?: string } }>('/api/probelauf', async (req) => {
+    const geloescht = probeLoeschen(req.query.job);
+    if (req.query.job) getDb().prepare('DELETE FROM send_jobs WHERE id = ? AND probelauf = 1').run(req.query.job);
+    return { ok: true, geloescht };
+  });
 
   app.patch<{ Params: { id: string }; Body: { status: string } }>(
     '/api/send-jobs/:id',
     async (req, reply) => {
       const allowed = ['running', 'paused', 'stopped'];
       if (!allowed.includes(req.body.status)) return reply.status(400).send({ error: 'Ungültiger Status' });
+      // Ein Probelauf-Job wird nie zum echten Versand. Wer wirklich senden will,
+      // legt einen neuen Job an – dieser Weg bleibt geschlossen.
+      const vorher = getDb().prepare('SELECT probelauf FROM send_jobs WHERE id = ?').get(req.params.id) as { probelauf?: number } | undefined;
+      if (vorher?.probelauf) {
+        return reply.status(400).send({ error: 'Das ist ein Probelauf. Er verschickt nichts und lässt sich nicht in einen echten Versand umschalten.' });
+      }
       const fields = req.body.status === 'stopped'
         ? { status: 'stopped', finished_at: new Date().toISOString(), note: 'Manuell gestoppt' }
         : { status: req.body.status, note: req.body.status === 'paused' ? 'Pausiert' : 'Fortgesetzt' };
@@ -1612,6 +1669,27 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
 
   app.get('/api/analytics/sms', async () => getSmsAnalytics());
 
+  // ── Stand: was ist heute wahr, und was war am 20.–22.08.? ─────────────────
+  // Die Auswertung zeigte zuletzt den 19.08., weil danach nichts mehr protokolliert
+  // wurde. Diese beiden Endpunkte schliessen die Lücke: einer rechnet live den
+  // heutigen Stand, der andere hält den Vorfall getrennt daneben.
+  app.get('/api/stand', async () => versandStand());
+
+  app.get('/api/vorfall', async () => vorfallBericht());
+
+  app.post<{ Body: { csv?: string } }>('/api/vorfall/import', async (req, reply) => {
+    const csv = (req.body?.csv || '').trim();
+    if (!csv) return reply.status(400).send({ error: 'Keine CSV-Daten empfangen' });
+    try {
+      const r = vorfallImportCsv(csv);
+      return { ok: true, ...r, bericht: vorfallBericht() };
+    } catch (err) {
+      return reply.status(400).send({ error: err instanceof Error ? err.message : 'Import fehlgeschlagen' });
+    }
+  });
+
+  app.delete('/api/vorfall', async () => ({ ok: true, geloescht: vorfallLoeschen() }));
+
   // ── Follow-up-Sequenz (Nachfass-Mails) ────────────────────────────────────
   app.get('/api/followup/stats', async () => followupStats());
 
@@ -2069,6 +2147,12 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     const where: string[] = [
       `COALESCE(l.telefon_direkt, l.telefon) IS NOT NULL AND length(TRIM(COALESCE(l.telefon_direkt, l.telefon))) > 5`,
       `l.status != 'archived'`,
+      // Die Praxen aus dem Vorfall 20.–22.08. fliegen aus JEDER Ansicht der
+      // Anrufliste – nicht nur aus „offen". Wer 23 Mails bekommen hat und dann
+      // auch noch angerufen wird, erlebt das als hartnäckige Belästigung, und
+      // genau daraus wird eine Anzeige. Ein Filter, den man wegklicken kann,
+      // reicht dafür nicht.
+      vorfallAusschlussSql('l'),
     ];
     if (STATE === 'open') {
       where.push(`l.status IN ('new','checked','draft_ready','approved','manual_review','contacted')`);
@@ -2198,7 +2282,8 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
        WHERE l.telefon IS NOT NULL AND length(TRIM(l.telefon)) > 5
          AND l.status IN ('new','checked','draft_ready','approved','manual_review','contacted')
          AND (COALESCE(l.manual_call_done, 0) = 0
-              OR (l.wiedervorlage_at IS NOT NULL AND l.wiedervorlage_at <= datetime('now')))`
+              OR (l.wiedervorlage_at IS NOT NULL AND l.wiedervorlage_at <= datetime('now')))
+         AND ${vorfallAusschlussSql('l')}`
     ).get() as { n: number }).n;
     const calledToday = (db.prepare(
       `SELECT COUNT(*) n FROM leads WHERE manual_call_done = 1 AND date(last_manual_call_at) = date('now','localtime')`
@@ -2253,7 +2338,8 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
        WHERE l.telefon_direkt IS NOT NULL
          AND l.status IN ('new','checked','draft_ready','approved','manual_review','contacted')
          AND (COALESCE(l.manual_call_done, 0) = 0
-              OR (l.wiedervorlage_at IS NOT NULL AND l.wiedervorlage_at <= datetime('now')))`
+              OR (l.wiedervorlage_at IS NOT NULL AND l.wiedervorlage_at <= datetime('now')))
+         AND ${vorfallAusschlussSql('l')}`
     ).get() as { n: number }).n;
     return {
       leads: rows,
@@ -2270,6 +2356,9 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
         kein_interesse_today: keinInteresseHeute,
         nicht_erreicht_today: nichtErreichtHeute,
         state: STATE,
+        // Damit man SIEHT, ob der Schutz steht. Eine stille Sperre, die man
+        // nicht nachzaehlen kann, ist keine Zusicherung wert.
+        vorfall_sperre: vorfallSperre(),
       },
       branchen,
       staedte: staedte.map(r=>r.stadt),
@@ -2343,6 +2432,15 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
   // eine Mail an jemanden schicken, dessen "STOP" noch unerkannt in der DB liegt.
   // Not-Aus zuerst: alle Schalter umlegen, bevor irgendein Worker anspringt.
   erzwingeVersandStopp();
+
+  // Zahlen statt Zusicherungen: was ging raus, was steht noch an.
+  try { druckeVersandBericht(); } catch (err) { console.log('[versand-bericht] nicht moeglich: ' + (err as Error).message); }
+
+  // Betroffenenliste des Vorfalls einlesen, falls sie lokal danebenliegt.
+  try {
+    const datei = vorfallAusDateiLaden();
+    if (datei) console.log('[vorfall] Betroffenenliste eingelesen: ' + datei);
+  } catch (err) { console.log('[vorfall] nicht einlesbar: ' + (err as Error).message); }
 
   // Erst Platz schaffen, dann alles Weitere. Am 23.08. lief das Volume voll und
   // hat den Versand in eine Wiederholschleife getrieben.

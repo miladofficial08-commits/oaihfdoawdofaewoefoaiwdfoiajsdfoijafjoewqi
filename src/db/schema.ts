@@ -376,6 +376,12 @@ function initSchema(db: Database.Database) {
   ensureColumns(db, 'send_jobs', {
     // Angebots-Track: ein Consult-Job schreibt NUR Consult-Leads an (keine Vermischung).
     track: "TEXT DEFAULT 'voice_agent'",
+    // Probelauf-Kennzeichen. Ein Job, der als Probelauf angelegt wurde, darf
+    // NIE zu einem echten Versand werden – auch nicht über einen Klick auf
+    // "Fortsetzen". Wer echt senden will, legt einen neuen Job an. Das Merkmal
+    // steht in der Datenbank und nicht im Status, damit es kein Statuswechsel
+    // versehentlich abstreift.
+    probelauf: 'INTEGER NOT NULL DEFAULT 0',
   });
   ensureColumns(db, 'sent_emails', {
     scheduled_id: 'TEXT',
@@ -459,8 +465,20 @@ function ensureColumns(db: Database.Database, table: string, columns: Record<str
     (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map(col => col.name)
   );
   for (const [name, definition] of Object.entries(columns)) {
-    if (!existing.has(name)) {
+    if (existing.has(name)) continue;
+    try {
       db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
+    } catch (err) {
+      // Auf einer vollen Platte kann selbst das Anlegen einer Spalte scheitern.
+      // Dann darf der Start nicht abbrechen: ein Dashboard, dem eine Spalte
+      // fehlt, ist immer noch besser als ein Server, der nicht hochkommt und
+      // sich deshalb auch nicht mehr selbst aufraeumen kann. Die Meldung muss
+      // aber laut sein – eine fehlende Spalte laesst Funktionen ausfallen.
+      console.error(
+        `[schema] Spalte ${table}.${name} konnte NICHT angelegt werden: `
+        + (err instanceof Error ? err.message : String(err))
+        + ' – Funktionen, die sie brauchen, fallen aus. Meist ist die Platte voll.'
+      );
     }
   }
 }

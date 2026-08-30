@@ -491,6 +491,78 @@ const tests = [
       assert.fail('Syntaxfehler im Dashboard-Skript: ' + err.message);
     }
   }],
+  ['Probelauf plant im Sendefenster und sprengt kein Tageslimit', () => {
+    const { planZeiten } = require('../dist/email/probelauf');
+    // Job von heute: die Aufwaermrampe deckelt auf 25 Mails am Tag.
+    const job = {
+      id: 't', name: 't', vertical_id: null, branche_terms: null, template_ids: '[]',
+      total_target: 60, daily_limit: 100, min_gap_s: 30, max_gap_s: 45,
+      window_start: 8, window_end: 20, sent_count: 0, failed_count: 0,
+      status: 'probelauf', note: null, next_send_at: null,
+      created_at: new Date().toISOString(), finished_at: null, track: 'voice_agent',
+    };
+    const zeiten = planZeiten(job, 60, new Date());
+    assert.equal(zeiten.length, 60);
+    for (const z of zeiten) {
+      assert.ok(z.getHours() >= 8 && z.getHours() < 20, 'Mail faellt aus dem Sendefenster: ' + z);
+    }
+    const proTag = new Map();
+    for (const z of zeiten) {
+      const k = z.toDateString();
+      proTag.set(k, (proTag.get(k) || 0) + 1);
+    }
+    for (const [tag, n] of proTag) {
+      assert.ok(n <= 25, `Am ${tag} waeren ${n} Mails geplant – die Aufwaermrampe erlaubt 25`);
+    }
+  }],
+  ['Probelauf ruft keinen Versandweg auf', () => {
+    // Der ganze Sinn: in probelauf.ts darf keine einzige sendende Funktion stehen.
+    const quelle = fs.readFileSync(path.join(__dirname, '..', 'src', 'email', 'probelauf.ts'), 'utf8');
+    for (const verboten of ['sendLeadEmail', 'sendBulkEmail', 'sendMail', 'recordSentEmail', 'recordOutreachEvent']) {
+      assert.ok(!quelle.includes(verboten), `probelauf.ts ruft ${verboten} auf – dann ist es kein Probelauf mehr`);
+    }
+    // Und er schreibt in genau eine Tabelle.
+    const schreibt = quelle.match(/INSERT INTO (\w+)/g) || [];
+    assert.deepEqual([...new Set(schreibt)], ['INSERT INTO probe_versand']);
+  }],
+  ['Vorfall-Praxen sind aus der Anrufliste ausgeschlossen', () => {
+    const routen = fs.readFileSync(path.join(__dirname, '..', 'src', 'approval', 'routes.ts'), 'utf8');
+    const anrufliste = routen.slice(routen.indexOf("'/api/call-list'"), routen.indexOf("'/api/leads/osm-handwerk'"));
+    assert.ok(anrufliste.includes("vorfallAusschlussSql('l')"),
+      'Die Anrufliste filtert die Betroffenen des Vorfalls nicht heraus');
+    // Muss in der Basis-Bedingung stehen, nicht in einem einzelnen State-Zweig:
+    // sonst waeren sie ueber einen anderen Filter wieder erreichbar.
+    const basis = anrufliste.slice(0, anrufliste.indexOf('if (STATE ==='));
+    assert.ok(basis.includes("vorfallAusschlussSql('l')"),
+      'Der Ausschluss haengt an einem einzelnen Filter statt an der Basis-Bedingung');
+  }],
+  ['Vorfall-Import sperrt die Adressen auch fuer den Mailversand', () => {
+    const quelle = fs.readFileSync(path.join(__dirname, '..', 'src', 'db', 'vorfall.ts'), 'utf8');
+    assert.match(quelle, /suppressEmail\(/,
+      'Der Import traegt die Betroffenen nicht in die Mail-Sperrliste ein – sie stehen nicht in sent_emails und waeren wieder frei');
+  }],
+  ['Freemail-Domains sperren nur die exakte Adresse', () => {
+    const quelle = fs.readFileSync(path.join(__dirname, '..', 'src', 'db', 'vorfall.ts'), 'utf8');
+    for (const d of ['gmx.de', 't-online.de', 'gmail.com', 'web.de']) {
+      assert.ok(quelle.includes("'" + d + "'"), `${d} fehlt in der Freemail-Liste – die Domain-Regel wuerde Fremde mitsperren`);
+    }
+  }],
+  ['Fehlende Vorlage bricht den Probelauf ab, statt Platzhalter zu schreiben', () => {
+    // 125 Zeilen "(Vorlage nicht gefunden)" sind schlimmer als eine Fehlermeldung:
+    // man haelt sie fuer eine fertige Liste und startet echt.
+    const quelle = fs.readFileSync(path.join(__dirname, '..', 'src', 'email', 'probelauf.ts'), 'utf8');
+    assert.ok(!quelle.includes('Vorlage nicht gefunden)'),
+      'probelauf.ts schreibt weiterhin Platzhalter-Texte in die Vorschau');
+    assert.match(quelle, /fehlend\.length/, 'Es fehlt die Pruefung auf nicht vorhandene Vorlagen');
+    assert.ok(!quelle.includes("?? getTemplateById('default')"),
+      'Der Probelauf weicht still auf eine andere Vorlage aus');
+  }],
+  ['Ein Probelauf-Job laesst sich nicht in einen echten Versand umschalten', () => {
+    const routen = fs.readFileSync(path.join(__dirname, '..', 'src', 'approval', 'routes.ts'), 'utf8');
+    assert.match(routen, /vorher\?\.probelauf/, 'PATCH /api/send-jobs pruefen das Probelauf-Merkmal nicht');
+    assert.match(routen, /probelaufErzwungen\(\) \|\| req\.body\.probelauf === true/,
+      'Der Not-Aus erzwingt den Probelauf nicht mehr');
+  }],
 ];
 
 let failures = 0;

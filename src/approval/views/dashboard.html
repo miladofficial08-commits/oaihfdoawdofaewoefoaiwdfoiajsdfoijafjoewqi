@@ -1411,6 +1411,14 @@ info@nur-eine-adresse.de"></textarea>
   </div>
 
   <div class="page" id="p-autosend">
+    <!-- Not-Aus: die Anzeige muss dasselbe sagen wie das System tut. -->
+    <div class="an-note warn" id="as-stopp-note" style="display:none">
+      <b>🛑 NOT-AUS AKTIV — es geht keine einzige E-Mail raus.</b><br>
+      Der Auto-Versand steht wieder bereit, läuft aber ausschließlich als <b>Probelauf</b>: Du wählst Branche, Anzahl und Vorlagen
+      wie immer, und siehst danach Zeile für Zeile, <b>wer</b> Post bekäme, <b>was</b> drinstünde und <b>wann</b> sie rausginge.
+      Versendet wird nichts — der Probelauf ruft den Versand gar nicht erst auf.
+      <span id="as-stopp-detail"></span>
+    </div>
     <div class="as-today">
       Heute gesendet: <b id="as-today-n">0</b> / <span id="as-today-cap">200</span> (globales Tageslimit – Schutz vor Account-Sperrung)
       <div class="flex1"></div>
@@ -1609,10 +1617,37 @@ info@nur-eine-adresse.de"></textarea>
           <div class="as-estimate" id="as-estimate"></div>
           <div class="as-legal"><strong>⚠ Wichtig:</strong> Zu viele E-Mails auf einmal führen zur Sperrung des SMTP-Kontos und Spam-Einstufung. Das System hält deshalb automatisch ein: deine gewählte Pause (min. 15 Sek., <b>empfohlen 30</b>), Sendefenster 8–24 Uhr, dein Tageslimit und ein hartes globales Limit von 200/Tag. Mehrere Vorlagen im Wechsel senken zusätzlich das Spam-Risiko.</div>
           <button class="btn btn-solid" style="padding:12px;font-size:13px" id="as-create-btn" onclick="createSendJob()">⚡ Auto-Versand starten</button>
+          <div class="as-legal" id="as-probe-hint" style="display:none;margin-top:0">Es wird nichts versendet. Der Probelauf legt die komplette Liste sofort hin — du siehst jede Mail, bevor irgendetwas rausgeht.</div>
         </div>
       </div>
       <div style="display:grid;gap:12px" id="as-jobs">
         <div class="empty-state" style="padding:48px 0"><div class="ei">⚡</div><div class="et">Noch keine Auto-Kampagnen</div><div class="es">Erstelle links deine erste – das System übernimmt den Rest</div></div>
+      </div>
+    </div>
+
+    <!-- ─── PROBELAUF: was WÜRDE rausgehen ─── -->
+    <div class="sender-panel" id="as-probe-panel" style="margin-top:14px;display:none">
+      <div class="sp-head" style="display:flex;align-items:flex-start;gap:14px">
+        <div style="flex:1">
+          <h3>🔍 Probelauf — was würde rausgehen</h3>
+          <p>Jede Mail, die dieser Versand verschicken <b>würde</b>: Empfänger, Betreff, voller Text und die Uhrzeit, zu der sie drankäme. <b>Nichts davon ist versendet.</b> Die Liste liegt getrennt und fließt in keine Auswertung ein — löschen und sie ist spurlos weg.</p>
+        </div>
+        <button class="topbar-btn" onclick="probeLoeschen()">🗑 Probelauf löschen</button>
+      </div>
+      <div class="sp-body">
+        <div class="fl-kpi-row" id="as-probe-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:12px"></div>
+        <div id="as-probe-warn"></div>
+        <div class="fl-table-wrap" style="max-height:420px;overflow-y:auto">
+          <table class="fl-table">
+            <thead><tr><th>Ginge raus am</th><th>Firma</th><th>E-Mail</th><th>Vorlage</th><th>Betreff</th><th></th></tr></thead>
+            <tbody id="as-probe-rows"></tbody>
+          </table>
+        </div>
+        <div id="as-probe-mail" style="display:none;margin-top:12px;padding:14px;border:1px solid var(--line);border-radius:11px;background:var(--surf)">
+          <div style="font-size:11px;color:var(--txt3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Vorschau — dieser Text ginge raus</div>
+          <div id="as-probe-mail-head" style="font-weight:700;margin-bottom:8px"></div>
+          <pre id="as-probe-mail-body" style="white-space:pre-wrap;font:inherit;font-size:12.5px;line-height:1.6;margin:0;color:var(--txt2)"></pre>
+        </div>
       </div>
     </div>
 
@@ -1675,6 +1710,51 @@ info@nur-eine-adresse.de"></textarea>
   <!-- ─── ANALYSE ─── -->
   <div class="page" id="p-analytics">
     <div class="an-note warn" id="an-tracking-note" style="display:none"></div>
+
+    <!-- ─── STAND: was ist heute wahr ─── -->
+    <div class="panel" style="margin-bottom:16px">
+      <div class="ph" style="flex-wrap:wrap;gap:8px">
+        <div class="ph-title">📍 Stand heute</div>
+        <div class="ph-muted" id="st-sub">wird geladen…</div>
+        <div class="flex1"></div>
+        <button class="topbar-btn" onclick="loadStand()">↻ Aktualisieren</button>
+      </div>
+      <div style="padding:0 18px 16px">
+        <div id="st-stopp"></div>
+        <div id="st-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px"></div>
+        <div style="font-size:11px;color:var(--txt3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Versand der letzten 14 Tage</div>
+        <div id="st-tage" style="display:flex;gap:4px;align-items:flex-end;height:90px;margin-bottom:14px"></div>
+        <div style="font-size:11px;color:var(--txt3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Motoren</div>
+        <div id="st-motoren" style="display:grid;gap:6px"></div>
+      </div>
+    </div>
+
+    <!-- ─── VORFALL 20.–22.08.: getrennt, damit er keine Quote verfälscht ─── -->
+    <div class="panel" style="margin-bottom:16px;border-color:#f5d9a8">
+      <div class="ph" style="flex-wrap:wrap;gap:8px">
+        <div class="ph-title">⚠ Vorfall 20.–22.08.</div>
+        <div class="ph-muted" id="vf-sub"></div>
+        <div class="flex1"></div>
+        <button class="topbar-btn" onclick="document.getElementById('vf-file').click()">⬆ Betroffenenliste einlesen</button>
+        <input type="file" id="vf-file" accept=".csv,text/csv,text/plain" style="display:none" onchange="vorfallImport(this)">
+        <button class="topbar-btn" id="vf-del" style="display:none" onclick="vorfallLoeschen()">🗑 Vorfallsdaten löschen</button>
+      </div>
+      <div style="padding:0 18px 16px">
+        <div class="an-note warn" style="margin-bottom:12px">
+          Diese Zahlen stehen <b>getrennt</b> und fließen in <b>keine</b> andere Auswertung ein — nicht in Öffnungs-, nicht in Antwortquoten.
+          890 Mails an 41 Adressen in drei Tagen beschreiben einen Defekt, kein Kundenverhalten. Löschen entfernt sie vollständig,
+          ohne dass sonst irgendetwas fehlt.
+        </div>
+        <div id="vf-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px"></div>
+        <div id="vf-leer" style="color:var(--txt3);font-size:12.5px;line-height:1.6"></div>
+        <div id="vf-wrap" style="max-height:340px;overflow-y:auto;display:none">
+          <table class="an-table">
+            <thead><tr><th>Adresse</th><th>Mails</th><th>erste</th><th>letzte</th><th>Betreff</th></tr></thead>
+            <tbody id="vf-rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
 
     <!-- ── Zeitraum + Live-Status ── -->
     <div class="an-toolbar">
@@ -1938,6 +2018,9 @@ info@nur-eine-adresse.de"></textarea>
       Du verkaufst einen Telefonassistenten – <b>beweise ihn, indem du selbst durchkommst.</b> Ziel pro Anruf ist ein 15-Min-Demo-Termin, kein Abschluss.
       Betriebe mit <span class="cl-tag emailed">bereits angeschrieben</span> sind Warm-Calls (E-Mail + Anruf = höhere Conversion).
     </div>
+    <!-- Vorfall-Sperre: der Schutz muss sichtbar sein, sonst ist er keine Zusicherung wert. -->
+    <div id="cl-vorfall" style="display:none"></div>
+    <input type="file" id="cl-vorfall-file" accept=".csv,text/csv,text/plain" style="display:none" onchange="vorfallImport(this, loadCallList)">
     <div class="cl-summary" id="cl-summary"></div>
     <div class="fl-toolbar">
       <input type="text" id="cl-search" class="an-filter" placeholder="🔍 Firma / Name / Ort / Branche / Telefon…" oninput="clDebouncedSearch()">
@@ -2114,6 +2197,11 @@ let sentCache = [];
 let templatesCache = [];
 let editingTplId = null;
 let jobsCache = [];
+// Probelauf: welcher Job wird gerade angezeigt, und seine Zeilen.
+let probeJobId = null, probeZeilen = [];
+// Laeuft der Not-Aus? Wird beim Laden gesetzt und steuert nur, was der Knopf
+// verspricht – entschieden wird es auf dem Server.
+let versandGestoppt = false;
 
 const SL = { new:'Neu', checked:'Geprüft', draft_ready:'Entwurf bereit', approved:'Freigegeben',
   contacted:'Kontaktiert', replied:'Geantwortet', demo_booked:'Demo gebucht',
@@ -2152,7 +2240,7 @@ function setPage(name) {
   if (name === 'autosend') loadAutoSend();
   if (name === 'calls') loadCallList();
   if (name === 'templates') loadTemplatesPage();
-  if (name === 'analytics') { setRange(anRange); if (document.getElementById('an-autorefresh')?.checked) startAnalyticsAuto(); }
+  if (name === 'analytics') { setRange(anRange); loadStand(); loadVorfall(); if (document.getElementById('an-autorefresh')?.checked) startAnalyticsAuto(); }
   else stopAnalyticsAuto();
   if (name === 'inbox') { inboxTab==='in' ? loadInbox() : loadSentList(); }
   if (name === 'followup') loadFollowupLeads();
@@ -2719,6 +2807,7 @@ async function loadCallList() {
   if (!d) return;
   callListData = d;
   const s = d.summary || {};
+  renderVorfallSperre(s.vorfall_sperre);
   const listLabel = state === 'open' ? 'In dieser Liste'
     : state === 'nicht_erreicht' ? 'Nicht erreicht (gefiltert)'
     : state === 'interessiert' ? 'Interessiert (gefiltert)'
@@ -3864,12 +3953,32 @@ async function updateAutosendBadge() {
 }
 async function loadAutoSend() {
   loadWorkflow();
-  const [stats, jobs, tpls] = await Promise.all([
+  const [stats, jobs, tpls, stand] = await Promise.all([
     fetchJSON('/api/send-stats').catch(()=>({})),
     fetchJSON('/api/send-jobs').catch(()=>[]),
     fetchJSON('/api/email-templates').catch(()=>[]),
+    fetchJSON('/api/stand').catch(()=>null),
   ]);
   jobsCache = jobs; templatesCache = tpls;
+
+  // Der Knopf muss sagen, was er tut. Solange der Not-Aus läuft, kann er nur
+  // einen Probelauf auslösen — der Server lässt nichts anderes zu.
+  versandGestoppt = !!(stand && stand.stopp && stand.stopp.gestoppt);
+  const note = document.getElementById('as-stopp-note');
+  if (note) note.style.display = versandGestoppt ? '' : 'none';
+  const hint = document.getElementById('as-probe-hint');
+  if (hint) hint.style.display = versandGestoppt ? '' : 'none';
+  const cbtn = document.getElementById('as-create-btn');
+  if (cbtn) cbtn.textContent = versandGestoppt ? '🔍 Probelauf starten — es geht nichts raus' : '⚡ Auto-Versand starten';
+  if (versandGestoppt && stand) {
+    set('as-stopp-detail', ` Zuletzt versendet wurde am ${stand.letzter_versand ? String(stand.letzter_versand).slice(0,10) : '—'}, seitdem ${stand.tage_ohne_versand ?? '—'} Tage still.`);
+  }
+  // Zuletzt gerechneten Probelauf wieder anzeigen, statt ihn beim Neuladen zu
+  // verlieren. Die Seite lädt sich alle 10s neu – die Liste steht aber fest,
+  // also wird sie nur geholt, wenn sie noch nicht auf dem Schirm ist.
+  const letzterProbe = jobs.find(j => j.probelauf);
+  const zeigen = probeJobId || (letzterProbe ? letzterProbe.id : null);
+  if (zeigen && !(zeigen === probeJobId && probeZeilen.length)) loadProbe(zeigen);
   set('as-today-n', stats.sent_today_total ?? 0);
   set('as-today-cap', stats.global_daily_cap ?? 200);
   const v = stats.verified || {};
@@ -3928,6 +4037,186 @@ async function loadSentLog() {
       <td>${ok}</td>
     </tr>`;
   }).join('');
+}
+
+// ════ PROBELAUF — sehen, was rausginge, ohne dass etwas rausgeht ════
+async function loadProbe(jobId) {
+  probeJobId = jobId || null;
+  const panel = document.getElementById('as-probe-panel');
+  if (!panel) return;
+  if (!probeJobId) { panel.style.display = 'none'; return; }
+  const d = await fetchJSON('/api/probelauf?job=' + encodeURIComponent(probeJobId)).catch(()=>null);
+  if (!d || !d.bericht || !d.bericht.geplant) { panel.style.display = 'none'; return; }
+  panel.style.display = '';
+  probeZeilen = d.zeilen || [];
+  const b = d.bericht;
+  const fmt = s => s ? new Date(s).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+  document.getElementById('as-probe-kpis').innerHTML = [
+    ['Mails geplant', b.geplant, 'b', 'So viele Mails würde dieser Versand schicken'],
+    ['verschiedene Adressen', b.adressen, 'g', 'Jede Praxis genau einmal'],
+    ['doppelt', b.doppelt, b.doppelt ? 'hot' : 'g', 'Adressen, die mehr als eine Mail bekämen — muss 0 sein'],
+    ['Laufzeit', b.tage + (b.tage === 1 ? ' Tag' : ' Tage'), '', 'Über so viele Tage verteilt sich der Versand'],
+    ['tatsächlich versendet', 0, 'g', 'Der Probelauf ruft den Versand nicht auf'],
+  ].map(([l,v,cls,ti]) => `<div class="fl-kpi ${cls}" title="${ti}"><div class="fl-kpi-v">${v}</div><div class="fl-kpi-l">${l}</div></div>`).join('');
+
+  const warn = [];
+  if (b.doppelt > 0) warn.push(`<div class="an-note warn"><b>${b.doppelt} Adressen bekämen mehr als eine Mail.</b> Genau das ist am 20.–22.08. passiert. Nicht echt starten, bevor das 0 ist.</div>`);
+  if (b.fehlend > 0) warn.push(`<div class="an-note">Du hast <b>${b.gewuenscht}</b> Mails gewählt, es gibt aber nur <b>${b.geplant}</b> passende, noch nie kontaktierte Adressen. Die restlichen ${b.fehlend} kämen nie zustande — dafür bräuchtest du neue Leads.</div>`);
+  if (!warn.length) warn.push(`<div class="an-note">✓ Jede Adresse genau einmal · erste Mail ${fmt(b.von)} · letzte ${fmt(b.bis)} · Vorlagen: ${b.vorlagen.map(v=>esc(v.name)+' ('+v.n+')').join(', ')}</div>`);
+  document.getElementById('as-probe-warn').innerHTML = warn.join('');
+
+  document.getElementById('as-probe-rows').innerHTML = probeZeilen.map((z,i) => `<tr>
+    <td style="white-space:nowrap">${esc(fmt(z.geplant_um))}</td>
+    <td>${esc(z.to_name||'—')}</td>
+    <td class="crm-mail">${esc(z.to_email)}</td>
+    <td>${esc(z.template_name||'—')}</td>
+    <td>${esc(z.subject||'')}</td>
+    <td><button class="btn btn-ghost" style="padding:4px 9px;font-size:11px" onclick="probeMailZeigen(${i})">Text ansehen</button></td>
+  </tr>`).join('');
+  document.getElementById('as-probe-mail').style.display = 'none';
+}
+
+function probeMailZeigen(i) {
+  const z = probeZeilen[i];
+  if (!z) return;
+  const box = document.getElementById('as-probe-mail');
+  document.getElementById('as-probe-mail-head').textContent = `An: ${z.to_name || ''} <${z.to_email}> · Betreff: ${z.subject || ''}`;
+  document.getElementById('as-probe-mail-body').textContent = z.body || '';
+  box.style.display = '';
+  box.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+async function probeLoeschen() {
+  if (!probeJobId) return;
+  if (!confirm('Probelauf löschen?\n\nDie Vorschau-Liste wird vollständig entfernt. Es war ohnehin nichts versendet — an deinen Leads und Auswertungen ändert sich nichts.')) return;
+  await fetch('/api/probelauf?job=' + encodeURIComponent(probeJobId), { method:'DELETE' });
+  probeJobId = null; probeZeilen = [];
+  document.getElementById('as-probe-panel').style.display = 'none';
+  toast('Probelauf gelöscht');
+  loadAutoSend();
+}
+
+// ════ STAND + VORFALL (Analyse-Seite) ════
+async function loadStand() {
+  const d = await fetchJSON('/api/stand').catch(()=>null);
+  if (!d) return;
+  versandGestoppt = !!(d.stopp && d.stopp.gestoppt);
+  const fmtT = s => s ? new Date(String(s).replace(' ','T')).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
+  set('st-sub', 'Stand ' + new Date().toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) + ' — live aus der Datenbank gerechnet');
+
+  document.getElementById('st-stopp').innerHTML = d.stopp.gestoppt
+    ? `<div class="an-note warn" style="margin-bottom:12px"><b>🛑 ${esc(d.stopp.text)}</b></div>`
+    : `<div class="an-note" style="margin-bottom:12px">Versand ist freigegeben — es kann gesendet werden.</div>`;
+
+  const still = d.tage_ohne_versand;
+  document.getElementById('st-kpis').innerHTML = [
+    ['Letzter Versand', d.letzter_versand ? fmtT(d.letzter_versand).slice(0,10) : 'keiner', '', d.letzter_versand ? fmtT(d.letzter_versand) : 'Es ist nie etwas versendet worden'],
+    ['Tage ohne Versand', still === null ? '—' : still, still === null || still > 0 ? 'g' : '', 'So lange steht der Versand still'],
+    ['Heute raus', d.gesendet_heute, d.gesendet_heute ? 'hot' : 'g', 'Erfolgreich versendete Mails heute'],
+    ['In der Warteschlange', d.warteschlange.geplant, d.warteschlange.geplant ? 'hot' : 'g', 'Eingeplante Mails, die noch rausgehen würden'],
+    ['Kampagnen laufend', d.warteschlange.jobs_laufend, d.warteschlange.jobs_laufend ? 'hot' : 'g', 'Echte Auto-Kampagnen im Status „läuft“'],
+    ['Probeläufe', d.warteschlange.jobs_probelauf, '', 'Trockenläufe — verschicken nichts'],
+  ].map(([l,v,cls,ti]) => `<div class="fl-kpi ${cls}" title="${esc(ti)}"><div class="fl-kpi-v">${v}</div><div class="fl-kpi-l">${l}</div></div>`).join('');
+
+  // 14-Tage-Balken: die Lücke seit dem letzten Versand soll man sehen, nicht lesen.
+  const tage = [];
+  for (let i = 13; i >= 0; i--) {
+    const dt = new Date(); dt.setDate(dt.getDate() - i);
+    const key = dt.toISOString().slice(0,10);
+    const treffer = (d.pro_tag||[]).find(p => p.tag === key);
+    tage.push({ key, mails: treffer ? treffer.mails : 0, empf: treffer ? treffer.empfaenger : 0 });
+  }
+  const max = Math.max(1, ...tage.map(t => t.mails));
+  document.getElementById('st-tage').innerHTML = tage.map(t => {
+    const h = Math.round(t.mails / max * 70);
+    const farbe = t.mails ? 'var(--b)' : 'var(--line)';
+    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px" title="${t.key}: ${t.mails} Mails an ${t.empf} Empfänger">
+      <div style="font-size:10px;color:var(--txt3)">${t.mails || ''}</div>
+      <div style="width:100%;height:${Math.max(2,h)}px;background:${farbe};border-radius:3px 3px 0 0"></div>
+      <div style="font-size:9px;color:var(--txt4)">${t.key.slice(8)}.${t.key.slice(5,7)}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('st-motoren').innerHTML = (d.motoren||[]).map(m => `
+    <div style="display:flex;align-items:center;gap:9px;font-size:12.5px">
+      <span style="width:9px;height:9px;border-radius:50%;background:${m.aktiv?'var(--r,#dc2626)':'var(--g)'};flex:none"></span>
+      <b>${esc(m.name)}</b>
+      <span style="color:var(--txt3)">${m.aktiv?'AKTIV':'aus'} — ${esc(m.hinweis)}</span>
+    </div>`).join('');
+}
+
+async function loadVorfall() {
+  const d = await fetchJSON('/api/vorfall').catch(()=>null);
+  if (!d) return;
+  const del = document.getElementById('vf-del');
+  const wrap = document.getElementById('vf-wrap');
+  const leer = document.getElementById('vf-leer');
+  if (del) del.style.display = d.vorhanden ? '' : 'none';
+  if (!d.vorhanden) {
+    set('vf-sub', 'keine Daten eingelesen');
+    document.getElementById('vf-kpis').innerHTML = '';
+    wrap.style.display = 'none';
+    leer.innerHTML = 'Noch nichts eingelesen. Die Betroffenenliste liegt als <code>betroffene-20-22-08.csv</code> auf deinem Rechner — sie enthält Kundendaten und gehört deshalb nicht ins Repository. Über <b>„Betroffenenliste einlesen“</b> oben rechts wählst du die Datei aus; sie landet in einer eigenen Tabelle und nirgends sonst.';
+    return;
+  }
+  leer.innerHTML = '';
+  wrap.style.display = '';
+  set('vf-sub', `${d.adressen} Adressen · ${d.mails} Mails · Quelle: ${d.quelle || 'unbekannt'}`);
+  document.getElementById('vf-kpis').innerHTML = [
+    ['Betroffene Adressen', d.adressen, 'hot', 'So viele Praxen haben Post bekommen'],
+    ['Mails gesamt', d.mails, 'hot', 'Summe über alle Adressen'],
+    ['Höchstwert je Adresse', d.max_pro_adresse, 'hot', 'So oft hat die meistbetroffene Praxis dieselbe Mail bekommen'],
+    ['Schnitt je Adresse', d.schnitt_pro_adresse, 'hot', 'Durchschnitt über alle Betroffenen'],
+    ['Zeitraum', (d.von||'').slice(5,10) + ' – ' + (d.bis||'').slice(5,10), '', `${d.von} bis ${d.bis}`],
+  ].map(([l,v,cls,ti]) => `<div class="fl-kpi ${cls}" title="${esc(ti)}"><div class="fl-kpi-v">${v}</div><div class="fl-kpi-l">${l}</div></div>`).join('');
+  document.getElementById('vf-rows').innerHTML = d.zeilen.map(z => `<tr>
+    <td class="crm-mail">${esc(z.email)}</td>
+    <td><b style="color:#c2410c">${z.anzahl}</b></td>
+    <td>${esc(z.erste||'—')}</td>
+    <td>${esc(z.letzte||'—')}</td>
+    <td>${esc(z.betreff||'—')}</td>
+  </tr>`).join('');
+}
+
+async function vorfallImport(input, danach) {
+  const datei = input.files && input.files[0];
+  input.value = '';
+  if (!datei) return;
+  const csv = await datei.text();
+  const r = await post('/api/vorfall/import', { csv });
+  const d = await r.json().catch(()=>({}));
+  if (!r.ok) { toast(d.error || 'Import fehlgeschlagen', true); return; }
+  const gesperrt = d.sperre ? d.sperre.gesperrte_leads : 0;
+  toast(`${d.zeilen} Adressen eingelesen · ${gesperrt} Leads aus der Anrufliste gesperrt`);
+  if (typeof danach === 'function') danach(); else loadVorfall();
+}
+
+// Sichtbarer Zustand der Vorfall-Sperre über der Anrufliste.
+function renderVorfallSperre(sp) {
+  const el = document.getElementById('cl-vorfall');
+  if (!el) return;
+  el.style.display = '';
+  if (sp && sp.aktiv) {
+    el.innerHTML = `<div class="an-note" style="border-color:rgba(34,209,124,.35);background:rgba(34,209,124,.07);color:#15803d">
+      <b>✓ Vorfall-Sperre aktiv.</b> ${sp.adressen} Praxen aus dem Vorfall 20.–22.08. sind aus <b>allen</b> Ansichten der Anrufliste entfernt
+      — abgeglichen über E-Mail-Adresse, Praxis-Domain und Webseite. Betroffene Lead-Einträge: <b>${sp.gesperrte_leads}</b>.
+      Sie tauchen hier nicht mehr auf und können nicht versehentlich angerufen werden.
+    </div>`;
+    return;
+  }
+  el.innerHTML = `<div class="an-note warn">
+    <b>⚠ Vorfall-Sperre steht NICHT.</b> Die 41 Praxen, die am 20.–22.08. je rund 23 Mails bekommen haben, sind
+    <b>nicht</b> aus dieser Liste ausgeschlossen — ruf noch niemanden an. Lies einmal die Datei
+    <code>betroffene-20-22-08.csv</code> ein, dann sind sie sofort raus.
+    <button class="btn btn-solid" style="margin-left:10px;padding:5px 12px;font-size:12px" onclick="document.getElementById('cl-vorfall-file').click()">Betroffenenliste einlesen</button>
+  </div>`;
+}
+
+async function vorfallLoeschen() {
+  if (!confirm('Vorfallsdaten löschen?\n\nDie Betroffenenliste wird vollständig entfernt. Sie steckt in keiner anderen Auswertung — an deinen übrigen Zahlen ändert sich nichts.')) return;
+  await fetch('/api/vorfall', { method:'DELETE' });
+  toast('Vorfallsdaten gelöscht');
+  loadVorfall();
 }
 
 // ════ LEAD-BESTAND / IMPORT / DUPLIKATE ════
@@ -4092,13 +4381,25 @@ async function createSendJob() {
   if (startAtRaw && new Date(startAtRaw).getTime() < Date.now() - 60000) { toast('Startzeit liegt in der Vergangenheit', true); return; }
   const days = Math.ceil(totalTarget / dailyLimit);
   const startTxt = startAtRaw ? `Start: ${new Date(startAtRaw).toLocaleString('de-DE')}` : 'Start: sofort';
-  if (!confirm(`Auto-Versand starten?\n\n${totalTarget} E-Mails · ${dailyLimit}/Tag · ca. ${days} Tag(e)\nPause ~${gapLabel(gapSeconds)} zwischen Mails\n${templateIds.length} Vorlage(n) im Wechsel\n${startTxt}`)) return;
+  const rahmen = `${totalTarget} E-Mails · ${dailyLimit}/Tag · ca. ${days} Tag(e)\nPause ~${gapLabel(gapSeconds)} zwischen Mails\n${templateIds.length} Vorlage(n) im Wechsel\n${startTxt}`;
+  const frage = versandGestoppt
+    ? `Probelauf starten?\n\n${rahmen}\n\nEs wird NICHTS versendet. Du bekommst die vollständige Liste: wer, welcher Text, wann.`
+    : `Auto-Versand starten?\n\n${rahmen}\n\nACHTUNG: Diese E-Mails gehen wirklich raus.`;
+  if (!confirm(frage)) return;
   const btn = document.getElementById('as-create-btn');
   btn.disabled = true;
   const r = await post('/api/send-jobs', { totalTarget, dailyLimit, verticalId, templateIds, gapSeconds, startAt: startAtRaw || undefined, track: currentTrack });
   const d = await r.json().catch(()=>({}));
   btn.disabled = false;
   if (!r.ok) { toast(d.error||'Fehler beim Starten', true); return; }
+  if (d.probelauf) {
+    const b = d.bericht || {};
+    toast(`🔍 Probelauf: ${b.geplant||0} Mails an ${b.adressen||0} Adressen — nichts versendet`);
+    await loadAutoSend();
+    await loadProbe(d.id);
+    document.getElementById('as-probe-panel')?.scrollIntoView({ behavior:'smooth', block:'start' });
+    return;
+  }
   toast('⚡ Auto-Versand läuft!');
   loadAutoSend();
 }
@@ -4108,7 +4409,7 @@ function renderJobs() {
     el.innerHTML = '<div class="empty-state" style="padding:48px 0"><div class="ei">⚡</div><div class="et">Noch keine Auto-Kampagnen</div><div class="es">Erstelle links deine erste – das System übernimmt den Rest</div></div>';
     return;
   }
-  const stLabel = { running:'Läuft', paused:'Pausiert', done:'Fertig', stopped:'Gestoppt' };
+  const stLabel = { running:'Läuft', paused:'Pausiert', done:'Fertig', stopped:'Gestoppt', probelauf:'Probelauf — nichts versendet' };
   const running = jobsCache.filter(j => j.status === 'running');
   const sum = (fn) => running.reduce((s,j)=> s + fn(j), 0);
   const todaySent      = sum(j => j.sent_today || 0);
@@ -4147,10 +4448,11 @@ function renderJobs() {
       ${pend}
       ${j.note?`<div class="job-note">${esc(j.note)}</div>`:''}
       <div class="job-actions">
+        ${j.probelauf?`<button class="btn btn-ghost" onclick="loadProbe('${j.id}')">🔍 Ergebnis ansehen</button><button class="btn btn-ghost" onclick="probeJobId='${j.id}';probeLoeschen()">🗑 Löschen</button>`:''}
         ${j.status==='running'?`<button class="btn btn-warn" onclick="jobAction('${j.id}','paused')">⏸ Pausieren</button>`:''}
         ${j.status==='paused'?`<button class="btn btn-g" onclick="jobAction('${j.id}','running')">▶ Fortsetzen</button>`:''}
         ${['running','paused'].includes(j.status)?`<button class="btn btn-danger" onclick="jobAction('${j.id}','stopped')">■ Stoppen</button>`:''}
-        <button class="btn btn-ghost" onclick="viewJobSent('${j.id}')">Gesendete ansehen</button>
+        ${j.probelauf?'':`<button class="btn btn-ghost" onclick="viewJobSent('${j.id}')">Gesendete ansehen</button>`}
         ${['done','stopped'].includes(j.status)?`<button class="btn btn-ghost" onclick="deleteJob('${j.id}')">Entfernen</button>`:''}
       </div>
     </div>`;
@@ -4159,7 +4461,7 @@ function renderJobs() {
 async function jobAction(id, status) {
   if (status === 'stopped' && !confirm('Auto-Versand wirklich stoppen? Kann nicht fortgesetzt werden.')) return;
   const r = await fetch('/api/send-jobs/'+id, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ status }) });
-  if (!r.ok) { toast('Fehler', true); return; }
+  if (!r.ok) { const d = await r.json().catch(()=>({})); toast(d.error || 'Fehler', true); return; }
   toast(status==='running'?'▶ Fortgesetzt':status==='paused'?'⏸ Pausiert':'■ Gestoppt');
   loadAutoSend();
 }

@@ -13,6 +13,8 @@ export const GLOBAL_DAILY_CAP = 200;
 export const ALLOWED_DAILY_LIMITS = [30, 50, 100, 150, 200];
 // Worker-Takt: alle 10s prüfen, damit auch kurze Pausen (min. 15s) sauber greifen.
 const TICK_MS = 10_000;
+/** Status eines Jobs, der nur zeigt was rausginge – und nichts verschickt. */
+export const PROBE_STATUS = 'probelauf';
 
 // ── Warmup-Rampe (Reputationsschutz) ───────────────────────────────────────
 // Ein junges Absenderkonto darf nicht sofort volles Volumen fahren, sonst
@@ -54,6 +56,8 @@ export interface SendJob {
   created_at: string;
   finished_at: string | null;
   track: string | null; // 'voice_agent' | 'consult' – Job schreibt nur diesen Track an
+  /** 1 = Probelauf. Dieser Job verschickt nie etwas, egal welchen Status er hat. */
+  probelauf?: number;
 }
 
 export function recordSentEmail(entry: {
@@ -140,19 +144,29 @@ function brancheClause(terms: string[], params: Record<string, unknown>): string
   return ` AND (${parts.join(' OR ')})`;
 }
 
-function pickNextLead(job: SendJob): Lead | undefined {
+/**
+ * Wen würde dieser Job als nächstes anschreiben? Eine einzige Stelle für die
+ * Auswahl – der echte Versand nimmt hiervon den ersten Treffer, der Probelauf
+ * die ganze Liste. Sonst zeigt die Vorschau irgendwann etwas anderes, als der
+ * Versand tatsächlich täte, und wäre wertlos.
+ */
+export function naechsteLeads(job: SendJob, limit: number): Lead[] {
   const db = getDb();
   const terms = brancheTermsForJob(job);
   // Nur unkontaktierte, sichere Status; nie DNC/archiviert; Lead braucht E-Mail.
   const statusOk = `status IN ('new','checked','draft_ready','approved','manual_review')`;
-  const params: Record<string, unknown> = { jobTrack: job.track || 'voice_agent' };
+  const params: Record<string, unknown> = { jobTrack: job.track || 'voice_agent', limit: Math.max(1, limit) };
   const sql = `SELECT * FROM leads
                WHERE email IS NOT NULL AND email != '' AND ${statusOk} AND ${ALREADY_CONTACTED_SQL}
                  AND ${NOT_IN_ACTIVE_WORKFLOW_SQL}
                  AND COALESCE(track,'voice_agent') = @jobTrack`
     + brancheClause(terms, params)
-    + ` ORDER BY CASE prioritaet WHEN 'A' THEN 0 WHEN 'B' THEN 1 ELSE 2 END, score_gesamt DESC LIMIT 1`;
-  return db.prepare(sql).get(params) as Lead | undefined;
+    + ` ORDER BY CASE prioritaet WHEN 'A' THEN 0 WHEN 'B' THEN 1 ELSE 2 END, score_gesamt DESC LIMIT @limit`;
+  return db.prepare(sql).all(params) as Lead[];
+}
+
+function pickNextLead(job: SendJob): Lead | undefined {
+  return naechsteLeads(job, 1)[0];
 }
 
 /** Wie viele versandfähige, noch nicht kontaktierte Leads gibt es? Für aussagekräftige Hinweise, wenn ein Job leerläuft. */
@@ -182,6 +196,14 @@ function randGap(job: SendJob): number {
 
 async function processJob(job: SendJob): Promise<void> {
   const now = new Date();
+
+  // Probelauf-Jobs verschicken nie. Die Abfrage unten holt zwar nur laufende
+  // Jobs, aber ein Status laesst sich mit einem Klick aendern – das Merkmal
+  // nicht. Diese Zeile ist die Stelle, an der das zaehlt.
+  if (job.probelauf) {
+    setJob(job.id, { status: PROBE_STATUS, note: 'Probelauf – dieser Job verschickt nichts' });
+    return;
+  }
 
   if (job.sent_count >= job.total_target) {
     setJob(job.id, { status: 'done', finished_at: now.toISOString(), note: 'Ziel erreicht' });
