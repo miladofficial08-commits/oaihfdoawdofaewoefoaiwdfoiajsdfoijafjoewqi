@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<title>Praxis-Tour</title>
+<meta name="description" content="Rundtour zu Hausarzt- und Physiopraxen abfahren, Besuche abhaken und Notizen festhalten.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗺️</text></svg>">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" integrity="sha512-h9FcoyWjHcOcmEVkxOfTLnmZFWIH0iZhZT1H2TbOq55xktYkJnV5iY+nQvs+dnLxmkoymHPytkTYvZmLDrhyGg==" crossorigin="">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ── Einrichtung: ohne Backend-Adresse geht nichts ─────────────────────── -->
+<div id="setup" class="overlay" hidden>
+  <form class="karte setup-karte" id="setup-form">
+    <h1>Einrichten</h1>
+    <p class="hinweis">
+      Die Adresse des Backends auf Railway. Einmal eintragen, danach merkt sich
+      das Handy sie.
+    </p>
+    <label>Backend-Adresse
+      <input type="url" id="setup-url" inputmode="url" autocomplete="url"
+             placeholder="https://xyz.up.railway.app" required>
+    </label>
+    <label>Passwort <span class="klein">(nur falls im Backend gesetzt)</span>
+      <input type="password" id="setup-passwort" autocomplete="current-password">
+    </label>
+    <label>Dein Name <span class="klein">(steht später an den Besuchen)</span>
+      <input type="text" id="setup-name" autocomplete="name" placeholder="z. B. Milad">
+    </label>
+    <button type="submit" class="knopf gross">Verbinden</button>
+    <p id="setup-fehler" class="fehler" hidden></p>
+  </form>
+</div>
+
+<header class="kopf">
+  <div class="kopf-titel">
+    <strong>Praxis-Tour</strong>
+    <span id="kopf-zusatz" class="klein"></span>
+  </div>
+  <div class="kopf-rechts">
+    <span id="offline-marke" class="marke warnung" hidden>offline</span>
+    <span id="warteschlange-marke" class="marke" hidden></span>
+    <button id="knopf-einstellungen" class="knopf leise" type="button" aria-label="Einstellungen">⚙</button>
+  </div>
+</header>
+
+<nav class="reiter" role="tablist">
+  <button class="reiter-knopf aktiv" data-ansicht="tour" role="tab">Tour</button>
+  <button class="reiter-knopf" data-ansicht="karte" role="tab">Karte</button>
+  <button class="reiter-knopf" data-ansicht="daten" role="tab">Daten</button>
+</nav>
+
+<main>
+  <!-- ── Tour ─────────────────────────────────────────────────────────── -->
+  <section id="ansicht-tour" class="ansicht">
+    <div id="tour-leer" class="karte" hidden>
+      <h2>Noch keine Tour</h2>
+      <p>Unter <strong>Daten</strong> zuerst die Praxen laden, dann die Tour bauen.</p>
+    </div>
+
+    <div id="tour-kopf" class="karte" hidden>
+      <div class="tag-waehler" id="tag-waehler"></div>
+      <div class="kennzahlen" id="tag-kennzahlen"></div>
+      <div class="knopf-reihe">
+        <button id="knopf-standort" class="knopf" type="button">Standort holen</button>
+        <button id="knopf-weiter" class="knopf" type="button" disabled>Ab hier neu sortieren</button>
+        <button id="knopf-maps-tag" class="knopf leise" type="button">Tag in Google&nbsp;Maps</button>
+      </div>
+      <div class="filter-reihe">
+        <label class="schalter">
+          <input type="checkbox" id="filter-erledigt"> Erledigte ausblenden
+        </label>
+      </div>
+      <p id="standort-info" class="klein" hidden></p>
+    </div>
+
+    <ol id="stopp-liste" class="stopp-liste"></ol>
+  </section>
+
+  <!-- ── Karte ────────────────────────────────────────────────────────── -->
+  <section id="ansicht-karte" class="ansicht" hidden>
+    <div id="karte" class="kartenflaeche"></div>
+    <div class="legende karte">
+      <span><i class="punkt offen"></i> offen</span>
+      <span><i class="punkt besucht"></i> besucht</span>
+      <span><i class="punkt nochmal"></i> nochmal hin</span>
+      <span><i class="punkt kein_interesse"></i> kein Interesse</span>
+      <span><i class="punkt start"></i> Betrieb</span>
+    </div>
+  </section>
+
+  <!-- ── Daten ────────────────────────────────────────────────────────── -->
+  <section id="ansicht-daten" class="ansicht" hidden>
+    <div class="karte">
+      <h2>Startpunkt</h2>
+      <p class="klein" id="start-anzeige">–</p>
+      <label>Adresse des Betriebs
+        <input type="text" id="start-adresse" placeholder="Dillenburger Weg 1, 40229 Düsseldorf">
+      </label>
+      <div class="knopf-reihe">
+        <button id="knopf-start-speichern" class="knopf" type="button">Adresse suchen &amp; übernehmen</button>
+        <button id="knopf-start-hier" class="knopf leise" type="button">Aktuellen Standort nehmen</button>
+      </div>
+      <p class="hinweis">
+        Die Hausnummer stand nicht eindeutig fest. Prüfe, ob der gefundene Punkt
+        stimmt — die ganze Tour hängt daran.
+      </p>
+    </div>
+
+    <div class="karte">
+      <h2>Praxen laden</h2>
+      <label>Umkreis
+        <select id="import-radius">
+          <option value="3">3 km – nur Eller und direkt angrenzend</option>
+          <option value="5">5 km – Eller, Vennhausen, Lierenfeld, Wersten, Oberbilk</option>
+          <option value="6" selected>6 km – dazu Gerresheim, Benrath-Nord, Flingern</option>
+          <option value="8">8 km – halbes Düsseldorf</option>
+          <option value="12">12 km – ganz Düsseldorf</option>
+        </select>
+      </label>
+      <label class="schalter">
+        <input type="checkbox" id="import-google">
+        <span>Zusätzlich Google&nbsp;Places abfragen
+          <span class="klein">(kostet Geld, dafür nahezu vollständig)</span></span>
+      </label>
+      <div id="google-block" hidden>
+        <label>Rastergröße
+          <select id="import-zelle">
+            <option value="400">400 m – dichteste Suche, teuerste</option>
+            <option value="700" selected>700 m – guter Mittelweg</option>
+            <option value="1000">1000 m – günstig, findet in dichten Ecken weniger</option>
+          </select>
+        </label>
+        <p class="hinweis" id="kosten-anzeige">–</p>
+      </div>
+      <button id="knopf-import" class="knopf gross" type="button">Praxen laden</button>
+      <pre id="import-log" class="protokoll" hidden></pre>
+    </div>
+
+    <div class="karte">
+      <h2>Tour bauen</h2>
+      <fieldset id="kategorie-liste">
+        <legend>Wen besuchen wir?</legend>
+      </fieldset>
+      <label>Stopps pro Tag
+        <input type="number" id="tour-pro-tag" min="3" max="60" value="18">
+      </label>
+      <p class="hinweis">
+        Ein Stopp ist eine Adresse. Im Ärztehaus klingelt man an mehreren Türen,
+        das zählt als ein Stopp. Realistisch sind 15–20 Adressen am Tag, wenn
+        man überall kurz reinwill.
+      </p>
+      <label class="schalter">
+        <input type="checkbox" id="tour-nur-offene">
+        <span>Nur noch nicht besuchte Praxen
+          <span class="klein">(für die zweite Runde)</span></span>
+      </label>
+      <button id="knopf-tour-bauen" class="knopf gross" type="button">Tour bauen</button>
+      <p id="tour-hinweise" class="hinweis" hidden></p>
+    </div>
+
+    <div class="karte">
+      <h2>Stand</h2>
+      <div id="statistik" class="kennzahlen"></div>
+      <div class="knopf-reihe">
+        <button id="knopf-csv" class="knopf leise" type="button">Als CSV herunterladen</button>
+        <button id="knopf-neu-laden" class="knopf leise" type="button">Neu laden</button>
+      </div>
+    </div>
+
+    <div class="karte">
+      <h2>Einstellungen</h2>
+      <label>Dein Name
+        <input type="text" id="einst-name">
+      </label>
+      <label>Backend-Adresse
+        <input type="url" id="einst-url" inputmode="url">
+      </label>
+      <label>Passwort
+        <input type="password" id="einst-passwort">
+      </label>
+      <div class="knopf-reihe">
+        <button id="knopf-einst-speichern" class="knopf" type="button">Speichern</button>
+        <button id="knopf-warteschlange" class="knopf leise" type="button">Warteschlange senden</button>
+      </div>
+      <p class="klein" id="einst-info"></p>
+    </div>
+  </section>
+</main>
+
+<!-- ── Stopp-Detail ─────────────────────────────────────────────────────── -->
+<div id="detail" class="overlay" hidden>
+  <div class="karte detail-karte">
+    <button id="detail-zu" class="knopf leise detail-zu" type="button" aria-label="Schließen">✕</button>
+    <div id="detail-inhalt"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" integrity="sha512-BwHfrr4c9kmRkLw6iXFdzcdWV/PGkVgiIyIWLLlTSXzWQzxuSg4DiQUCpauz/EWjgk5TYQqX/kvn9pG1NpYfqg==" crossorigin=""></script>
+<script src="app.js"></script>
+</body>
+</html>

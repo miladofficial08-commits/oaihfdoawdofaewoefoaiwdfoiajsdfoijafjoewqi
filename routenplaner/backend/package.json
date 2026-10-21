@@ -1,0 +1,26 @@
+{
+  "name": "praxis-routenplaner-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Backend für den Praxis-Routenplaner: Praxen importieren, Rundtouren bauen, Besuche protokollieren.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/src/server.js",
+    "dev": "npm run build && node dist/src/server.js",
+    "test": "npm run build && node dist/tests/run-tests.js"
+  },
+  "dependencies": {
+    "@fastify/cors": "^8.5.0",
+    "better-sqlite3": "^11.10.0",
+    "dotenv": "^16.4.7",
+    "fastify": "^4.28.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20.14.0",
+    "typescript": "^5.4.5"
+  }
+}
