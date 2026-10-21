@@ -58,8 +58,29 @@ Prüfen: `https://<dienst>.up.railway.app/health` muss `{"ok":true,…}` liefern
    **Publish directory: `routenplaner/frontend`**.
 3. Fertig — es gibt keinen Buildschritt und keine Abhängigkeiten.
 
-Beim ersten Öffnen fragt die App nach der Railway-Adresse, dem Passwort und
-dem eigenen Namen. Das merkt sich das Handy.
+**Backend-Adresse einmalig festnageln:** In `frontend/config.js` die Railway-
+Adresse bei `backendUrl` eintragen, committen, pushen. Dann startet die Seite
+direkt mit der Tour und fragt nie wieder danach. Bleibt das Feld leer, fragt
+die App beim ersten Öffnen auf jedem Gerät einmal.
+
+Ein Passwort braucht es nur, wenn im Backend `APP_PASSWORT` gesetzt ist; im
+Einrichtungsdialog ist das Feld deshalb weggeklappt. Trägt man es in
+`config.js` ein, steht es im öffentlichen Quelltext der Seite — dann schützt
+nur noch die Unkenntnis der Netlify-Adresse. Wer das nicht will, lässt es leer
+und gibt es einmal pro Handy ein.
+
+## Vorschau ohne Backend
+
+Ohne eingetragene Backend-Adresse bietet der Einrichtungsdialog
+**„Vorschau mit Beispieldaten"** an. Damit lässt sich die komplette
+Oberfläche durchklicken — Tagesliste, Karte, Detailansicht, Abhaken,
+Notizen — ganz ohne Railway.
+
+Die Praxen darin sind **erfunden**. Die Straßennamen stammen aus Eller und
+Umgebung, die Koordinaten passen nicht zu den Hausnummern. Die Tour selbst ist
+echt gerechnet: dieselbe Gruppierung, dieselbe Reihenfolgeoptimierung wie im
+Betrieb. Alles, was man dort abhakt, bleibt im Browser und verschwindet mit
+„Beenden".
 
 ---
 

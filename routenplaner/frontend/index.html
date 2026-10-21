@@ -18,20 +18,35 @@
     <h1>Einrichten</h1>
     <p class="hinweis">
       Die Adresse des Backends auf Railway. Einmal eintragen, danach merkt sich
-      das Handy sie.
+      das Handy sie. Dauerhaft festnageln lässt sie sich in der Datei
+      <code>config.js</code> — dann erscheint dieser Dialog nie wieder.
     </p>
     <label>Backend-Adresse
       <input type="url" id="setup-url" inputmode="url" autocomplete="url"
-             placeholder="https://xyz.up.railway.app" required>
-    </label>
-    <label>Passwort <span class="klein">(nur falls im Backend gesetzt)</span>
-      <input type="password" id="setup-passwort" autocomplete="current-password">
+             placeholder="https://xyz.up.railway.app">
     </label>
     <label>Dein Name <span class="klein">(steht später an den Besuchen)</span>
       <input type="text" id="setup-name" autocomplete="name" placeholder="z. B. Milad">
     </label>
+
+    <!-- Passwort weggeklappt: die meisten Backends laufen ohne, und ein leeres
+         Pflichtfeld im ersten Dialog hält nur auf. -->
+    <details id="setup-passwort-block">
+      <summary class="klein">Backend verlangt ein Passwort</summary>
+      <label>Passwort
+        <input type="password" id="setup-passwort" autocomplete="current-password">
+      </label>
+    </details>
+
     <button type="submit" class="knopf gross">Verbinden</button>
     <p id="setup-fehler" class="fehler" hidden></p>
+
+    <p class="hinweis">
+      Noch kein Backend? Dann erst einmal anschauen:
+    </p>
+    <button type="button" id="knopf-demo" class="knopf leise gross">
+      Vorschau mit Beispieldaten öffnen
+    </button>
   </form>
 </div>
 
@@ -46,6 +61,12 @@
     <button id="knopf-einstellungen" class="knopf leise" type="button" aria-label="Einstellungen">⚙</button>
   </div>
 </header>
+
+<div id="demo-banner" class="demo-banner" hidden>
+  <strong>Vorschau mit Beispieldaten.</strong>
+  Diese Praxen sind erfunden. Abhaken und Notizen bleiben nur auf diesem Gerät.
+  <button type="button" id="knopf-demo-ende" class="knopf leise">Beenden</button>
+</div>
 
 <nav class="reiter" role="tablist">
   <button class="reiter-knopf aktiv" data-ansicht="tour" role="tab">Tour</button>
@@ -251,6 +272,8 @@
 <div id="toast" class="toast" hidden></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" integrity="sha512-BwHfrr4c9kmRkLw6iXFdzcdWV/PGkVgiIyIWLLlTSXzWQzxuSg4DiQUCpauz/EWjgk5TYQqX/kvn9pG1NpYfqg==" crossorigin=""></script>
+<script src="config.js"></script>
+<script src="demo.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -23,6 +23,7 @@ const ABLAGE = {
   warteschlange: 'pt.warteschlange',
   tag: 'pt.tag',
   erledigtAus: 'pt.erledigt-aus',
+  demo: 'pt.demo',
 };
 
 const STATUS_TEXT = {
@@ -66,10 +67,22 @@ function lege(schluessel, wert) {
   }
 }
 
+/* Reihenfolge der Quellen: was auf dem Gerät eingetragen wurde, gewinnt über
+   die Vorgabe aus config.js. So kann man die Seite fest verdrahten und auf
+   einem einzelnen Handy trotzdem auf ein Testbackend umbiegen. */
+const KONFIG = window.PT_KONFIG || {};
+
+function konfigWert(schluessel, vorgabe) {
+  const gespeichert = hole(schluessel, null);
+  if (gespeichert !== null && gespeichert !== '') return gespeichert;
+  return vorgabe || '';
+}
+
 const zustand = {
-  url: hole(ABLAGE.url, ''),
-  passwort: hole(ABLAGE.passwort, ''),
-  name: hole(ABLAGE.name, ''),
+  url: konfigWert(ABLAGE.url, KONFIG.backendUrl),
+  passwort: konfigWert(ABLAGE.passwort, KONFIG.passwort),
+  name: konfigWert(ABLAGE.name, KONFIG.name),
+  demo: hole(ABLAGE.demo, false),
   tour: hole(ABLAGE.tour, null),
   warteschlange: hole(ABLAGE.warteschlange, []),
   tag: hole(ABLAGE.tag, 1),
@@ -87,6 +100,9 @@ const $$ = sel => Array.from(document.querySelectorAll(sel));
 /* ── Netz ──────────────────────────────────────────────────────────────── */
 
 async function api(pfad, optionen = {}) {
+  // Der Demo-Modus hat kein Backend. Statt überall Sonderfälle zu verteilen,
+  // werden die wenigen gebrauchten Pfade hier beantwortet.
+  if (zustand.demo) return demoAntwort(pfad, optionen);
   if (!zustand.url) throw new Error('Keine Backend-Adresse eingerichtet.');
   const kopf = { ...(optionen.headers || {}) };
   if (zustand.passwort) kopf['X-Passwort'] = zustand.passwort;
@@ -110,6 +126,154 @@ async function api(pfad, optionen = {}) {
   const daten = await antwort.json();
   if (!antwort.ok) throw new Error(daten.fehler || `Server antwortete ${antwort.status}`);
   return daten;
+}
+
+/* ── Demo-Modus ────────────────────────────────────────────────────────────
+   Beantwortet dieselben Pfade wie das echte Backend, nur aus dem Speicher.
+   Alles, was man hier abhakt, bleibt auf diesem Gerät und ist beim Beenden
+   der Vorschau wieder weg. */
+
+function demoTourHolen() {
+  const gespeichert = hole(ABLAGE.tour, null);
+  // Nur eine gespeicherte DEMO-Tour wiederverwenden, sonst würde eine echte
+  // Tour aus einer früheren Sitzung in die Vorschau rutschen.
+  if (gespeichert && gespeichert.demo) return gespeichert;
+  const frisch = JSON.parse(JSON.stringify(window.PT_DEMO_TOUR || { leer: true }));
+  frisch.demo = true;
+  lege(ABLAGE.tour, frisch);
+  return frisch;
+}
+
+function demoAntwort(pfad, optionen) {
+  const weg = pfad.split('?')[0];
+  const koerper = optionen.body || {};
+
+  if (weg === '/api/tour') return demoTourHolen();
+
+  if (weg === '/api/statistik') {
+    const tour = demoTourHolen();
+    const praxen = (tour.tage || []).flatMap(t => t.stopps.flatMap(s => s.praxen));
+    const nachStatus = {};
+    const nachKategorie = {};
+    for (const p of praxen) {
+      nachStatus[p.status] = (nachStatus[p.status] || 0) + 1;
+      nachKategorie[p.kategorie] = (nachKategorie[p.kategorie] || 0) + 1;
+    }
+    return {
+      gesamt: praxen.length,
+      mitTelefon: praxen.filter(p => p.telefon).length,
+      nachStatus,
+      nachKategorie,
+      nachQuelle: { beispiel: praxen.length },
+      start: tour.start,
+      tour: {
+        id: 0,
+        erstellt_am: tour.erstellt_am,
+        tage: (tour.tage || []).length,
+        stopps: (tour.tage || []).reduce((n, t) => n + t.stopps.length, 0),
+        strecke_m: tour.strecke_m,
+        strecke_text: meterText(tour.strecke_m),
+        fahrzeit_s: tour.fahrzeit_s,
+        fahrzeit_text: dauerText(tour.fahrzeit_s),
+        matrix_quelle: tour.matrix_quelle,
+      },
+    };
+  }
+
+  if (weg === '/api/info') {
+    return {
+      kategorien: [
+        { id: 'hausarzt', label: 'Hausarzt / Allgemeinmedizin', standard: true, hinweis: 'Hauptziel: verordnet Krankenfahrten am häufigsten.' },
+        { id: 'physio', label: 'Physiotherapie', standard: true, hinweis: 'Zweitziel: kennt die Patienten, die regelmäßig gefahren werden.' },
+        { id: 'arzt_unklar', label: 'Arztpraxis (Fachrichtung nicht hinterlegt)', standard: true, hinweis: 'Darunter stecken sehr viele Hausärzte — deshalb standardmäßig an.' },
+        { id: 'aerztehaus', label: 'Ärztehaus / MVZ / Klinik', standard: true, hinweis: 'Ein Halt, mehrere Praxen.' },
+        { id: 'prio_facharzt', label: 'Dialyse, Onkologie, Strahlentherapie', standard: true, hinweis: 'Die größten Dauerauftraggeber: 2–3 Fahrten pro Woche je Patient.' },
+        { id: 'facharzt', label: 'Sonstige Facharztpraxis', standard: false, hinweis: 'Selten Krankenfahrten.' },
+        { id: 'pflege', label: 'Pflegeheim / Pflegedienst', standard: false, hinweis: 'Starke Quelle, aber ein anderes Gespräch.' },
+      ],
+      status_werte: Object.keys(STATUS_TEXT),
+      radius_km_standard: 6,
+      stopps_pro_tag_standard: 18,
+      passwort_erforderlich: false,
+      google_verfuegbar: false,
+      datenbank_persistent: false,
+      demo: true,
+    };
+  }
+
+  if (weg === '/api/google-key') return { gesetzt: false, quelle: 'keiner', endet_auf: null };
+  if (weg === '/api/import/status') return { laeuft: false, phase: 'bereit', meldungen: [], gefunden: 0, neu: 0, aktualisiert: 0, zusammengefuehrt: 0, google_anfragen: 0, fehler: [], tour: null };
+  if (weg === '/api/start') return demoTourHolen().start;
+
+  // Schreibzugriffe: lokal anwenden, damit Abhaken sich echt anfühlt.
+  if (weg === '/api/besuche/sammel') {
+    for (const a of koerper.aenderungen || []) demoBesuchSetzen(a.praxis_id, a);
+    return { uebernommen: (koerper.aenderungen || []).length, abgelehnt: [] };
+  }
+  if (weg.startsWith('/api/besuche/')) {
+    const id = decodeURIComponent(weg.slice('/api/besuche/'.length));
+    demoBesuchSetzen(id, koerper);
+    return {};
+  }
+
+  if (weg === '/api/export.csv') return demoCsv();
+
+  // Alles, was in der Vorschau nichts Sinnvolles tun kann.
+  throw new Error('In der Vorschau nicht verfügbar — dafür braucht es das Backend auf Railway.');
+}
+
+function demoBesuchSetzen(praxisId, aenderung) {
+  const tour = demoTourHolen();
+  for (const tag of tour.tage || []) {
+    for (const stopp of tag.stopps) {
+      for (const praxis of stopp.praxen) {
+        if (praxis.id !== praxisId) continue;
+        Object.assign(praxis, aenderung);
+        delete praxis.praxis_id;
+        if (aenderung.status && aenderung.status !== 'offen' && !praxis.besucht_am) {
+          praxis.besucht_am = new Date().toISOString();
+        }
+        if (aenderung.status === 'offen') praxis.besucht_am = null;
+      }
+    }
+  }
+  lege(ABLAGE.tour, tour);
+}
+
+function demoCsv() {
+  const tour = demoTourHolen();
+  const zeilen = [['Tag', 'Position', 'Name', 'Kategorie', 'Strasse', 'Telefon', 'Status', 'Notiz']];
+  for (const tag of tour.tage || []) {
+    for (const stopp of tag.stopps) {
+      for (const p of stopp.praxen) {
+        zeilen.push([tag.tag, stopp.position, p.name, p.kategorie,
+          [p.strasse, p.hausnummer].filter(Boolean).join(' '), p.telefon || '', p.status, p.notiz || '']);
+      }
+    }
+  }
+  return '\uFEFF' + zeilen.map(z => z.map(f => `"${String(f).replace(/"/g, '""')}"`).join(';')).join('\r\n');
+}
+
+function demoStarten() {
+  zustand.demo = true;
+  zustand.url = '';
+  lege(ABLAGE.demo, true);
+  // Eine eventuell vorhandene echte Tour nicht überschreiben lassen:
+  // demoTourHolen() erkennt sie am fehlenden demo-Merkmal und legt frisch an.
+  $('#setup').hidden = true;
+  $('#demo-banner').hidden = false;
+  starten();
+}
+
+function demoBeenden() {
+  zustand.demo = false;
+  zustand.tour = null;
+  lege(ABLAGE.demo, false);
+  lege(ABLAGE.tour, null);
+  lege(ABLAGE.warteschlange, []);
+  zustand.warteschlange = [];
+  $('#demo-banner').hidden = true;
+  starten();
 }
 
 /* ── Meldungen ─────────────────────────────────────────────────────────── */
@@ -1058,9 +1222,11 @@ function ansichtWechseln(name) {
 
 function einrichtungZeigen() {
   $('#setup').hidden = false;
-  $('#setup-url').value = zustand.url;
+  $('#setup-url').value = zustand.url || KONFIG.backendUrl || '';
   $('#setup-passwort').value = zustand.passwort;
   $('#setup-name').value = zustand.name;
+  // Ist in config.js schon ein Passwort hinterlegt, muss niemand danach suchen.
+  if (zustand.passwort) $('#setup-passwort-block').open = true;
 }
 
 async function einrichtungSpeichern(ereignis) {
@@ -1070,6 +1236,13 @@ async function einrichtungSpeichern(ereignis) {
   const name = $('#setup-name').value.trim();
   const fehlerFeld = $('#setup-fehler');
   fehlerFeld.hidden = true;
+
+  if (!url) {
+    fehlerFeld.textContent =
+      'Ohne Backend-Adresse geht es nur als Vorschau — Knopf unten.';
+    fehlerFeld.hidden = false;
+    return;
+  }
 
   const vorher = { ...zustand };
   zustand.url = url;
@@ -1081,6 +1254,11 @@ async function einrichtungSpeichern(ereignis) {
     zustand.passwort = vorher.passwort;
     fehlerFeld.textContent = `Verbindung fehlgeschlagen: ${err.message}`;
     fehlerFeld.hidden = false;
+    // Beim Passwortfehler den weggeklappten Block aufmachen — sonst sucht man
+    // das Feld, das man gerade braucht.
+    if (/Passwort/i.test(err.message)) {
+      $('#setup-passwort-block').open = true;
+    }
     return;
   }
   zustand.name = name;
@@ -1095,6 +1273,11 @@ async function einrichtungSpeichern(ereignis) {
 
 function ereignisseBinden() {
   $('#setup-form').addEventListener('submit', einrichtungSpeichern);
+  $('#knopf-demo').addEventListener('click', demoStarten);
+  $('#knopf-demo-ende').addEventListener('click', () => {
+    demoBeenden();
+    einrichtungZeigen();
+  });
   $('#knopf-einstellungen').addEventListener('click', () => ansichtWechseln('daten'));
 
   $$('.reiter-knopf').forEach(k =>
@@ -1253,13 +1436,14 @@ function ereignisseBinden() {
 
   window.addEventListener('online', async () => {
     warteschlangeAnzeigen();
+    if (zustand.demo) return;
     if (await warteschlangeSenden({ still: true })) await tourLaden({ still: true });
   });
   window.addEventListener('offline', warteschlangeAnzeigen);
 
   // Beim Zurückkehren auf den Tab: Stand vom anderen Handy nachziehen.
   document.addEventListener('visibilitychange', async () => {
-    if (document.visibilityState === 'visible' && zustand.url) {
+    if (document.visibilityState === 'visible' && zustand.url && !zustand.demo) {
       await warteschlangeSenden({ still: true });
       await tourLaden({ still: true });
       statistikLaden();
@@ -1292,6 +1476,19 @@ async function starten() {
     : 'Ohne Namen steht an den Besuchen kein Bearbeiter.';
 
   warteschlangeAnzeigen();
+  $('#demo-banner').hidden = !zustand.demo;
+
+  if (zustand.demo) {
+    // In der Vorschau gibt es nichts zu senden und nichts nachzuladen.
+    zustand.tour = demoTourHolen();
+    await infoLaden();
+    zeichneTour();
+    zeichneKarte();
+    await statistikLaden();
+    $('#kopf-zusatz').textContent = 'Vorschau · Beispieldaten';
+    return;
+  }
+
   zeichneTour();
 
   if (!zustand.url) {
