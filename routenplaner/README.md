@@ -71,16 +71,21 @@ und gibt es einmal pro Handy ein.
 
 ## Vorschau ohne Backend
 
-Ohne eingetragene Backend-Adresse bietet der Einrichtungsdialog
-**„Vorschau mit Beispieldaten"** an. Damit lässt sich die komplette
-Oberfläche durchklicken — Tagesliste, Karte, Detailansicht, Abhaken,
-Notizen — ganz ohne Railway.
+Die veröffentlichte Seite zeigt **nur echte Daten**: in `config.js` steht
+`demoErlauben: false`. Ohne erreichbares Backend bleibt sie leer und sagt,
+dass keines verbunden ist — damit niemand versehentlich eine erfundene Praxis
+abklappert.
 
-Die Praxen darin sind **erfunden**. Die Straßennamen stammen aus Eller und
-Umgebung, die Koordinaten passen nicht zu den Hausnummern. Die Tour selbst ist
-echt gerechnet: dieselbe Gruppierung, dieselbe Reihenfolgeoptimierung wie im
-Betrieb. Alles, was man dort abhakt, bleibt im Browser und verschwindet mit
-„Beenden".
+Zum Anschauen ohne Railway lässt sich `demoErlauben` kurz auf `true` stellen.
+Dann läuft die komplette Oberfläche mit Beispieldaten: Tagesliste, Karte,
+Detailansicht, Abhaken, Notizen. Die Praxen darin sind **erfunden** (ein
+Banner sagt das dauerhaft), die Tour selbst ist echt gerechnet — dieselbe
+Gruppierung, dieselbe Reihenfolgeoptimierung wie im Betrieb. Abgehaktes bleibt
+im Browser.
+
+Sobald `backendUrl` gesetzt ist, spielt die Einstellung keine Rolle mehr: eine
+konfigurierte Adresse schlägt die Vorschau immer, auch auf einem Gerät, das
+vorher in der Vorschau war.
 
 ---
 

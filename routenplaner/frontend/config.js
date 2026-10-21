@@ -28,4 +28,23 @@ window.PT_KONFIG = {
 
   /** Name, der an den Besuchen steht. Kann jeder auf seinem Handy ändern. */
   name: '',
+
+  /**
+   * Darf die Seite ohne Backend mit Beispieldaten starten?
+   *
+   * true  — ohne Backend läuft eine Vorschau mit erfundenen Praxen. Gut zum
+   *         Anschauen, bevor Railway steht.
+   * false — nur echte Daten. Ohne erreichbares Backend bleibt die Seite leer
+   *         und sagt, dass keines verbunden ist. Das ist die richtige
+   *         Einstellung, sobald ihr wirklich losfahrt: dann kann niemand
+   *         versehentlich eine erfundene Praxis abklappern.
+   *
+   * Sobald backendUrl gesetzt ist, spielt das hier keine Rolle mehr — eine
+   * konfigurierte Adresse schlägt die Vorschau immer.
+   *
+   * Steht hier bewusst auf false: auf der veröffentlichten Seite soll nie
+   * eine erfundene Praxis auftauchen, die jemand für echt halten könnte.
+   * Zum Anschauen ohne Backend kurz auf true stellen.
+   */
+  demoErlauben: false,
 };

@@ -279,6 +279,26 @@ function demoVerlassen() {
   $('#demo-banner').hidden = true;
 }
 
+/**
+ * Zustand ohne Backend und ohne Vorschau. Lieber eine klare Ansage als eine
+ * leere Seite, bei der man rätselt, ob etwas kaputt ist.
+ */
+function zeichneKeinBackend() {
+  $('#tour-leer').hidden = false;
+  $('#tour-kopf').hidden = true;
+  $('#stopp-liste').innerHTML = '';
+  $('#tour-leer').innerHTML =
+    '<h2>Kein Backend verbunden</h2>' +
+    '<p>Diese Seite zeigt nur echte Daten, und die kommen aus dem Backend auf ' +
+    'Railway. Solange keines verbunden ist, gibt es hier nichts zu sehen.</p>' +
+    '<p class="klein">Adresse eintragen in <code>config.js</code> bei ' +
+    '<code>backendUrl</code>, oder einmalig für dieses Gerät:</p>' +
+    '<button type="button" class="knopf gross" id="knopf-kein-backend">Backend verbinden</button>';
+  const knopf = $('#knopf-kein-backend');
+  if (knopf) knopf.addEventListener('click', einrichtungZeigen);
+  $('#kopf-zusatz').textContent = 'kein Backend verbunden';
+}
+
 /* ── Meldungen ─────────────────────────────────────────────────────────── */
 
 let toastZeit = null;
@@ -1575,16 +1595,27 @@ async function starten() {
 
   warteschlangeAnzeigen();
 
-  // Ist keine Backend-Adresse eingerichtet, startet die Seite in der Vorschau,
-  // statt einen Dialog vor die Tür zu stellen. Wer die Seite aufmacht, will
-  // etwas sehen — nicht erst ein Formular ausfüllen. Der Weg zum echten
-  // Backend steht im Banner und unter Daten → Einstellungen.
-  if (!zustand.url && !zustand.demo) {
+  // Eine Backend-Adresse schlägt die Vorschau — immer und ohne Nachfrage.
+  // Ohne diese Zeile bliebe ein Gerät, das einmal in der Vorschau war, auch
+  // nach dem Einrichten des Backends bei den Beispieldaten hängen: das
+  // Merkmal steht im Speicher des Geräts und überlebt jeden Seitenaufruf.
+  if (zustand.url && zustand.demo) demoVerlassen();
+
+  // Ohne Backend-Adresse: Vorschau statt Dialog — wer die Seite aufmacht,
+  // will etwas sehen. Wer das nicht will, setzt in config.js
+  // demoErlauben auf false; dann bleibt die Seite lieber leer als falsch.
+  if (!zustand.url && !zustand.demo && KONFIG.demoErlauben !== false) {
     zustand.demo = true;
     lege(ABLAGE.demo, true);
   }
 
   $('#demo-banner').hidden = !zustand.demo;
+
+  // Kein Backend und keine Vorschau erlaubt: ehrlich sagen, was fehlt.
+  if (!zustand.url && !zustand.demo) {
+    zeichneKeinBackend();
+    return;
+  }
 
   if (zustand.demo) {
     // In der Vorschau gibt es nichts zu senden und nichts nachzuladen.
