@@ -104,6 +104,43 @@ export function recordSentEmail(entry: {
     error: entry.error ?? null,
     message_id: entry.message_id ?? null,
     track: track ?? 'voice_agent',
+    // Fehlte seit der Spalte ab_gruppe. Wirkung: JEDER Aufruf warf
+    // RangeError: Missing named parameter "ab_gruppe" – und weil erst gesendet
+    // und danach protokolliert wurde, ging die Mail raus und wurde nirgends
+    // vermerkt. Genau die Luecke, aus der am 20.-22.08. Wiederholungen wurden.
+    ab_gruppe: entry.ab_gruppe ?? null,
+  });
+}
+
+/**
+ * Protokollzeile VOR dem Versand anlegen. Wirft sie einen Fehler, darf nicht
+ * gesendet werden.
+ *
+ * Am 20.–22.08. war die Reihenfolge andersherum: erst senden, dann schreiben.
+ * Als die Platte voll war, ging die Mail raus und der Eintrag nicht – also galt
+ * sie als nicht gesendet und wurde wiederholt. Heute ist derselbe Fehler durch
+ * einen fehlenden Parameter erneut aufgetreten: Mail raus, Eintrag geplatzt.
+ * Zwei verschiedene Ursachen, dieselbe Luecke. Deshalb wird sie hier zugemacht:
+ * Wer nicht protokollieren kann, sendet nicht.
+ */
+export function reserviereVersand(entry: Omit<Parameters<typeof recordSentEmail>[0], 'success'>): string {
+  const id = entry.id ?? uuid();
+  recordSentEmail({ ...entry, id, success: false, error: 'Versand laeuft' });
+  return id;
+}
+
+/** Ergebnis nachtragen, nachdem der Versand zurueckkam. */
+export function versandErgebnis(
+  id: string,
+  ergebnis: { success: boolean; error?: string | null; messageId?: string | null }
+): void {
+  getDb().prepare(
+    `UPDATE sent_emails SET success = @success, error = @error, message_id = @message_id WHERE id = @id`
+  ).run({
+    id,
+    success: ergebnis.success ? 1 : 0,
+    error: ergebnis.error ?? null,
+    message_id: ergebnis.messageId ?? null,
   });
 }
 

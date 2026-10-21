@@ -32,7 +32,7 @@ const GENERIC_SOCIAL_PATHS = new Set([
   'sharearticle', 'sharer', 'stories', 'tr', 'watch',
 ]);
 
-export async function analyzeWebsite(url: string): Promise<WebsiteAnalysis> {
+export async function analyzeWebsite(url: string, firmenname?: string): Promise<WebsiteAnalysis> {
   if (!url) {
     return emptyResult('Keine URL');
   }
@@ -48,24 +48,32 @@ export async function analyzeWebsite(url: string): Promise<WebsiteAnalysis> {
 
     const analysis = analyzeHtml(page.html, normalized, Date.now() - startedAt, page.finalUrl);
 
-    // Geschäftsführer steht praktisch immer im Impressum (§5 TMG: "vertreten durch …"),
-    // selten auf der Startseite – daher zuerst Startseite, dann Impressum-Unterseiten.
-    analysis.geschaeftsfuehrer = extractGeschaeftsfuehrer(page.html);
+    // Geschäftsführer: Das Impressum ist die gesetzlich gepflegte Quelle (§5 TMG
+    // "vertreten durch …"), die Startseite nur Zufall. Auf Startseiten steht
+    // „Geschäftsführer" auch in Referenzen, Pressetexten und Grußworten – und dann
+    // stand bisher ein fremder Mensch als Chef in der Anrufliste.
+    //
+    // Darum: Impressum schlägt Startseite, immer. Der Startseiten-Treffer ist nur
+    // Rückfall und wird als solcher gekennzeichnet, damit die Anrufliste zeigen
+    // kann, wie belastbar der Name ist.
+    const vonStartseite = extractGeschaeftsfuehrer(page.html, firmenname);
 
     // E-Mail-Nachfassen: Deutsche Firmen haben ihre E-Mail fast immer nur im Impressum
     // oder auf der Kontaktseite (Impressumspflicht §5 TMG), praktisch nie auf der Startseite.
-    // Ohne diesen Schritt bleiben die meisten Leads ohne E-Mail und damit nicht anschreibbar.
     // Dieselben Unterseiten liefern auch den Geschäftsführer – daher in einem Durchgang.
-    if (!analysis.email || !analysis.geschaeftsfuehrer) {
-      const found = await scanContactPages(page.html, page.finalUrl, { needEmail: !analysis.email, needGf: !analysis.geschaeftsfuehrer });
-      if (found.email && !analysis.email) {
-        analysis.email = found.email.email;
-        analysis.evidence?.push(`Oeffentliche E-Mail auf Unterseite gefunden: ${found.email.email} (${found.email.source})`);
-      }
-      if (found.geschaeftsfuehrer && !analysis.geschaeftsfuehrer) {
-        analysis.geschaeftsfuehrer = found.geschaeftsfuehrer;
-        analysis.evidence?.push(`Geschaeftsfuehrer im Impressum gefunden: ${found.geschaeftsfuehrer}`);
-      }
+    const found = await scanContactPages(page.html, page.finalUrl, { needEmail: !analysis.email, needGf: true }, firmenname);
+    if (found.email && !analysis.email) {
+      analysis.email = found.email.email;
+      analysis.evidence?.push(`Oeffentliche E-Mail auf Unterseite gefunden: ${found.email.email} (${found.email.source})`);
+    }
+    if (found.geschaeftsfuehrer) {
+      analysis.geschaeftsfuehrer = found.geschaeftsfuehrer;
+      analysis.gf_quelle = 'impressum';
+      analysis.evidence?.push(`Geschaeftsfuehrer im Impressum gefunden: ${found.geschaeftsfuehrer}`);
+    } else if (vonStartseite) {
+      analysis.geschaeftsfuehrer = vonStartseite;
+      analysis.gf_quelle = 'startseite';
+      analysis.evidence?.push(`Geschaeftsfuehrer nur auf der Startseite gefunden (unbestaetigt): ${vonStartseite}`);
     }
 
     return analysis;
@@ -102,7 +110,8 @@ async function fetchPage(url: string): Promise<FetchedPage> {
 async function scanContactPages(
   homeHtml: string,
   base: string,
-  need: { needEmail: boolean; needGf: boolean }
+  need: { needEmail: boolean; needGf: boolean },
+  firmenname?: string
 ): Promise<{ email?: { email: string; source: string }; geschaeftsfuehrer?: string }> {
   const out: { email?: { email: string; source: string }; geschaeftsfuehrer?: string } = {};
   for (const u of candidateContactUrls(homeHtml, base).slice(0, 5)) {
@@ -114,7 +123,7 @@ async function scanContactPages(
         if (email) out.email = { email, source: u };
       }
       if (need.needGf && !out.geschaeftsfuehrer) {
-        const gf = extractGeschaeftsfuehrer(page.html);
+        const gf = extractGeschaeftsfuehrer(page.html, firmenname);
         if (gf) out.geschaeftsfuehrer = gf;
       }
       const emailDone = !need.needEmail || out.email;
@@ -599,6 +608,8 @@ export interface ExtractedPhone {
 
 export interface ImpressumResult {
   geschaeftsfuehrer?: string;
+  /** 'impressum' = belastbar, 'startseite' = Zufallstreffer, vor dem Anruf prüfen. */
+  gf_quelle?: 'impressum' | 'startseite';
   /** Mobil-/Durchwahlnummer für den Direktkontakt – nie die Zentrale, nie der Notdienst. */
   telefon_direkt?: string;
   telefon_direkt_typ?: TelefonTyp;
@@ -706,7 +717,12 @@ export async function analyzeImpressum(url: string, zentrale?: string, firmennam
       }
     };
 
-    let gf = extractGeschaeftsfuehrer(home.html, firmenname);
+    // Startseiten-Treffer nur als Rückfall halten: Das Impressum ist die Quelle,
+    // die der Betrieb gesetzlich pflegen muss. Ein „Geschäftsführer" auf der
+    // Startseite steht oft in einem Pressetext oder einer Referenz – und dann
+    // begrüßt man am Telefon den Chef einer anderen Firma.
+    const gfStartseite = extractGeschaeftsfuehrer(home.html, firmenname);
+    let gfImpressum: string | undefined;
     let whatsapp = extractWhatsApp(home.html);
     let impressumUrl: string | undefined;
     sammle(extractPhones(home.html));
@@ -717,10 +733,13 @@ export async function analyzeImpressum(url: string, zentrale?: string, firmennam
         if (!page.html) continue;
         if (!impressumUrl && /impressum|imprint/i.test(u)) impressumUrl = u;
         sammle(extractPhones(page.html));
-        if (!gf) gf = extractGeschaeftsfuehrer(page.html, firmenname);
+        if (!gfImpressum) gfImpressum = extractGeschaeftsfuehrer(page.html, firmenname);
         if (!whatsapp) whatsapp = extractWhatsApp(page.html);
       } catch { /* Unterseite nicht erreichbar – Rest zählt trotzdem */ }
     }
+    const gf = gfImpressum ?? gfStartseite;
+    const gfQuelle: 'impressum' | 'startseite' | undefined =
+      gfImpressum ? 'impressum' : gfStartseite ? 'startseite' : undefined;
 
     const alle = [...nummern.values()];
     const zentraleNorm = zentrale ? normalizeDePhone(zentrale) : undefined;
@@ -734,6 +753,7 @@ export async function analyzeImpressum(url: string, zentrale?: string, firmennam
 
     return {
       geschaeftsfuehrer: gf,
+      gf_quelle: gfQuelle,
       telefon_direkt: direkt?.nummer,
       telefon_direkt_typ: direkt?.typ,
       telefon_notdienst: notdienst?.nummer,

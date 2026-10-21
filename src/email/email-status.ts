@@ -32,6 +32,8 @@ export interface ClassifyEmailInput {
   scheduledStatus?: 'scheduled' | 'processing' | 'canceled' | null;
   /** success-Flag aus sent_emails (1 = vom Anbieter angenommen). */
   success?: boolean | 0 | 1 | null;
+  /** Zustellstatus aus Brevo/Webhook, falls vorhanden. */
+  deliveryStatus?: string | null;
   /** Rohe Fehlermeldung des Anbieters/SMTP. */
   error?: string | null;
   /** Wurde ein Bounce (Zustellfehler) im Posteingang erkannt? */
@@ -47,12 +49,11 @@ const INVALID_PATTERNS = [
   /mailbox\s+(unavailable|not\s+found)/i,
   /no\s+such\s+user/i,
   /user\s+unknown/i,
-  /recipient\s+(address\s+)?rejected/i,
   /does\s+not\s+exist/i,
   /unrouteable|unroutable/i,
   /invalid\s+(recipient|address|mailbox)/i,
   /ung(ü|ue)ltige?\s+(empf(ä|ae)nger|adresse)/i,
-  /550.*(5\.1\.1|user|recipient|mailbox)/i,
+  /5\.1\.1/i,
 ];
 
 const BLOCKED_PATTERNS = [
@@ -108,7 +109,7 @@ const INFO: Record<EmailStatusCode, Omit<EmailStatusInfo, 'code'>> = {
   delivered: {
     label: 'Zugestellt',
     tone: 'good',
-    explanation: 'Die E-Mail wurde zugestellt – belegt durch eine registrierte Öffnung oder einen Klick.',
+    explanation: 'Der Versanddienst bestaetigt die Annahme durch den Empfaenger-Mailserver. Das bestaetigt weder den Posteingangsordner noch die lesende Person.',
     reachedRecipient: true,
   },
   handed_off: {
@@ -121,7 +122,7 @@ const INFO: Record<EmailStatusCode, Omit<EmailStatusInfo, 'code'>> = {
     label: 'Vorübergehend verzögert',
     tone: 'warn',
     explanation: 'Der Zielserver hat die Annahme vorerst zurückgestellt (z.B. Greylisting, Zeitüberschreitung oder Rate-Limit).',
-    recommendation: 'Meist ein temporäres Problem – oft klappt ein erneuter Versand kurze Zeit später.',
+    recommendation: 'Anbieterstatus abwarten. Nicht erneut senden, solange der Anbieter die Zustellung noch versucht.',
     reachedRecipient: false,
   },
   invalid_address: {
@@ -163,8 +164,15 @@ export function classifyEmailDelivery(input: ClassifyEmailInput): EmailStatusInf
   if (input.scheduledStatus === 'processing') return emailStatusInfo('processing');
   if (input.scheduledStatus === 'scheduled') return emailStatusInfo('scheduled');
 
-  // Nachweislich zugestellt: Klick oder verlässliche Öffnung.
-  if (input.clicked || input.opened) return emailStatusInfo('delivered');
+  const deliveryStatus = String(input.deliveryStatus || '').trim().toLowerCase();
+  if (deliveryStatus === 'delivered') return emailStatusInfo('delivered');
+  if (deliveryStatus === 'deferred') {
+    const info = emailStatusInfo('deferred');
+    return { ...info, reachedRecipient: true };
+  }
+  if (deliveryStatus === 'bounced') return emailStatusInfo(matches(INVALID_PATTERNS, String(input.error || input.bounceText || '')) ? 'invalid_address' : 'rejected');
+  if (deliveryStatus === 'spam' || deliveryStatus === 'blocked') return emailStatusInfo('blocked');
+  if (deliveryStatus === 'soft_failed') return emailStatusInfo('deferred');
 
   // Bounce = harter Zustellfehler aus dem Posteingang.
   if (input.hasBounce) {
@@ -180,6 +188,7 @@ export function classifyEmailDelivery(input: ClassifyEmailInput): EmailStatusInf
   // Fehlgeschlagene Übergabe: anhand der Anbietermeldung genauer einordnen.
   const text = String(input.error || '');
   if (!text.trim()) return emailStatusInfo('send_error');
+  if (/connection.*timeout|verbindungs.*timeout|econnrefused|authentication|auth.*fehlgeschlagen|api.*401|api.*403/i.test(text)) return emailStatusInfo('send_error');
   if (matches(INVALID_PATTERNS, text)) return emailStatusInfo('invalid_address');
   if (matches(BLOCKED_PATTERNS, text)) return emailStatusInfo('blocked');
   if (matches(DEFERRED_PATTERNS, text)) return emailStatusInfo('deferred');

@@ -36,6 +36,8 @@ export interface Lead {
   website?: string;
   email?: string;
   geschaeftsfuehrer?: string;
+  /** Woher der Name kommt: 'impressum' (belastbar) oder 'startseite' (Zufallstreffer). */
+  gf_quelle?: 'impressum' | 'startseite';
   whatsapp?: string;
   kontaktformular_url?: string;
   instagram_url?: string;
@@ -172,6 +174,8 @@ export interface WebsiteAnalysis {
   website_alt: boolean;
   email?: string;
   geschaeftsfuehrer?: string;
+  /** Woher der Name kommt: 'impressum' (belastbar) oder 'startseite' (Zufallstreffer). */
+  gf_quelle?: 'impressum' | 'startseite';
   whatsapp?: string;
   kontaktformular_url?: string;
   kontaktformular_typ?: string;

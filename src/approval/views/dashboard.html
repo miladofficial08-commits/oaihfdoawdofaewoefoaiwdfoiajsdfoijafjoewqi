@@ -519,6 +519,16 @@
   .cl-tag.bad  { background: rgba(107,114,128,.16); color: #4b5563; }
   .cl-tag.warn { background: rgba(234,179,8,.18);  color: #a16207; }
   .cl-tag.neu  { background: rgba(46,110,232,.14); color: #1d5ad0; }
+  /* Vertrauensstufen des Chef-Namens. Grün heißt: Name darf am Telefon fallen.
+     Gelb/Grau heißen: nach dem Inhaber fragen, nicht den gespeicherten Namen sagen. */
+  .cl-tag.gf-hoch     { background: rgba(34,209,124,.18); color: #15803d; }
+  .cl-tag.gf-mittel   { background: rgba(234,179,8,.18);  color: #a16207; }
+  .cl-tag.gf-unsicher { background: rgba(239,68,68,.12);  color: #b91c1c; }
+  /* Warnzeile auf der Karte: muss im Vorbeiscrollen auffallen, denn sie
+     entscheidet, wie man das Gespräch eröffnet und welche Nummer man wählt. */
+  .cl-warn { margin-top: 6px; font-size: 11.5px; font-weight: 600; color: #b91c1c;
+             background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.22);
+             padding: 4px 8px; border-radius: 6px; max-width: 620px; }
   .cl-note { margin-top: 6px; font-size: 12px; color: var(--txt2); background: var(--elev); border: 1px solid var(--line); padding: 4px 8px; border-radius: 6px; max-width: 520px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* Firmenname → Website-Link. Bewusst dezent: kein Blau, damit die Karte
      nicht wie ein Feld voller Hyperlinks aussieht. Erst beim Hover deutlich. */
@@ -2013,13 +2023,17 @@ info@nur-eine-adresse.de"></textarea>
   <!-- ─── ANRUFLISTE ─── -->
   <div class="page" id="p-calls">
     <div class="fl-note">
-      <b>Telefon-Bereitschaft:</b> Noch nicht angerufene Betriebe – zuerst die mit <span class="cl-tag direkt">📱 Mobil – Chef direkt</span> und bekanntem Namen, danach Priorität, Notdienst und Telefon-Score.
+      <b>Telefon-Bereitschaft:</b> Noch nicht angerufene Betriebe – zuerst die mit <span class="cl-tag direkt">📱 Mobil – Chef direkt</span> und <b>belegtem</b> Chef-Namen, danach wenige Anrufversuche, Priorität, Notdienst und Telefon-Score.
+      <b>Zum Namen:</b> <span class="cl-tag gf-hoch">✓ Name belegt</span> heißt, er steht im Impressum oder im Firmennamen – den darfst du am Telefon benutzen.
+      <span class="cl-tag gf-unsicher">? Name unsicher</span> heißt, er wurde irgendwo auf der Website aufgesammelt: dann <b>nicht</b> „Herr X bitte" sagen, sondern „wer ist bei Ihnen der Inhaber?".
+      Verbände, Innungen, Kammern und Großhändler sind aus dieser Liste heraus – sie sind keine Kunden.
       Die Nummer aus Google Maps ist die Zentrale, dort sitzt die Bürokraft. „Ist Herr Meyer da?" kommt durch, „kann ich den Verantwortlichen sprechen" nicht.
       Du verkaufst einen Telefonassistenten – <b>beweise ihn, indem du selbst durchkommst.</b> Ziel pro Anruf ist ein 15-Min-Demo-Termin, kein Abschluss.
       Betriebe mit <span class="cl-tag emailed">bereits angeschrieben</span> sind Warm-Calls (E-Mail + Anruf = höhere Conversion).
     </div>
     <!-- Vorfall-Sperre: der Schutz muss sichtbar sein, sonst ist er keine Zusicherung wert. -->
     <div id="cl-vorfall" style="display:none"></div>
+    <div id="cl-versand" style="display:none"></div>
     <input type="file" id="cl-vorfall-file" accept=".csv,text/csv,text/plain" style="display:none" onchange="vorfallImport(this, loadCallList)">
     <div class="cl-summary" id="cl-summary"></div>
     <div class="fl-toolbar">
@@ -2037,8 +2051,22 @@ info@nur-eine-adresse.de"></textarea>
         <option value="1">Nur Direktnummern</option>
         <option value="name">Nur Direktnummer + Name</option>
       </select>
+      <select id="cl-gf" class="an-filter" onchange="loadCallList()" style="max-width:215px" title="Wie belastbar ist der Chef-Name?">
+        <option value="">Chef-Name: alle</option>
+        <option value="belegt">Nur belegte Namen</option>
+        <option value="hoch">Nur sicher belegte Namen</option>
+        <option value="unsicher">Nur unsichere Namen (prüfen)</option>
+        <option value="ohne">Nur ohne Namen</option>
+      </select>
+      <select id="cl-versuche" class="an-filter" onchange="loadCallList()" style="max-width:185px" title="Wie oft wurde hier schon gewählt?">
+        <option value="">Versuche: alle</option>
+        <option value="0">Noch nie gewählt</option>
+        <option value="1-2">1–2 Versuche</option>
+        <option value="3+">3+ Versuche</option>
+      </select>
       <select id="cl-state" class="an-filter" onchange="loadCallList()" style="max-width:200px" title="Status-Filter">
         <option value="open">Status: offen (noch nicht angerufen)</option>
+        <option value="wiedervorlage">Fällige Rückrufe (Wiedervorlage)</option>
         <option value="nie_kontaktiert">Noch nie kontaktiert (keine Mail, kein Anruf)</option>
         <option value="all">Status: alle (inkl. bearbeitet)</option>
         <option value="nicht_erreicht">Nur „nicht erreicht"</option>
@@ -2051,6 +2079,19 @@ info@nur-eine-adresse.de"></textarea>
       <div class="flex1"></div>
       <button class="topbar-btn" onclick="loadCallList()">↻ Aktualisieren</button>
     </div>
+    <!-- Datenpflege direkt an der Liste, nicht in einem anderen Menü: Wer beim
+         Telefonieren merkt, dass Namen und Nummern nicht stimmen, soll es hier
+         sofort nachziehen können. -->
+    <div class="fl-toolbar" style="border-top:1px dashed var(--line2);padding-top:10px">
+      <span class="cl-meta" style="align-self:center">Daten in Ordnung bringen:</span>
+      <button class="topbar-btn" onclick="qualBericht()" title="Zeigt ohne zu ändern, was im Bestand nicht stimmt">🔍 Prüfbericht</button>
+      <button class="topbar-btn" onclick="qualReinigen()" title="Städte vereinheitlichen, Verbände aussortieren, Chef-Namen bewerten, Nummern prüfen">🧽 Bestand reinigen</button>
+      <button class="topbar-btn" onclick="qualPruefen()" title="Liest die Impressen und belegt Chef-Namen und Direktnummern">📄 Impressen prüfen</button>
+      <button class="topbar-btn" onclick="qualNachschub()" title="Holt Handwerksbetriebe MIT Telefonnummer aus OpenStreetMap – alle Gewerke, ganz NRW">➕ Neue Nummern holen</button>
+      <div class="flex1"></div>
+      <span id="cl-qual-status" class="cl-meta"></span>
+    </div>
+    <div id="cl-qual-panel" style="display:none"></div>
     <div id="cl-list" class="cl-list"></div>
     <div id="cl-empty" class="empty-state" style="display:none;padding:48px 0">
       <div class="ei">📞</div><div class="et">Keine offenen Anrufe</div>
@@ -2147,7 +2188,17 @@ info@nur-eine-adresse.de"></textarea>
         </div>
         <div class="field">
           <label>An (E-Mail-Adresse) <span id="mailer-email-hint" class="mailer-hint"></span></label>
-          <input id="mailer-to" type="email" placeholder="Falls leer: hier eintippen oder einfügen" autocomplete="off">
+          <input id="mailer-to" type="email" placeholder="Falls leer: hier eintippen oder einfügen" autocomplete="off" oninput="document.getElementById('mailer-address-result').textContent=''">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+            <button type="button" class="btn btn-ghost" onclick="checkMailerAddress(this)">Adresse prüfen</button>
+          </div>
+          <div id="mailer-address-result" role="status" style="font-size:12px;margin-top:8px;overflow-wrap:anywhere"></div>
+        </div>
+        <div class="field">
+          <label for="mailer-contact-name">Geschäftsführer / Ansprechpartner</label>
+          <input id="mailer-contact-name" type="text" maxlength="100" autocomplete="off">
+          <button type="button" class="btn btn-ghost" style="margin-top:8px" onclick="findMailerContact(this)">Geschäftsführer-Adresse suchen</button>
+          <div id="mailer-contact-results" role="status" style="font-size:12px;margin-top:8px;overflow-wrap:anywhere"></div>
         </div>
         <div class="field">
           <label>Betreff</label>
@@ -2801,6 +2852,8 @@ async function loadCallList() {
   const pr = document.getElementById('cl-prio')?.value; if (pr) p.set('prio', pr);
   const em = document.getElementById('cl-emailed')?.value; if (em) p.set('emailed', em);
   const dir = document.getElementById('cl-direkt')?.value; if (dir) p.set('direkt', dir);
+  const gf = document.getElementById('cl-gf')?.value; if (gf) p.set('gf', gf);
+  const vs = document.getElementById('cl-versuche')?.value; if (vs) p.set('versuche', vs);
   const state = document.getElementById('cl-state')?.value || 'open';
   p.set('state', state);
   const d = await fetchJSON('/api/call-list?' + p.toString()).catch(()=>null);
@@ -2808,7 +2861,9 @@ async function loadCallList() {
   callListData = d;
   const s = d.summary || {};
   renderVorfallSperre(s.vorfall_sperre);
+  renderVersandModus(s.versand);
   const listLabel = state === 'open' ? 'In dieser Liste'
+    : state === 'wiedervorlage' ? 'Fällige Rückrufe'
     : state === 'nicht_erreicht' ? 'Nicht erreicht (gefiltert)'
     : state === 'interessiert' ? 'Interessiert (gefiltert)'
     : state === 'termin' ? 'Termine (gefiltert)'
@@ -2824,6 +2879,14 @@ async function loadCallList() {
     ['Heute interessiert', s.interessiert_today||0, 'p', 'Leads, die heute auf „Interessiert" gesetzt wurden'],
     ['Heute Termin', s.termin_today||0, 'g', 'Leads, die heute auf „Termin gebucht" gesetzt wurden'],
     ['Heute kein Interesse', s.kein_interesse_today||0, '', 'Kein Interesse / Verloren / Nicht anrufen (heute)'],
+    // Vorrat in TAGEN, nicht in Leads: „9 Tage" sagt, wann nachgelegt werden muss.
+    // „950 offen" sagt das nicht, und dann steht die Akquise an einem Montag still.
+    [`Vorrat (${s.anruf_ziel||100}/Tag)`, (s.anruf_tage ?? 0) + ' Tage',
+      (s.anruf_tage ?? 0) >= 5 ? 'g' : (s.anruf_tage ?? 0) >= 2 ? 'p' : 'bad',
+      (s.anruf_vorrat||0) + ' Betriebe mit Nummer, noch nie gewählt – bei ' + (s.anruf_ziel||100) + ' Anrufen am Tag'],
+    ['Name belegt', (s.qualitaet?.gf_belegt)||0, 'g', 'Chef-Name steht im Impressum oder im Firmennamen – am Telefon verwendbar'],
+    ['Name unsicher', (s.qualitaet?.gf_unsicher)||0, 'p', 'Name irgendwo auf der Website aufgesammelt oder er widerspricht dem Firmennamen – nicht verwenden, nach dem Inhaber fragen'],
+    ['Nummer verdächtig', (s.qualitaet?.tel_konflikt)||0, 'p', 'Maps-Nummer und Impressum-Nummer passen nicht zusammen – zuerst die Impressum-Nummer wählen'],
     [listLabel, s.shown_total ?? s.shown ?? 0, '', 'Treffer im aktuellen Filter'],
   ].map(([l,v,cls,t]) => `<div class="fl-kpi ${cls}" title="${esc(t)}"><div class="fl-kpi-v">${v}</div><div class="fl-kpi-l">${esc(l)}</div></div>`).join('');
   // Filter-Dropdowns befüllen (einmalig)
@@ -2835,8 +2898,11 @@ async function loadCallList() {
       + d.branchen.map(b => `<option value="${esc(b.value)}">${esc(b.label)}</option>`).join('');
   }
   const sSel = document.getElementById('cl-stadt');
-  if (sSel && sSel.options.length <= 1 && d.staedte?.length) {
-    sSel.innerHTML = '<option value="">Stadt: alle</option>' + d.staedte.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+  if (sSel && sSel.options.length <= 1 && d.staedte_zahlen?.length) {
+    // Mit Anzahl dahinter und nach Menge sortiert: Man sieht sofort, wo noch
+    // Arbeit liegt, statt alphabetisch bei Aachen anzufangen.
+    sSel.innerHTML = '<option value="">Stadt: alle</option>'
+      + d.staedte_zahlen.map(r => `<option value="${esc(r.stadt)}">${esc(r.stadt)} (${r.n})</option>`).join('');
   }
   refreshCallsBadge(s.open_total);
   renderCallList();
@@ -2888,7 +2954,17 @@ function renderCallList() {
     const mailsChip = nMails > 0 ? `<span class="cl-tag emailed" title="Bereits ${nMails} E-Mail${nMails===1?'':'s'} an diesen Lead versendet">✉ ${nMails} Mail${nMails===1?'':'s'}</span>` : '';
     const direktChip = direkt
       ? `<span class="cl-tag direkt" title="Nummer aus dem Impressum – nicht die Zentrale">📱 ${l.telefon_direkt_typ === 'mobil' ? 'Mobil – Chef direkt' : 'Durchwahl'}</span>` : '';
+    // Anrufverlauf in der Zeile: Versuche, wann zuletzt, was dabei herauskam.
+    const nVers = Number(l.anruf_versuche||0);
+    const zuletzt = l.last_manual_call_at ? new Date(l.last_manual_call_at).toLocaleDateString('de-DE') : '';
+    const versucheChip = nVers > 0
+      ? `<span class="cl-tag ${nVers>=3?'warn':''}" title="Zuletzt ${esc(zuletzt)}${l.anruf_ergebnis?' · '+esc(l.anruf_ergebnis):''}">☎ ${nVers}. Versuch${zuletzt?' · '+esc(zuletzt):''}</span>`
+      : '<span class="cl-tag" title="Hier wurde noch nie gewählt">noch nie gewählt</span>';
+    const wvChip = l.wiedervorlage_at && new Date(l.wiedervorlage_at) <= new Date()
+      ? '<span class="cl-tag notdienst" title="Rückruf ist fällig – war zugesagt">🔁 Rückruf fällig</span>' : '';
     const tags = [
+      versucheChip,
+      wvChip,
       direktChip,
       l.prioritaet==='A' ? '<span class="cl-tag prioA">A-Priorität</span>' : '',
       l.hat_notdienst_hinweis ? '<span class="cl-tag notdienst">Notdienst</span>' : '',
@@ -2897,7 +2973,26 @@ function renderCallList() {
       rating,
     ].filter(Boolean).join('');
     const hint = l.kontakt_hinweis ? `<div class="cl-meta">${esc(l.kontakt_hinweis)}</div>` : '';
-    const gf = l.geschaeftsfuehrer ? `<div class="cl-meta" style="font-weight:600">👤 ${esc(l.geschaeftsfuehrer)}</div>` : '';
+    // ── Chef-Name mit Vertrauensstufe ──────────────────────────────────────
+    // Der Name steht nicht mehr nackt da. Ein falscher Name kostet am Telefon
+    // mehr als ein fehlender: „Herr Reichert bitte" beim Betrieb von Herrn
+    // Schubert ist nach zwei Sätzen vorbei. Darum steht neben dem Namen, woher
+    // er kommt – und bei Widerspruch gleich, wer laut Firmenname der Inhaber ist.
+    const gfName = String(l.geschaeftsfuehrer||'').trim();
+    const gfStufe = l.gf_konflikt ? 'unsicher' : (l.gf_vertrauen || '');
+    const gfBadge = !gfName ? ''
+      : gfStufe === 'hoch'     ? '<span class="cl-tag gf-hoch" title="Aus dem Impressum bzw. der Firmenname selbst nennt ihn – am Telefon verwendbar">✓ belegt</span>'
+      : gfStufe === 'mittel'   ? '<span class="cl-tag gf-mittel" title="Name passt zum Firmennamen, ist aber nicht aus dem Impressum belegt">~ wahrscheinlich</span>'
+      : '<span class="cl-tag gf-unsicher" title="Irgendwo auf der Website aufgesammelt – nicht als Anrede verwenden">? unsicher</span>';
+    const gf = gfName
+      ? `<div class="cl-meta" style="font-weight:600">👤 ${esc(gfName)} ${gfBadge}</div>`
+      : '<div class="cl-meta" style="opacity:.7">👤 Kein Name – am Telefon nach dem Inhaber fragen</div>';
+    // Widerspruch und verdächtige Nummer sind Warnungen, keine Schönheitsfehler:
+    // Beides entscheidet, wie man das Gespräch eröffnet und welche Nummer man wählt.
+    const gfKonflikt = l.gf_konflikt
+      ? `<div class="cl-warn">⚠ Firmenname nennt <b>${esc(l.gf_konflikt)}</b> als Inhaber – nicht den gespeicherten Namen verwenden</div>` : '';
+    const telWarn = l.tel_konflikt
+      ? `<div class="cl-warn">⚠ ${esc(l.tel_konflikt)}</div>` : '';
     // Letzte Notizzeile (aus l.notiz — Freitext-Notizen sind newline-getrennt, jüngste steht hinten).
     const noteLine = l.notiz ? `<div class="cl-note" title="${esc(l.notiz)}">📝 ${esc(String(l.notiz).split('\n').pop())}</div>` : '';
     return `<div class="cl-card ${l.prioritaet==='A'?'prio-A':''}">
@@ -2906,6 +3001,8 @@ function renderCallList() {
         ${gf}
         <div class="cl-meta">${esc(l.branche||'')} · ${esc(l.stadt||'')}${l.adresse?' · '+esc(l.adresse):''}</div>
         <div class="cl-tags">${tags||'<span class="cl-tag">—</span>'}</div>
+        ${gfKonflikt}
+        ${telWarn}
         ${hint}
         ${noteLine}
       </div>
@@ -2922,12 +3019,130 @@ function renderCallList() {
             <option value="kein_interesse">✋ Kein Interesse</option>
             <option value="nicht_anrufen">⛔ Nicht mehr anrufen</option>
           </select>
+          <button class="cl-btn" onclick="clVersuch('${l.id}')" title="Gewählt, niemand dran – zählt den Versuch, lässt den Lead aber in der Liste">☎ Versuch zählen</button>
           <button class="cl-btn mailer" onclick="openMailer('${l.id}')" title="E-Mail versenden (Vorlage wählen)">✉ E-Mail</button>
           <button class="cl-btn" onclick="clAddNote('${l.id}')" title="Freie Notiz eintippen">📝 Notiz</button>
         </div>
       </div>
     </div>`;
   }).join('');
+}
+
+// Anrufversuch zählen, ohne den Lead aus der Liste zu nehmen.
+//
+// Das war die Lücke: Es gab nur Ergebnis-Knöpfe, und jeder davon hat den Lead
+// weggeschoben. Wer zehnmal klingeln lässt und niemanden erreicht, hatte danach
+// keinen Weg, das festzuhalten – also stand nichts in der Datenbank, und die
+// Liste sah am nächsten Tag unberührt aus.
+async function clVersuch(id) {
+  const r = await post('/api/call-attempt', { id }).catch(()=>null);
+  if (r && r.ok) { toast(`${r.versuche}. Versuch notiert`); loadCallList(); }
+  else toast('Versuch konnte nicht notiert werden');
+}
+
+// ════ DATENPFLEGE DER ANRUFLISTE ════
+function qualStatus(text) {
+  const el = document.getElementById('cl-qual-status');
+  if (el) el.textContent = text || '';
+}
+
+function qualPanel(html) {
+  const el = document.getElementById('cl-qual-panel');
+  if (!el) return;
+  el.innerHTML = html;
+  el.style.display = html ? 'block' : 'none';
+}
+
+function qualBerichtHtml(b, titel) {
+  const zeile = (l, v, t) => `<div class="fl-kpi" title="${esc(t||'')}"><div class="fl-kpi-v">${v}</div><div class="fl-kpi-l">${esc(l)}</div></div>`;
+  const liste = (titel, rows, fmt) => !rows?.length ? '' :
+    `<div style="margin-top:12px"><b>${esc(titel)}</b><ul style="margin:6px 0 0 18px">${rows.map(fmt).join('')}</ul></div>`;
+  return `<div class="fl-note" style="margin-top:12px">
+    <b>${esc(titel)}</b> – ${b.geprueft} Leads angesehen.
+    <div class="cl-summary" style="margin-top:10px">
+      ${zeile('Städte vereinheitlicht', b.stadt_korrigiert, 'Dieselbe Stadt stand in zwei Schreibweisen (Düsseldorf / Duesseldorf) und der Filter zeigte nur die Hälfte')}
+      ${zeile('Keine Betriebe', b.kein_betrieb, 'Kammern, Innungen, Fachverbände, Großhändler – aus der Anrufliste heraus')}
+      ${zeile('Name belegt', b.gf_hoch, 'Chef-Name aus dem Impressum oder im Firmennamen')}
+      ${zeile('Name wahrscheinlich', b.gf_mittel, 'Passt zum Firmennamen, aber nicht aus dem Impressum belegt')}
+      ${zeile('Name unsicher', b.gf_unsicher, 'Irgendwo auf der Website aufgesammelt – nicht als Anrede verwenden')}
+      ${zeile('Namenskonflikte', b.gf_konflikte, 'Der Firmenname nennt einen anderen Inhaber als der gespeicherte Name')}
+      ${zeile('Nummern unbrauchbar', b.tel_problem, 'Hotline, zu kurz, Buchstaben – mit diesen Nummern erreicht man keinen Chef')}
+      ${zeile('Nummern widersprüchlich', b.tel_konflikt, 'Maps-Nummer und Impressum-Nummer stimmen nicht überein')}
+    </div>
+    ${liste('Namenskonflikte (Beispiele)', b.beispiele?.gf_konflikt, r => `<li>${esc(r.name)}: gespeichert <b>${esc(r.gf)}</b>, laut Firmenname <b>${esc(r.konflikt)}</b></li>`)}
+    ${liste('Keine Betriebe (Beispiele)', b.beispiele?.kein_betrieb, r => `<li>${esc(r.name)} <span class="cl-meta">(${esc(r.grund)})</span></li>`)}
+    ${liste('Städte (Beispiele)', b.beispiele?.stadt, r => `<li>${esc(r.name)}: ${esc(r.vorher)} → <b>${esc(r.nachher)}</b></li>`)}
+    ${liste('Nummern (Beispiele)', b.beispiele?.tel, r => `<li>${esc(r.name)}: ${esc(r.telefon)} <span class="cl-meta">(${esc(r.problem)})</span></li>`)}
+  </div>`;
+}
+
+async function qualBericht() {
+  qualStatus('Bestand wird angesehen…');
+  const d = await fetchJSON('/api/qualitaet/bericht').catch(()=>null);
+  qualStatus('');
+  if (!d) { toast('Prüfbericht fehlgeschlagen'); return; }
+  qualPanel(qualBerichtHtml(d, 'Prüfbericht – noch nichts geändert'));
+}
+
+async function qualReinigen() {
+  if (!confirm('Bestand reinigen?\n\nStädte werden vereinheitlicht, Verbände und Großhändler aus der Anrufliste genommen, Chef-Namen bewertet und Nummern geprüft.\n\nEs wird nichts gelöscht.')) return;
+  qualStatus('Reinigung läuft…');
+  const d = await post('/api/qualitaet/reinigen', {}).catch(()=>null);
+  qualStatus('');
+  if (!d || !d.ok) { toast('Reinigung fehlgeschlagen'); return; }
+  qualPanel(qualBerichtHtml(d, 'Bestand gereinigt'));
+  toast(`${d.geprueft} Leads geprüft, ${d.kein_betrieb} Nicht-Betriebe aussortiert`);
+  loadCallList();
+}
+
+let qualPollTimer = null;
+async function qualPruefen() {
+  const d = await post('/api/qualitaet/pruefen', {}).catch(()=>null);
+  if (!d) { toast('Impressum-Prüfung konnte nicht starten'); return; }
+  if (!d.ok && d.laeuft) toast('Prüfung läuft bereits');
+  else toast('Impressum-Prüfung gestartet – läuft im Hintergrund weiter');
+  qualPoll();
+}
+
+function qualPoll() {
+  clearTimeout(qualPollTimer);
+  fetchJSON('/api/qualitaet/pruefen').then(p => {
+    if (!p) return;
+    if (p.laeuft) {
+      qualStatus(`📄 Impressum-Prüfung: ${p.geprueft} geprüft · ${p.namen_belegt} Namen belegt (${p.namen_korrigiert} korrigiert) · `
+        + `${p.direktnummern} Direktnummern · ${p.nummern_verdaechtig} verdächtige Nummern · noch ${p.offen} offen`);
+      qualPollTimer = setTimeout(qualPoll, 5000);
+    } else {
+      qualStatus(p.fertig
+        ? `📄 Prüfung fertig: ${p.namen_belegt} Namen belegt, ${p.namen_korrigiert} korrigiert, ${p.nummern_verdaechtig} Nummern verdächtig · noch ${p.offen} offen`
+        : (p.offen ? `${p.offen} Impressen noch nicht geprüft` : ''));
+      loadCallList();
+    }
+  }).catch(()=>{});
+}
+
+async function qualNachschub() {
+  if (!confirm('Neue Nummern holen?\n\nHolt Handwerksbetriebe MIT Telefonnummer aus OpenStreetMap – alle Gewerke (auch Abbruch, Reinigung, Umzug, Dachdecker, Trockenbau), ganz NRW.\n\nDauert einige Minuten und läuft im Hintergrund. Kostet nichts.')) return;
+  const d = await post('/api/leads/nachschub-anrufe', { mitNamenssuche: true }).catch(()=>null);
+  if (!d) { toast('Nachschub konnte nicht starten'); return; }
+  if (!d.ok && d.laeuft) toast('Ein Scrape läuft bereits');
+  else toast('Nachschub gestartet – neue Nummern erscheinen nach und nach');
+  nachschubPoll();
+}
+
+let nachschubTimer = null;
+function nachschubPoll() {
+  clearTimeout(nachschubTimer);
+  fetchJSON('/api/leads/osm-handwerk').then(p => {
+    if (!p) return;
+    if (p.laeuft) {
+      qualStatus(`➕ Nachschub: ${p.gewerk} (${p.erledigt}/${p.gesamt}) · ${p.gefunden} gefunden · ${p.neu} neu · ${p.mitTelefon} mit Telefon`);
+      nachschubTimer = setTimeout(nachschubPoll, 5000);
+    } else {
+      if (p.fertig) qualStatus(`➕ Nachschub fertig: ${p.gefunden} gefunden, ${p.neu} neu, ${p.mitTelefon} mit Telefon`);
+      loadCallList();
+    }
+  }).catch(()=>{});
 }
 
 // Anruf-Outcome zentral verbuchen. Same-mapping wie im CRM (siehe crmOutcome), aber
@@ -3005,6 +3220,9 @@ async function openMailer(id) {
   }
   const tpls = Array.isArray(mailerTemplatesCache) ? mailerTemplatesCache : [];
   mailerCtx = { lead, templates: tpls };
+  document.getElementById('mailer-contact-name').value = lead.geschaeftsfuehrer || '';
+  document.getElementById('mailer-contact-results').textContent = '';
+  document.getElementById('mailer-address-result').textContent = '';
   // UI initialisieren
   document.getElementById('mailer-title').textContent = 'E-Mail an ' + (lead.name || '—');
   // Zeigt Follow-up-Kontext (X E-Mails bereits versendet) direkt unter dem Titel,
@@ -3037,6 +3255,80 @@ async function openMailer(id) {
 function closeMailer() {
   document.getElementById('mailerOverlay').classList.remove('show');
   mailerCtx = null;
+}
+
+function addressCheckHtml(d) {
+  const last = d.lastDelivery;
+  return `<b style="color:${d.suppressed || d.status==='invalid' ? 'var(--r)' : 'var(--txt)'}">${esc(d.label || '')}</b>
+    <div>${esc(d.detail || '')}</div>
+    ${d.suppressed ? `<div style="color:var(--r)">Gesperrt: ${esc(d.suppressionReason || '')}</div>` : ''}
+    ${last ? `<div>Letzter Versand: ${esc(last.label)} · ${esc(fmtDate(last.at))}${last.reason ? ' · '+esc(last.reason) : ''}</div>` : '<div>Keine bisherige Zustellbestätigung.</div>'}
+    <small>Geprüft: ${esc(fmtDate(d.checkedAt))}</small>`;
+}
+
+async function checkMailerAddress(button) {
+  const context = mailerCtx;
+  const email = document.getElementById('mailer-to').value.trim();
+  if (!email) { toast('E-Mail-Adresse fehlt', true); return; }
+  const target = document.getElementById('mailer-address-result');
+  button.disabled = true;
+  target.textContent = 'Adresse wird geprüft…';
+  try {
+    const response = await fetch('/api/email/address-check', { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({email}) });
+    const d = await response.json();
+    if (!response.ok) throw Error(d.error || 'Prüfung fehlgeschlagen');
+    if (mailerCtx === context && document.getElementById('mailer-to').value.trim() === email) target.innerHTML = addressCheckHtml(d);
+  } catch (e) { if (mailerCtx === context) target.textContent = e.message || 'Prüfung nicht möglich'; }
+  finally { button.disabled = false; }
+}
+
+async function findMailerContact(button) {
+  const context = mailerCtx;
+  if (!context) return;
+  const name = document.getElementById('mailer-contact-name').value.trim();
+  const target = document.getElementById('mailer-contact-results');
+  button.disabled = true;
+  target.textContent = 'Firmenseiten und Mail-Domain werden geprüft…';
+  try {
+    const response = await fetch('/api/leads/'+encodeURIComponent(context.lead.id)+'/contact-suggestions?name='+encodeURIComponent(name));
+    const d = await response.json();
+    if (!response.ok) throw Error(d.error || 'Suche fehlgeschlagen');
+    if (mailerCtx !== context) return;
+    context.candidates = d.candidates;
+    if (!name) document.getElementById('mailer-contact-name').value = d.name || '';
+    target.innerHTML = `${d.nameSource ? `<div>Name gefunden: ${esc(d.name)} · <a href="${esc(d.nameSource)}" target="_blank" rel="noopener">Quelle</a></div>` : ''}
+      ${(d.notices || []).map(n=>`<div>${esc(n)}</div>`).join('')}
+      ${(d.candidates || []).map((c,i)=>`<div style="border-top:1px solid var(--border);padding:10px 0">
+        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer">
+          <input type="radio" name="contact-candidate" style="width:16px;flex:none;margin-top:3px" ${c.check.status==='invalid'||c.suppressed?'disabled':''} onchange="selectMailerCandidate(${i})">
+          <span><b>${esc(c.email)}</b><br>${c.origin==='public' ? 'Öffentlich gefunden' : c.origin==='suggested' ? 'Vermutung aus Namensmuster' : 'Gespeicherte Adresse'}${c.nameMatch ? ' · Namensmuster passt' : ' · Person nicht zugeordnet'}
+          ${c.source ? ` · <a href="${esc(c.source)}" target="_blank" rel="noopener">Quelle</a>` : ''}</span>
+        </label>
+        <div style="margin:6px 0 0 24px">${addressCheckHtml({...c.check,...c})}</div>
+      </div>`).join('') || '<div>Keine Adressvorschläge gefunden.</div>'}`;
+  } catch (e) { if (mailerCtx === context) target.textContent = e.message || 'Suche nicht möglich'; }
+  finally { button.disabled = false; }
+}
+
+function selectMailerCandidate(index) {
+  const c = mailerCtx?.candidates?.[index];
+  if (!c || c.suppressed || c.check.status === 'invalid') return;
+  document.getElementById('mailer-to').value = c.email;
+  document.getElementById('mailer-address-result').innerHTML = addressCheckHtml({...c.check,...c});
+  document.getElementById('mailer-email-hint').textContent = c.origin === 'suggested' ? '· vermutet, Postfach unbestätigt' : '· für diesen manuellen Versand ausgewählt';
+}
+
+async function checkAnalyticsAddress(button) {
+  button.disabled = true;
+  const target = button.nextElementSibling;
+  target.textContent = 'Prüfung läuft…';
+  try {
+    const response = await fetch('/api/email/address-check', { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({email:button.dataset.email}) });
+    const d = await response.json();
+    if (!response.ok) throw Error(d.error || 'Prüfung fehlgeschlagen');
+    target.innerHTML = addressCheckHtml(d);
+  } catch (e) { target.textContent = e.message; }
+  finally { button.disabled = false; }
 }
 
 function applyMailerTemplate() {
@@ -3072,10 +3364,6 @@ async function mailerSend() {
     // 1) Neu eingetippte Adresse zurück in den Lead schreiben — damit der nächste
     //    Anruf-Follow-up nicht wieder ins Leere läuft und der Reply-Scanner den
     //    Absender einem Lead zuordnen kann.
-    if (to && to.toLowerCase() !== String(lead.email || '').toLowerCase()) {
-      await post('/api/crm/lead-email', { id: lead.id, value: to }).catch(()=>{});
-      lead.email = to;
-    }
     // 2) E-Mail rausschicken
     const r = await fetch('/api/send-email', {
       method: 'POST', headers: { 'content-type': 'application/json' },
@@ -4212,6 +4500,31 @@ function renderVorfallSperre(sp) {
   </div>`;
 }
 
+// Was passiert, wenn ich auf „E-Mail" klicke? Das muss dastehen, bevor man klickt.
+function renderVersandModus(v) {
+  const el = document.getElementById('cl-versand');
+  if (!el || !v) return;
+  el.style.display = '';
+  const rest = Math.max(0, (v.limit || 0) - (v.heute || 0));
+  if (v.modus === 'hand') {
+    el.innerHTML = `<div class="an-note" style="border-color:rgba(34,209,124,.35);background:rgba(34,209,124,.07);color:#15803d">
+      <b>✉ Handversand ist an.</b> Pro Klick geht genau <b>eine</b> Mail raus — kein Automat, kein Zeitversand, keine Liste.
+      Heute versendet: <b>${v.heute}</b> von ${v.limit} · noch <b>${rest}</b> frei.
+    </div>`;
+  } else if (v.modus === 'frei') {
+    el.innerHTML = `<div class="an-note warn">
+      <b>⚠ Versand ist komplett frei</b> — auch die Automatik. Zum Telefonieren reicht der Modus „hand":
+      VERSAND_STOPP in Railway auf <code>hand</code> setzen, dann geht nur noch raus, was du selbst anklickst.
+    </div>`;
+  } else {
+    el.innerHTML = `<div class="an-note warn">
+      <b>🛑 Not-Aus steht auf „an" — der E-Mail-Knopf funktioniert nicht.</b>
+      Zum Anrufen mit Mail hinterher: VERSAND_STOPP in Railway auf <code>hand</code> setzen.
+      Dann geht genau eine Mail pro Klick raus und kein Automat springt an.
+    </div>`;
+  }
+}
+
 async function vorfallLoeschen() {
   if (!confirm('Vorfallsdaten löschen?\n\nDie Betroffenenliste wird vollständig entfernt. Sie steckt in keiner anderen Auswertung — an deinen übrigen Zahlen ändert sich nichts.')) return;
   await fetch('/api/vorfall', { method:'DELETE' });
@@ -4838,12 +5151,12 @@ async function loadAnalytics(silent) {
   const note = document.getElementById('an-tracking-note');
   if (!an.tracking.public) {
     note.style.display = 'block';
-    note.innerHTML = '<strong>⚠ Öffnungs-Tracking eingeschränkt:</strong> Öffnungs-Pixel und Klick-Links sind in jede neue E-Mail eingebaut, aber der Server ist nur lokal erreichbar (' + esc(an.tracking.base_url||'PUBLIC_BASE_URL fehlt') + '). Damit Gmail & Co. Öffnungen melden können, muss <code style="color:var(--o)">PUBLIC_BASE_URL</code> in der .env auf eine öffentliche Adresse zeigen. Klicks & Zustellfehler werden auch jetzt schon erfasst.';
+    note.innerHTML = '<strong>Messgrenzen:</strong> Eigenes Pixel- und Link-Tracking ist derzeit nicht aktiv. Brevo-Ereignisse erscheinen, sofern der Anbieter sie übermittelt. Kein Öffnungssignal bedeutet nicht automatisch ungelesen. Automatische Abrufe werden getrennt ausgewiesen; die lesende Person bleibt unbekannt.';
   } else { note.style.display = 'none'; }
 
   const t = an.totals, r = an.rates, prev = an.previous;
   set('an-k-sent', t.sent||0);
-  document.getElementById('an-k-sent-sub').innerHTML = prev ? deltaHtml(t.sent, prev.attempted) : `${t.failed||0} fehlgeschlagen`;
+  document.getElementById('an-k-sent-sub').textContent = `${t.attempted||0} Versuche · ${t.failed||0} nicht übergeben · ${t.awaiting||0} Zustellungen offen`;
   set('an-k-delivered', t.delivered||0);
   document.getElementById('an-k-delivered-sub').innerHTML = `Zustellrate ${r.delivery_rate}%` + (prev ? ' · ' + deltaHtml(t.delivered, prev.delivered) : '');
   set('an-k-opened', t.opened||0);
@@ -4897,7 +5210,7 @@ async function loadAnalytics(silent) {
   document.getElementById('an-mails').innerHTML = anMailsCache.map(m => {
     const link = firstLink(m);
     return `<tr class="mail-row" onclick="toggleMailEvents('${m.id}', this)">
-      <td><b style="color:var(--txt)">${esc(m.to_name||'—')}</b><br><span style="font-size:10px;color:var(--txt3)">${esc(m.to_email)}</span></td>
+      <td><b style="color:var(--txt)">${esc(m.to_name||'—')}</b><br><span style="font-size:10px;color:var(--txt3)">${esc(m.to_email)}</span><br><small>${esc(m.address_status||'Postfach nicht bestätigt')}</small></td>
       <td>${esc(m.template_name||'—')}${m.job_id?' <span style="color:#2563eb;font-size:9px" title="Auto-Versand">⚡</span>':''}${m.campaign?`<br><span style="font-size:9px;color:var(--p)">${esc(m.campaign)}</span>`:''}</td>
       <td style="white-space:nowrap">${esc(m.sent_at_local || fmtDate(m.sent_at))}</td>
       <td><span class="st-badge st-${m.status_tone}">${esc(m.status_label)}</span></td>
@@ -4990,7 +5303,7 @@ async function toggleMailEvents(id, rowEl) {
       <span class="ic-${e.effective_type||e.event_type}">${esc(e.label || e.event_type)}</span>
       ${e.url?`<span style="color:var(--txt3);overflow:hidden;text-overflow:ellipsis">→ ${esc(String(e.url).slice(0,80))}</span>`:''}
       ${e.user_agent&&e.event_type!=='bounce'?`<span style="color:var(--txt4);font-size:9px">${esc(deviceName(e.user_agent))}</span>`:''}
-    </div>`).join('') : '<span style="color:var(--txt4);font-size:11px">Noch keine Tracking-Ereignisse. Klicks & Öffnungen erscheinen hier, sobald der Empfänger reagiert (Öffnungen benötigen eine öffentliche PUBLIC_BASE_URL).</span>';
+    </div>`).join('') : '<span style="color:var(--txt4);font-size:11px">Keine Messereignisse vorhanden. Daraus lässt sich nicht ableiten, ob die Nachricht gelesen wurde.</span>';
 
   const links = (mail.clicked_links||[]).length
     ? `<div style="font-size:11px;font-weight:700;color:var(--txt2);margin-bottom:4px">Geklickte Links</div>` + (mail.clicked_links||[]).map(l =>
@@ -5004,6 +5317,8 @@ async function toggleMailEvents(id, rowEl) {
         <div class="tl">${tl}</div>
       </div>
       <div class="an-detail-expl">
+        <button class="btn btn-ghost" data-email="${esc(mail.to_email||'')}" onclick="checkAnalyticsAddress(this)">Empfängeradresse prüfen</button><div role="status" style="margin:8px 0;overflow-wrap:anywhere"></div>
+        <div style="margin-bottom:10px;font-size:11px">Öffnungen und Klicks sind Messsignale, kein Nachweis der lesenden Person. Erkannte automatische Abrufe: ${Number(mail.technical_opens||0)} · Link-Scans: ${Number(mail.machine_clicks||0)}.</div>
         <div><span class="st-badge st-${mail.status_tone}">${esc(mail.status_label||'')}</span></div>
         <div style="margin-top:8px">${esc(mail.status_explanation||'')}</div>
         ${mail.status_recommendation?`<div class="rec">➜ ${esc(mail.status_recommendation)}</div>`:''}

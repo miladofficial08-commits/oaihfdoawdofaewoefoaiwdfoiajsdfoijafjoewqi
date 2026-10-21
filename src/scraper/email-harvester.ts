@@ -1,5 +1,6 @@
 import { getDb } from '../db/schema';
 import { analyzeWebsite, analyzeImpressum } from '../analyzer/website-checker';
+import { bewerteGf } from '../leads/qualitaet';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // E-Mail-Ernte: holt aus den Websites der Leads die Kontaktadresse.
@@ -93,6 +94,11 @@ export async function harvestEmails(opts: { track?: string; max?: number } = {})
     `UPDATE leads SET email = COALESCE(NULLIF(email,''), @email),
                       email_normalized = COALESCE(NULLIF(email_normalized,''), LOWER(TRIM(@email))),
                       geschaeftsfuehrer = COALESCE(NULLIF(geschaeftsfuehrer,''), @gf),
+                      -- Herkunft und Belastbarkeit des Namens mitschreiben: Ein Name
+                      -- ohne Beleg darf am Telefon nicht wie eine Tatsache auftreten.
+                      gf_quelle    = COALESCE(gf_quelle, @gf_quelle),
+                      gf_vertrauen = COALESCE(gf_vertrauen, @gf_vertrauen),
+                      gf_konflikt  = COALESCE(gf_konflikt, @gf_konflikt),
                       kontaktformular_url = COALESCE(NULLIF(kontaktformular_url,''), @form),
                       telefon_direkt = COALESCE(NULLIF(telefon_direkt,''), @direkt),
                       telefon_direkt_typ = COALESCE(NULLIF(telefon_direkt_typ,''), @direkt_typ),
@@ -115,19 +121,28 @@ export async function harvestEmails(opts: { track?: string; max?: number } = {})
     await Promise.all(batch.map(async lead => {
       state.aktuell = lead.name;
       try {
-        const a = await analyzeWebsite(lead.website);
+        const a = await analyzeWebsite(lead.website, lead.name);
         // Impressum zusätzlich lesen: dort stehen Chef-Name und Direktnummer.
         let imp: Awaited<ReturnType<typeof analyzeImpressum>> | null = null;
         try { imp = await analyzeImpressum(lead.website, undefined, lead.name); } catch { /* optional */ }
         state.geprueft++;
 
-        const gf = a.geschaeftsfuehrer || imp?.geschaeftsfuehrer || null;
+        // Der Impressum-Treffer gewinnt, auch wenn die Startseite zuerst etwas
+        // gefunden hat – Startseiten nennen fremde Geschäftsführer in Referenzen.
+        const gfImpressum = imp?.gf_quelle === 'impressum' ? imp.geschaeftsfuehrer
+          : a.gf_quelle === 'impressum' ? a.geschaeftsfuehrer : undefined;
+        const gf = gfImpressum || a.geschaeftsfuehrer || imp?.geschaeftsfuehrer || null;
+        const gfQuelle = gf ? (gfImpressum ? 'impressum' : 'startseite') : null;
+        const bewertung = bewerteGf(gf, lead.name, gfQuelle);
         const direkt = imp?.telefon_direkt || null;
         if (a.email || gf || direkt) {
           update.run({
             id: lead.id,
             email: a.email ?? null,
             gf,
+            gf_quelle: gfQuelle,
+            gf_vertrauen: bewertung?.vertrauen ?? null,
+            gf_konflikt: bewertung?.konflikt ?? null,
             form: a.kontaktformular_url ?? null,
             direkt,
             direkt_typ: imp?.telefon_direkt_typ ?? null,

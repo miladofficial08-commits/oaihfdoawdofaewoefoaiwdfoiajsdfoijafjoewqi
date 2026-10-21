@@ -14,6 +14,7 @@ import { v4 as uuid } from 'uuid';
  * Statuslogik auf sent_emails.delivery_status:
  *   sent        an Brevo übergeben, noch kein Event
  *   delivered   Brevo bestätigt Zustellung  → Lead gilt sicher als kontaktiert
+ *   deferred    Brevo versucht weiter zuzustellen → zählt als an Brevo übergeben
  *   bounced     Hard-Bounce/ungültig (dauerhaft) → Adresse gesperrt, Lead → manual_review
  *   soft_failed Soft-Bounce/deferred/blocked/error (vorübergehend) → success=0 ⇒ Lead wieder kontaktierbar
  *   spam        Spam-Beschwerde → Adresse gesperrt
@@ -50,6 +51,7 @@ export interface BrevoEvent {
   messageId?: string;
   date?: string;
   ts?: number;
+  ts_event?: number;
   reason?: string;
   link?: string;
   subject?: string;
@@ -57,7 +59,7 @@ export interface BrevoEvent {
 }
 
 type Canonical =
-  | 'delivered' | 'bounced' | 'soft_failed' | 'spam'
+  | 'delivered' | 'deferred' | 'bounced' | 'soft_failed' | 'spam'
   | 'opened' | 'clicked' | 'unsubscribed' | 'ignore';
 
 /** Übersetzt die vielen Brevo-Event-Namen (Webhook & API) in unsere Handvoll Fälle. */
@@ -66,11 +68,12 @@ function canonicalize(raw?: string): Canonical {
   switch (e) {
     case 'delivered':                         return 'delivered';
     case 'hard_bounce': case 'invalid_email': return 'bounced';
-    case 'soft_bounce': case 'deferred':
+    case 'deferred':                         return 'deferred';
+    case 'soft_bounce':
     case 'blocked':     case 'error':         return 'soft_failed';
     case 'spam': case 'complaint':            return 'spam';
     case 'opened': case 'unique_opened':
-    case 'proxy_open':                        return 'opened';
+    case 'proxy_open': case 'unique_proxy_open': return 'opened';
     case 'click': case 'clicks':              return 'clicked';
     case 'unsubscribed': case 'unsubscribe':
     case 'list_addition':                     return 'unsubscribed';
@@ -101,6 +104,7 @@ function findSentRow(ev: BrevoEvent): SentRow | undefined {
        WHERE REPLACE(REPLACE(LOWER(TRIM(message_id)),'<',''),'>','') = ? LIMIT 1`
     ).get(mid) as SentRow | undefined;
     if (row) return row;
+    return undefined;
   }
   const email = normEmail(ev.email);
   if (email) {
@@ -118,11 +122,14 @@ function setRow(id: string, fields: Record<string, unknown>): void {
 }
 
 /** Spiegelt ein Brevo-Event zusätzlich ins email_events-Log, damit die bestehende Analytics-Ansicht es sieht. */
-function logEvent(sentId: string, type: string, url?: string | null): void {
+function logEvent(sentId: string, type: string, url?: string | null, at = nowIso()): void {
+  const exists = getDb().prepare('SELECT 1 FROM email_events WHERE sent_email_id = ? AND event_type = ? AND created_at = ? AND COALESCE(url, ?) = ?')
+    .get(sentId, type, at, '', url || '');
+  if (exists) return;
   getDb().prepare(
-    `INSERT INTO email_events (id, sent_email_id, event_type, url, user_agent, ip)
-     VALUES (?, ?, ?, ?, 'brevo:verified', NULL)`
-  ).run(uuid(), sentId, type, url ?? null);
+    `INSERT INTO email_events (id, sent_email_id, event_type, url, user_agent, ip, created_at)
+     VALUES (?, ?, ?, ?, 'brevo:verified', NULL, ?)`
+  ).run(uuid(), sentId, type, url ?? null, at);
 }
 
 export interface ApplyResult { matched: boolean; canonical: Canonical; sentId?: string; }
@@ -142,7 +149,9 @@ export function applyBrevoEvent(ev: BrevoEvent): ApplyResult {
     return { matched: false, canonical };
   }
 
-  const at = nowIso();
+  const timestamp = Number(ev.ts_event || ev.ts);
+  const at = Number.isFinite(timestamp) && timestamp > 0 && timestamp < 8640000000000
+    ? new Date(timestamp * 1000).toISOString() : nowIso();
   switch (canonical) {
     case 'delivered':
       // 'bounced' nie überschreiben (ein späteres delivered wäre widersprüchlich).
@@ -157,12 +166,19 @@ export function applyBrevoEvent(ev: BrevoEvent): ApplyResult {
         bounce_reason: (ev.reason || 'Hard-Bounce').slice(0, 300),
       });
       suppress(row.to_email, `Hard-Bounce: ${ev.reason || ''}`.trim(), 'brevo');
-      logEvent(row.id, 'bounce', ev.reason || null);
+      logEvent(row.id, 'bounce', ev.reason || null, at);
       if (row.lead_id) {
         updateLeadStatus(row.lead_id, 'manual_review', {
           notiz: `E-Mail an ${row.to_email} gebounced (dauerhaft ungültig) – anderer Kanal nötig.`,
         });
       }
+      break;
+
+    case 'deferred':
+      setRow(row.id, {
+        delivery_status: 'deferred', success: 1, brevo_event_at: at,
+        bounce_reason: (ev.reason || ev.event || 'Deferred').slice(0, 300),
+      });
       break;
 
     case 'soft_failed':
@@ -181,18 +197,18 @@ export function applyBrevoEvent(ev: BrevoEvent): ApplyResult {
 
     case 'opened':
       setRow(row.id, { brevo_opened_at: at, brevo_event_at: at });
-      logEvent(row.id, 'open');
+      logEvent(row.id, /^(unique_)?proxy_open$/i.test(ev.event || '') ? 'open_machine' : 'open', null, at);
       break;
 
     case 'clicked':
       setRow(row.id, { brevo_clicked_at: at, brevo_event_at: at });
-      logEvent(row.id, 'click', ev.link || null);
+      logEvent(row.id, 'click', ev.link || null, at);
       break;
 
     case 'unsubscribed':
       setRow(row.id, { unsubscribed_at: at, brevo_event_at: at });
       suppress(row.to_email, 'Abgemeldet', 'brevo');
-      logEvent(row.id, 'unsubscribe');
+      logEvent(row.id, 'unsubscribe', null, at);
       if (row.lead_id) {
         getDb().prepare(
           `UPDATE leads SET followup_stopped = 1, followup_stopped_reason = 'Abgemeldet (Brevo)', updated_at = datetime('now') WHERE id = ?`
@@ -291,9 +307,17 @@ export async function ensureBrevoWebhook(): Promise<{ ok: boolean; created?: boo
   const H = { 'api-key': key, accept: 'application/json', 'content-type': 'application/json' };
   try {
     const list = await fetch(`${BREVO_API}/webhooks?type=transactional`, { headers: H });
+    if (!list.ok) return { ok: false, error: `Brevo Webhooks nicht lesbar (${list.status})` };
     if (list.ok) {
-      const data = await list.json() as { webhooks?: Array<{ url?: string }> };
-      if ((data.webhooks || []).some(w => (w.url || '').split('?')[0] === url.split('?')[0])) {
+      const data = await list.json() as { webhooks?: Array<{ id: number; url?: string }> };
+      const existing = (data.webhooks || []).find(w => (w.url || '').split('?')[0] === url.split('?')[0]);
+      if (existing) {
+        if (existing.url !== url) {
+          const update = await fetch(`${BREVO_API}/webhooks/${existing.id}`, {
+            method: 'PUT', headers: H, body: JSON.stringify({ url }),
+          });
+          if (!update.ok) return { ok: false, error: `Brevo Webhook-Aktualisierung fehlgeschlagen (${update.status})` };
+        }
         return { ok: true, created: false, url };
       }
     }

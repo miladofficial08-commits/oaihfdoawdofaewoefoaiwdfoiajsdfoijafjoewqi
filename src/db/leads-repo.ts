@@ -191,7 +191,19 @@ export function recordApproval(id: string, kanal: string, nachricht: string, use
   });
 }
 
-export function recordManualCall(id: string, note: string, user = 'local-user') {
+/**
+ * Hält einen Anrufversuch fest – und zählt ihn mit.
+ *
+ * Das Mitzählen ist der Punkt: Wer 100 Nummern am Tag abtelefoniert, erreicht
+ * die meisten beim ersten Mal nicht. Ein Ja/Nein-Haken („angerufen") macht aus
+ * dem dritten Versuch dieselbe Zeile wie aus dem ersten, und dann ruft man
+ * entweder zu früh wieder an oder nie wieder. Mit Versuchszähler und Ergebnis
+ * steht in der Zeile, was man wissen muss, bevor man wählt.
+ *
+ * @param ergebnis Kurzschlüssel des Ausgangs ('nicht_erreicht', 'nochmal', …) –
+ *        landet in anruf_ergebnis und ist das, was die Liste anzeigt.
+ */
+export function recordManualCall(id: string, note: string, user = 'local-user', ergebnis = 'nicht_erreicht') {
   const now = new Date().toISOString();
   updateLeadStatus(id, 'manual_review', {
     last_manual_call_at: now,
@@ -199,6 +211,12 @@ export function recordManualCall(id: string, note: string, user = 'local-user') 
     manual_call_done: 1,
     notiz: note,
   });
+  getDb().prepare(
+    `UPDATE leads SET anruf_versuche = COALESCE(anruf_versuche, 0) + 1,
+                      anruf_ergebnis = @ergebnis,
+                      updated_at = datetime('now')
+     WHERE id = @id`
+  ).run({ id, ergebnis });
   recordOutreachEvent({
     lead_id: id,
     event_type: 'manual_call',
@@ -207,6 +225,35 @@ export function recordManualCall(id: string, note: string, user = 'local-user') 
     user,
     note,
   });
+}
+
+/**
+ * Anrufversuch ohne Statuswechsel: „durchgewählt, niemand da".
+ *
+ * Braucht man getrennt von recordManualCall, weil der Lead dabei nicht in
+ * 'manual_review' wandern soll. Ein Lead, der zweimal nicht abgenommen hat, ist
+ * kein Fall für Nacharbeit – er ist nur noch nicht erreicht.
+ */
+export function recordCallAttempt(id: string, note?: string, user = 'local-user') {
+  const now = new Date().toISOString();
+  getDb().prepare(
+    `UPDATE leads SET anruf_versuche = COALESCE(anruf_versuche, 0) + 1,
+                      last_manual_call_at = @now,
+                      anruf_ergebnis = 'versucht',
+                      manual_call_note = COALESCE(NULLIF(@note,''), manual_call_note),
+                      updated_at = datetime('now')
+     WHERE id = @id`
+  ).run({ id, now, note: note ?? '' });
+  const versuche = (getDb().prepare('SELECT COALESCE(anruf_versuche,0) n FROM leads WHERE id = ?')
+    .get(id) as { n: number } | undefined)?.n ?? 1;
+  recordOutreachEvent({
+    lead_id: id,
+    event_type: 'manual_call',
+    channel: 'telefon',
+    user,
+    note: note?.trim() || `Anrufversuch ${versuche} – nicht erreicht`,
+  });
+  return { versuche };
 }
 
 export function archiveLead(id: string, user = 'local-user') {

@@ -309,6 +309,12 @@ const tests = [
     const evs = [0, 2000, 5000].map(off => ({ url: 'https://tawano.de/x', signature: chrome + '|1.1.1.1', created_at: iso(base + off) }));
     assert.equal(tracking.countDistinctClicks(evs), 1);
   }],
+  ['Brevo deferred stays counted as sent but visible as delayed', () => {
+    const { classifyEmailDelivery } = require('../dist/email/email-status');
+    const status = classifyEmailDelivery({ success: 1, deliveryStatus: 'deferred' });
+    assert.equal(status.code, 'deferred');
+    assert.equal(status.reachedRecipient, true);
+  }],
   ['brevo api helpers expose key status and build tracked payload', () => {
     const mailer = require('../dist/email/mailer');
     assert.deepEqual(mailer.getBrevoStatus({}), { ok: false, configured: false, error: 'BREVO_API_KEY fehlt' });
@@ -328,6 +334,19 @@ const tests = [
     assert.equal(payload.textContent, 'Text https://example.com');
     assert.match(payload.htmlContent, /\/track\/click\/track-1/);
     assert.match(payload.htmlContent, /\/track\/open\/track-1\.gif/);
+  }],
+  ['outbound mail prefers Brevo HTTPS API over SMTP', () => {
+    const mailer = require('../dist/email/mailer');
+    assert.equal(mailer.getOutboundMailProvider({
+      BREVO_API_KEY: 'valid-api-key',
+      SMTP_HOST: 'smtp-relay.brevo.com',
+      SMTP_USER: 'smtp-user',
+      SMTP_PASS: 'smtp-pass',
+      SMTP_FROM: 'Tawano <info@example.com>',
+    }), 'brevo-api');
+    assert.equal(mailer.getOutboundMailProvider({ BREVO_API_KEY: 'api-key-only' }), 'brevo-api');
+    assert.equal(mailer.getOutboundMailProvider({ SMTP_HOST: 'smtp.example.com', SMTP_USER: 'user', SMTP_PASS: 'pass' }), 'smtp');
+    assert.equal(mailer.getOutboundMailProvider({}), 'none');
   }],
   ['email html renders markdown links with tracking and safe link text', () => {
     const mailer = require('../dist/email/mailer');
@@ -546,6 +565,59 @@ const tests = [
     for (const d of ['gmx.de', 't-online.de', 'gmail.com', 'web.de']) {
       assert.ok(quelle.includes("'" + d + "'"), `${d} fehlt in der Freemail-Liste – die Domain-Regel wuerde Fremde mitsperren`);
     }
+  }],
+  ['Jede Spalte im sent_emails-INSERT existiert auch im Schema', () => {
+    // Der Absturz vom 01.09.: ab_gruppe stand im INSERT und in der Auswertung,
+    // aber in keiner Migration. Wo die Spalte fehlte, ist jeder Versand
+    // abgestuerzt - nach dem Absenden. Ein Vergleich der beiden Listen faengt
+    // das ab, bevor es wieder eine Mail ohne Protokoll gibt.
+    const quelle = fs.readFileSync(path.join(__dirname, '..', 'src', 'email', 'auto-sender.ts'), 'utf8');
+    const kopf = 'INSERT INTO sent_emails (';
+    const start = quelle.indexOf(kopf);
+    assert.ok(start > -1, 'INSERT INTO sent_emails nicht gefunden');
+    const spalten = quelle.slice(start + kopf.length, quelle.indexOf(')', start))
+      .split(',').map(x => x.trim()).filter(Boolean);
+    assert.ok(spalten.length > 10, 'Spaltenliste sieht falsch aus: ' + spalten.length);
+    const werteStart = quelle.indexOf('VALUES (', start);
+    const werte = quelle.slice(werteStart, quelle.indexOf(')', werteStart));
+    const schema = fs.readFileSync(path.join(__dirname, '..', 'src', 'db', 'schema.ts'), 'utf8');
+    for (const spalte of spalten) {
+      assert.ok(schema.includes(spalte), 'Spalte ' + spalte + ' steht im INSERT, aber nirgends im Schema');
+      assert.ok(werte.includes('@' + spalte), 'Spalte ' + spalte + ' bekommt keinen Wert im VALUES-Teil');
+    }
+  }],
+  ['Protokoll vor Versand: die Anrufliste sendet nicht, was sie nicht schreiben kann', () => {
+    const routen = fs.readFileSync(path.join(__dirname, '..', 'src', 'approval', 'routes.ts'), 'utf8');
+    const block = routen.slice(routen.indexOf("'/api/send-email'"));
+    const reservieren = block.indexOf('reserviereVersand');
+    const senden = block.indexOf('await sendLeadEmail');
+    assert.ok(reservieren > -1, '/api/send-email reserviert keine Protokollzeile');
+    assert.ok(reservieren < senden, 'Es wird gesendet, BEVOR die Protokollzeile steht – genau die Luecke vom 20.-22.08.');
+  }],
+  ['Versand-Modus: hand laesst den Menschen durch und blockt jeden Automaten', () => {
+    const { versandModus, versandGestoppt, handversandErlaubt } = require('../dist/email/mailer');
+    assert.equal(versandModus({ VERSAND_STOPP: 'an' }), 'stopp');
+    assert.equal(versandModus({ VERSAND_STOPP: 'hand' }), 'hand');
+    assert.equal(versandModus({ VERSAND_STOPP: '' }), 'frei');
+    // Entscheidend: im Modus "hand" gilt der Versand weiterhin als gestoppt.
+    // Daran haengen Auto-Sender, Follow-up, Strategie-Engine und der erzwungene
+    // Probelauf – die duerfen NICHT anspringen, nur weil von Hand gesendet wird.
+    assert.equal(versandGestoppt({ VERSAND_STOPP: 'hand' }), true);
+    assert.equal(handversandErlaubt({ VERSAND_STOPP: 'hand' }), true);
+    assert.equal(handversandErlaubt({ VERSAND_STOPP: 'an' }), false);
+  }],
+  ['Kein Automat setzt das Handversand-Kennzeichen', () => {
+    // Das Kennzeichen behauptet "ein Mensch sitzt davor". Sobald ein Worker es
+    // setzt, ist der Modus wertlos – deshalb darf es nur aus der Route kommen,
+    // die einen einzelnen Klick bedient.
+    const automaten = ['auto-sender', 'followup-sender', 'scheduled-sender', 'daily-engine', 'probelauf'];
+    for (const datei of automaten) {
+      const quelle = fs.readFileSync(path.join(__dirname, '..', 'src', 'email', datei + '.ts'), 'utf8');
+      assert.ok(!quelle.includes('handversand'),
+        `${datei}.ts setzt das Handversand-Kennzeichen – damit umgeht ein Automat den Not-Aus`);
+    }
+    const wf = fs.readFileSync(path.join(__dirname, '..', 'src', 'workflow', 'engine.ts'), 'utf8');
+    assert.ok(!wf.includes('handversand'), 'Die Strategie-Engine setzt das Handversand-Kennzeichen');
   }],
   ['Fehlende Vorlage bricht den Probelauf ab, statt Platzhalter zu schreiben', () => {
     // 125 Zeilen "(Vorlage nicht gefunden)" sind schlimmer als eine Fehlermeldung:

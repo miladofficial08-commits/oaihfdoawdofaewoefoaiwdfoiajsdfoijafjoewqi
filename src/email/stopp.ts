@@ -1,5 +1,5 @@
 import { getDb } from '../db/schema';
-import { versandGestoppt } from './mailer';
+import { versandGestoppt, versandModus, VersandModus } from './mailer';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Der Stopp muss überall gleichzeitig gelten – und man muss ihn sehen.
@@ -53,7 +53,10 @@ export function erzwingeVersandStopp(): StoppErgebnis {
      WHERE status IN ('scheduled','processing')`
   ).run().changes, 0);
 
-  console.warn('[NOT-AUS] Versand ist gestoppt. Es geht keine E-Mail raus.');
+  const modus = versandModus();
+  console.warn(modus === 'hand'
+    ? '[NOT-AUS] Modus HAND: nur von Hand ausgeloeste Einzelmails gehen raus. Jeder Automat ist abgeschaltet.'
+    : '[NOT-AUS] Versand ist gestoppt. Es geht keine E-Mail raus.');
   if (raus.strategien.length) console.warn('[NOT-AUS]   Strategien deaktiviert: ' + raus.strategien.join(', '));
   if (raus.kampagnen) console.warn('[NOT-AUS]   Auto-Kampagnen gestoppt: ' + raus.kampagnen);
   if (raus.followup) console.warn('[NOT-AUS]   Follow-up-Worker abgeschaltet');
@@ -62,13 +65,31 @@ export function erzwingeVersandStopp(): StoppErgebnis {
   return raus;
 }
 
-/** Für die Anzeige im Dashboard: Läuft der Not-Aus, und was heisst das? */
-export function stoppStatus(): { gestoppt: boolean; text: string } {
-  if (!versandGestoppt()) return { gestoppt: false, text: 'Versand ist freigegeben.' };
+/**
+ * Für die Anzeige im Dashboard: Läuft der Not-Aus, und was heisst das?
+ *
+ * Die Anzeige muss dasselbe sagen wie das System tut. Genau daran hat es beim
+ * Vorfall gefehlt: im Dashboard stand der Versand auf aktiv, während er lief.
+ * Im Modus „hand" wäre „es geht keine einzige Mail raus" schlicht gelogen –
+ * von Hand ausgelöste Einzelmails gehen sehr wohl raus.
+ */
+export function stoppStatus(): { gestoppt: boolean; modus: VersandModus; text: string } {
+  const modus = versandModus();
+  if (modus === 'frei') return { gestoppt: false, modus, text: 'Versand ist freigegeben – auch die Automatik.' };
+  if (modus === 'hand') {
+    return {
+      gestoppt: true,
+      modus,
+      text: 'HANDVERSAND – nur was du einzeln anklickst, geht raus. Jeder Automat bleibt abgeschaltet: '
+        + 'kein Auto-Versand, kein Follow-up, keine Strategie, kein Zeitversand. '
+        + 'Zum vollständigen Stopp: VERSAND_STOPP in Railway auf "an" setzen.',
+    };
+  }
   return {
     gestoppt: true,
+    modus,
     text: 'NOT-AUS AKTIV – es wird keine einzige E-Mail versendet. '
       + 'Strategien, Leads und Vorlagen bleiben erhalten, sie stehen nur still. '
-      + 'Zum Aufheben: Variable VERSAND_STOPP in Railway entfernen.',
+      + 'Für Handversand beim Telefonieren: VERSAND_STOPP auf "hand" setzen.',
   };
 }

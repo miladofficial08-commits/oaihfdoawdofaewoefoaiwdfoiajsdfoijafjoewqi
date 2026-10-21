@@ -9,6 +9,7 @@ import {
   recordApproval,
   recordManualContact,
   recordManualCall,
+  recordCallAttempt,
   getContactPoints,
   getOutreachEvents,
   getContactPointsBatch,
@@ -29,7 +30,7 @@ import { personalizeLead, getAiProvider } from '../ai/personalizer';
 import { exportToCsv } from '../export/csv-export';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
-import { getSmtpStatus, sendLeadEmail, sendBulkEmail, getTrackingBaseUrl, sendTestEmail, sendBrevoTestEmail } from '../email/mailer';
+import { getSmtpStatus, sendLeadEmail, sendBulkEmail, getTrackingBaseUrl, sendTestEmail, sendBrevoTestEmail, versandModus} from '../email/mailer';
 import { getSmsAnalytics } from '../email/sms-stats';
 import { generateAdVariants } from '../ai/ad-generator';
 import { v4 as uuid } from 'uuid';
@@ -48,17 +49,20 @@ import { nurEigeneVorlagen } from '../email/template-cleanup';
 import { startklarLinien } from '../workflow/health';
 import { getWorkflow } from '../workflow/schema';
 import { startDailyEngine } from '../email/daily-engine';
-import { startAutoSender, recordSentEmail, sentTodayCount, GLOBAL_DAILY_CAP, ALLOWED_DAILY_LIMITS, SendJob } from '../email/auto-sender';
+import { startAutoSender, recordSentEmail, sentTodayCount, GLOBAL_DAILY_CAP, ALLOWED_DAILY_LIMITS, SendJob, reserviereVersand, versandErgebnis} from '../email/auto-sender';
 import { startFollowupSender, getFollowupConfig, setFollowupConfig, followupStats } from '../email/followup-sender';
 import { classifyOpenEvent, isOpenLikeEvent, isReliableOpen, secondsBetween, countDistinctOpens, OPEN_DEDUP_WINDOW_SECONDS, classifyClickEvent, isRealClick, isClickLikeEvent, countDistinctClicks } from '../email/tracking';
 import { classifyEmailDelivery } from '../email/email-status';
+import { registerContactRoutes } from '../email/contact-routes';
 import { startScheduledSender } from '../email/scheduled-sender';
 import { startBrevoSync, applyBrevoWebhookBody, verifyWebhookSecret, verifiedSendCounts, getBrevoAggregateCached, refreshBrevoAggregate, ensureBrevoWebhook } from '../email/brevo-sync';
 import { scrapeHandwerkRegion, handwerkProgress, HANDWERK_CRAFTS } from '../scraper/osm';
 import { harvestEmails, harvestProgress, stopHarvest, offeneWebsites } from '../scraper/email-harvester';
-import { startSupplyWorker, supplyStatus, setSupplyAuto } from '../scraper/supply-worker';
+import { startSupplyWorker, supplyStatus, setSupplyAuto, vorratAnrufbar, anrufTageVorrat, ANRUFE_PRO_TAG } from '../scraper/supply-worker';
 import { registerWorkflowRoutes } from '../workflow/routes';
-import { HANDWERK_FILTER, istHandwerk, brancheOptionen } from '../config/handwerk';
+import { HANDWERK_FILTER, istHandwerk, brancheOptionen, GRUPPE_PREFIX, branchenDerGruppe } from '../config/handwerk';
+import { reinigeBestand, staedteUebersicht } from '../leads/reinigung';
+import { pruefeImpressen, prueferFortschritt, stoppPruefer, offenePruefungen } from '../leads/pruefer';
 import {
   startWorkflowEngine, noteManualEmail, noteManualCall,
 } from '../workflow/engine';
@@ -142,6 +146,13 @@ function requestSignature(req: { headers: Record<string, unknown>; ip?: string }
 }
 
 /** Status, die bedeuten "wurde bereits angeschrieben" – gehören nicht mehr in "Leads finden". */
+/**
+ * Obergrenze für den Handversand pro Tag. Nicht als Schutz vor dem Nutzer
+ * gedacht, sondern als Netz: wer 40 Praxen an einem Tag anruft und anschreibt,
+ * hat einen langen Tag gehabt. Alles darüber ist eher ein Versehen als Absicht.
+ */
+const HANDVERSAND_TAGESLIMIT = 40;
+
 const OUTREACH_STATUSES = ['contacted', 'replied', 'demo_booked', 'proposal_sent', 'won', 'lost', 'no_interest', 'do_not_contact'];
 
 /**
@@ -224,6 +235,7 @@ export function parseLeadImport(text: string, _branche: string, defaultStadt: st
 }
 
 export async function registerRoutes(app: FastifyInstance) {
+  await registerContactRoutes(app);
   function sendDashboardHtml(reply: { type: (contentType: string) => { send: (body: string) => unknown } }) {
     const srcPath = path.join(process.cwd(), 'src', 'approval', 'views', 'dashboard.html');
     const distPath = path.join(__dirname, 'views', 'dashboard.html');
@@ -368,7 +380,7 @@ export async function registerRoutes(app: FastifyInstance) {
         ).run(new Date(Date.now() + tage * 86_400_000).toISOString(), note, req.body.id);
       }
 
-      recordManualCall(req.body.id, note);
+      recordManualCall(req.body.id, note, 'local-user', req.body.outcome || 'nicht_erreicht');
       const kampagne = noteManualCall(req.body.id, req.body.outcome, note);
       return { ok: true, kampagne: kampagne.info };
     }
@@ -689,10 +701,35 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
           error: `${to} steht auf der Sperrliste (Abmeldung, Bounce oder Absage). Es geht bewusst nichts raus.`,
         });
       }
-      const trackingId = uuid();
+      // Das ist der Knopf aus der Anrufliste: ein Mensch, eine Praxis, ein Klick.
+      // Nur deshalb darf diese Mail im Modus „hand" raus.
+      if (versandModus() === 'hand') {
+        const heute = sentTodayCount();
+        if (heute >= HANDVERSAND_TAGESLIMIT) {
+          return reply.status(400).send({
+            error: `Tageslimit für Handversand erreicht (${heute}/${HANDVERSAND_TAGESLIMIT}). Morgen geht es weiter.`,
+          });
+        }
+      }
       const lead = getAllLeads().find(l => l.id === id);
-      const result = await sendLeadEmail({ leadId: id, to, toName: lead?.name, subject, body, trackingId });
-      recordSentEmail({ id: trackingId, lead_id: id, to_email: to, to_name: lead?.name, subject, body, success: result.success, error: result.error, message_id: result.messageId });
+
+      // Erst die Protokollzeile, dann der Versand. Laesst sie sich nicht
+      // schreiben, geht KEINE Mail raus – sonst entsteht genau die stille
+      // Wiederholschleife vom 20.–22.08.
+      let trackingId: string;
+      try {
+        trackingId = reserviereVersand({ id: uuid(), lead_id: id, to_email: to, to_name: lead?.name, subject, body });
+      } catch (err) {
+        const grund = err instanceof Error ? err.message : String(err);
+        console.error('[send-email] NICHT gesendet – Protokollzeile fehlgeschlagen: ' + grund);
+        return reply.status(507).send({
+          error: 'Es wurde NICHTS gesendet: die Mail liess sich nicht protokollieren (' + grund + '). '
+            + 'Ohne Protokoll wuerde das System dieselbe Praxis spaeter erneut anschreiben – deshalb bricht der Versand hier ab.',
+        });
+      }
+
+      const result = await sendLeadEmail({ leadId: id, to, toName: lead?.name, subject, body, trackingId, handversand: true });
+      versandErgebnis(trackingId, result);
       if (!result.success) return reply.status(502).send(result);
 
       const kampagne = noteManualEmail(id, subject);
@@ -952,6 +989,35 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     async (req, reply) => {
       const { recipients, templateId, scheduleAt, campaign } = req.body;
       if (!recipients?.length) return reply.status(400).send({ error: 'Empfänger fehlen' });
+
+      // ── Modus „hand": telefonieren und pro Praxis EINE Mail hinterherschicken ──
+      //
+      // Genau ein Empfänger, sofort, per Klick. Kein Zeitversand, keine Liste.
+      // Der Vorfall entstand nicht daran, dass Mails rausgingen, sondern daran,
+      // dass ein Automat sie ohne Gegenkontrolle wiederholte. Ein Mensch, der pro
+      // Praxis einmal klickt, kann das nicht. Deshalb wird hier nicht der Versand
+      // freigegeben, sondern der Auslöser – und der muss ein Mensch sein.
+      const modus = versandModus();
+      const handversand = modus === 'hand';
+      if (handversand) {
+        if (recipients.length > 1) {
+          return reply.status(400).send({
+            error: `Not-Aus steht auf „hand": es geht genau eine Mail pro Klick raus, nicht ${recipients.length} auf einmal.`,
+          });
+        }
+        if (scheduleAt) {
+          return reply.status(400).send({
+            error: 'Not-Aus steht auf „hand": Zeitversand ist gesperrt. Eine eingeplante Mail verschickt später ein Automat – genau der soll ausbleiben.',
+          });
+        }
+        const heute = sentTodayCount();
+        if (heute >= HANDVERSAND_TAGESLIMIT) {
+          return reply.status(400).send({
+            error: `Tageslimit für Handversand erreicht (${heute}/${HANDVERSAND_TAGESLIMIT}). Morgen geht es weiter.`,
+          });
+        }
+      }
+
       const template = (templateId && getTemplateById(templateId)) || getEmailTemplate();
 
       // Doppel-Mail-Schutz: dieselbe Praxis nie zweimal anschreiben. Adressen ausschließen, die
@@ -998,8 +1064,8 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
         const trackingId = uuid();
         // Mit Lead-ID: Status wird auf "contacted" gesetzt + Event protokolliert
         const res = r.id
-          ? await sendLeadEmail({ leadId: r.id, to: r.email, toName: r.name, subject: rendered.subject, body: rendered.body, trackingId })
-          : await sendBulkEmail({ to: r.email, toName: r.name, subject: rendered.subject, body: rendered.body, trackingId });
+          ? await sendLeadEmail({ leadId: r.id, to: r.email, toName: r.name, subject: rendered.subject, body: rendered.body, trackingId, handversand })
+          : await sendBulkEmail({ to: r.email, toName: r.name, subject: rendered.subject, body: rendered.body, trackingId, handversand });
         recordSentEmail({ id: trackingId, lead_id: r.id ?? null, campaign: campaign ?? null, to_email: r.email, to_name: r.name, subject: rendered.subject, body: rendered.body, template_id: template.id, success: res.success, error: res.error, message_id: res.messageId });
         // Auch der Massenversand endet in der Kampagne: sonst stünden genau die
         // Firmen ohne Nachfassen da, in die gerade Zustellkosten geflossen sind.
@@ -1303,7 +1369,8 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
       `SELECT COUNT(*) n FROM sent_emails s ${whereSql}`
     ).get(params) as { n: number }).n;
     const rows = db.prepare(
-      `SELECT s.id, s.to_email, s.to_name, s.subject, s.success, s.error, s.sent_at, s.job_id, s.scheduled_id, s.campaign, s.template_id
+      `SELECT s.id, s.to_email, s.to_name, s.subject, s.success, s.error, s.sent_at, s.job_id, s.scheduled_id, s.campaign, s.template_id,
+              s.delivery_status, s.bounce_reason, s.delivered_at, s.unsubscribed_at, s.message_id
        FROM sent_emails s ${whereSql}
        ORDER BY s.sent_at DESC LIMIT ${ANALYTICS_ROW_LIMIT}`
     ).all(params) as any[];
@@ -1368,13 +1435,13 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
         };
       });
       const status = classifyEmailDelivery({
-        success: row.success, error: row.error,
+        success: row.success, error: row.error || row.bounce_reason, deliveryStatus: row.delivery_status,
         hasBounce: bounceEvents.length > 0, bounceText: bounceEvents.map(b => b.user_agent).join(' '),
         opened: uniqueOpen, clicked: uniqueClick,
       });
       return {
         id: row.id, to_email: row.to_email, to_name: row.to_name, subject: row.subject,
-        success: row.success, error: row.error, sent_at: row.sent_at, job_id: row.job_id,
+        success: row.success, error: row.error || row.bounce_reason, sent_at: row.sent_at, job_id: row.job_id,
         scheduled_id: row.scheduled_id, campaign: row.campaign,
         template_id: row.template_id, template_name: tplNameMap.get(row.template_id) || (row.template_id || '—'),
         opens: opensDistinct, unique_open: uniqueOpen, raw_opens: openLike.length, technical_opens: technical.length,
@@ -1386,6 +1453,10 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
         clicked_links: clickedLinks,
         status_code: status.code, status_label: status.label, status_tone: status.tone,
         status_explanation: status.explanation, status_recommendation: status.recommendation,
+        accepted: !!row.message_id || row.success === 1 || ['delivered', 'deferred', 'bounced', 'spam'].includes(row.delivery_status),
+        delivery_confirmed: row.delivery_status === 'delivered' || !!row.delivered_at,
+        unsubscribed: !!row.unsubscribed_at,
+        address_status: status.code === 'invalid_address' ? 'ungueltig gemeldet' : row.delivered_at ? 'Zustellung bestaetigt; Person unbekannt' : 'Postfach nicht bestaetigt',
         open_status: uniqueOpen ? 'opened' : technical.length > 0 ? 'auto' : 'not_opened',
         sent_at_local: berlinLabel(row.sent_at),
       };
@@ -1393,14 +1464,14 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
 
     // ── KPIs über das Basis-Set (vor Tabellen-Feinfilter) ──
     const attempted = emailsAll.length;
-    const failedSend = emailsAll.filter(m => m.success === 0).length;
-    const bouncedN = emailsAll.filter(m => m.bounces > 0).length;
-    const delivered = emailsAll.filter(m => m.success === 1 && m.bounces === 0).length;
+    const failedSend = emailsAll.filter(m => !m.accepted).length;
+    const bouncedN = emailsAll.filter(m => m.bounces > 0 || ['rejected', 'invalid_address'].includes(m.status_code)).length;
+    const delivered = emailsAll.filter(m => m.delivery_confirmed).length;
     const openedUnique = emailsAll.filter(m => m.unique_open).length;
     const opensTotal = emailsAll.reduce((s, m) => s + m.opens, 0);
     const clickedUnique = emailsAll.filter(m => m.unique_click).length;
     const clicksTotal = emailsAll.reduce((s, m) => s + m.clicks, 0);
-    const okCount = emailsAll.filter(m => m.success === 1).length;
+    const okCount = emailsAll.filter(m => m.accepted).length;
 
     // ── Tabellen-Feinfilter (Status/Öffnung/Klick) ──
     const emails = emailsAll.filter(m => {
@@ -1437,7 +1508,7 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     for (const m of emailsAll) {
       const day = berlinParts(m.sent_at)?.day; if (!day) continue;
       const d = dayKeyMap.get(day) || { sent: 0, opened: 0 };
-      d.sent++; if (m.unique_open) d.opened++;
+      if (m.accepted) d.sent++; if (m.unique_open) d.opened++;
       dayKeyMap.set(day, d);
     }
     const days: Array<{ day: string; sent: number; opened: number }> = [];
@@ -1460,7 +1531,7 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     for (const m of emailsAll) {
       const id = m.template_id || '—';
       const a = tplAgg.get(id) || { id, name: m.template_name, sent: 0, opened: 0, clicked: 0 };
-      a.sent++; if (m.unique_open) a.opened++; if (m.unique_click) a.clicked++;
+      if (m.accepted) a.sent++; if (m.unique_open) a.opened++; if (m.unique_click) a.clicked++;
       tplAgg.set(id, a);
     }
     const topTemplates = [...tplAgg.values()].sort((a, b) => b.sent - a.sent).slice(0, 8);
@@ -1470,7 +1541,7 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     for (const m of emailsAll) {
       if (!m.campaign) continue;
       const a = campAgg.get(m.campaign) || { campaign: m.campaign, sent: 0, opened: 0, clicked: 0 };
-      a.sent++; if (m.unique_open) a.opened++; if (m.unique_click) a.clicked++;
+      if (m.accepted) a.sent++; if (m.unique_open) a.opened++; if (m.unique_click) a.clicked++;
       campAgg.set(m.campaign, a);
     }
     const topCampaigns = [...campAgg.values()].sort((a, b) => b.clicked - a.clicked || b.sent - a.sent).slice(0, 8);
@@ -1506,9 +1577,10 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     const campaignOptions = (db.prepare(`SELECT DISTINCT campaign FROM sent_emails WHERE campaign IS NOT NULL AND campaign != '' ORDER BY campaign`).all() as Array<{ campaign: string }>).map(c => c.campaign);
 
     const totals = {
-      sent: attempted, ok: okCount, failed: failedSend, delivered, bounced: bouncedN,
+      sent: okCount, attempted, awaiting: emailsAll.filter(m => m.accepted && !m.delivery_confirmed && ['handed_off', 'deferred'].includes(m.status_code)).length,
+      ok: okCount, failed: failedSend, delivered, bounced: bouncedN,
       opened: openedUnique, opens_total: opensTotal, technical_opened: emailsAll.reduce((s, m) => s + m.technical_opens, 0),
-      clicked: clickedUnique, clicks_total: clicksTotal, unsubscribed: 0, scheduled: scheduledCount,
+      clicked: clickedUnique, clicks_total: clicksTotal, unsubscribed: emailsAll.filter(m => m.unsubscribed).length, scheduled: scheduledCount,
     };
 
     const webTotal = (db.prepare(`SELECT COUNT(*) as n FROM web_visits`).get() as { n: number }).n;
@@ -1540,16 +1612,16 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
       totals,
       rates: {
         delivery_rate: pct(delivered, attempted),
-        open_rate: pct(openedUnique, delivered || okCount),
-        click_rate: pct(clickedUnique, delivered || okCount),
+        open_rate: pct(openedUnique, okCount),
+        click_rate: pct(clickedUnique, okCount),
         click_to_open_rate: pct(clickedUnique, openedUnique),
         bounce_rate: pct(bouncedN, attempted),
         fail_rate: pct(failedSend, attempted),
       },
       // Rückwärtskompatible Felder:
-      open_rate: pct(openedUnique, delivered || okCount),
-      click_rate: pct(clickedUnique, delivered || okCount),
-      previous: prev,
+      open_rate: pct(openedUnique, okCount),
+      click_rate: pct(clickedUnique, okCount),
+      previous: null,
       // Ehrlichkeits-Flag: sagt dem Dashboard, ob die Kennzahlen den ganzen Zeitraum
       // abdecken oder nur einen Ausschnitt (dann wird oben gewarnt).
       coverage: { total_in_range: totalInRange, analyzed: rows.length, truncated },
@@ -1624,7 +1696,8 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     if (hasBounce) {
       timeline.push({ key: 'bounce', label: 'Zustellung fehlgeschlagen', at: rawEvents.find(e => e.event_type === 'bounce')!.created_at, at_local: berlinLabel(rawEvents.find(e => e.event_type === 'bounce')!.created_at), done: true, tone: 'bad' });
     } else {
-      timeline.push({ key: 'delivered', label: hasOpen || firstClick ? 'Zugestellt (belegt durch Interaktion)' : 'Zustellung angenommen', at: firstOpen?.created_at || firstClick?.created_at || null, at_local: berlinLabel(firstOpen?.created_at || firstClick?.created_at), done: sent?.success === 1, tone: sent?.success === 1 ? 'good' : 'info' });
+      const confirmed = !!sent?.delivered_at || sent?.delivery_status === 'delivered';
+      timeline.push({ key: 'delivered', label: confirmed ? 'Zustellung vom Anbieter bestaetigt' : 'Zustellung noch nicht bestaetigt', at: sent?.delivered_at || null, at_local: berlinLabel(sent?.delivered_at), done: confirmed, tone: confirmed ? 'good' : 'info' });
     }
     timeline.push({ key: 'open', label: 'Öffnung registriert', at: firstOpen?.created_at || null, at_local: berlinLabel(firstOpen?.created_at), done: hasOpen, tone: hasOpen ? 'good' : 'muted' });
     timeline.push({ key: 'click', label: firstClick ? `Link angeklickt${firstClick.url ? ' → ' + String(firstClick.url).slice(0, 80) : ''}` : 'Link angeklickt', at: firstClick?.created_at || null, at_local: berlinLabel(firstClick?.created_at), done: Boolean(firstClick), tone: firstClick ? 'good' : 'muted' });
@@ -1874,22 +1947,36 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
       params.q = '%' + Q.q.trim().toLowerCase() + '%';
     }
     if (Q.branche && Q.branche.trim()) {
-      if (Q.branche.trim() === HANDWERK_FILTER) {
+      const roh = Q.branche.trim();
+      if (roh.startsWith(GRUPPE_PREFIX)) {
+        // Gewerkegruppe: „Abbruch & Entsorgung" statt sechs einzelner Haken.
+        // Gefiltert wird über die echten Branchenwerte – am Lead wird nichts
+        // umgeschrieben, weil {branche} so in den Mails steht.
+        const treffer = branchenDerGruppe(roh.slice(GRUPPE_PREFIX.length), alleBranchen());
+        if (treffer.length) {
+          where.push(`l.branche IN (${treffer.map((_, i) => '@gr' + i).join(', ')}) COLLATE NOCASE`);
+          treffer.forEach((g, i) => { params['gr' + i] = g; });
+        } else {
+          where.push('1 = 0');
+        }
+      } else if (roh === HANDWERK_FILTER) {
         // Sammelfilter: alle Handwerksgewerke auf einmal. Die Branche am Lead
         // bleibt dabei die konkrete – sie steckt als {branche} in den Mails.
         const gewerke = alleBranchen().filter(istHandwerk);
         if (gewerke.length) {
-          where.push(`LOWER(l.branche) IN (${gewerke.map((_, i) => '@hw' + i).join(', ')})`);
-          gewerke.forEach((g, i) => { params['hw' + i] = g.toLowerCase(); });
+          where.push(`l.branche IN (${gewerke.map((_, i) => '@hw' + i).join(', ')}) COLLATE NOCASE`);
+          gewerke.forEach((g, i) => { params['hw' + i] = g; });
         } else {
           where.push('1 = 0');
         }
       } else {
-        where.push(`LOWER(l.branche) = @branche`);
-        params.branche = Q.branche.trim().toLowerCase();
+        where.push(`l.branche = @branche COLLATE NOCASE`);
+        params.branche = Q.branche.trim();
       }
     }
-    if (Q.stadt && Q.stadt.trim()) { where.push(`LOWER(l.stadt) = @stadt`); params.stadt = Q.stadt.trim().toLowerCase(); }
+    // COLLATE NOCASE statt LOWER(l.stadt): gleichwertig, aber ohne Funktion auf
+    // der Spalte – so kann SQLite den Index auf stadt benutzen.
+    if (Q.stadt && Q.stadt.trim()) { where.push(`l.stadt = @stadt COLLATE NOCASE`); params.stadt = Q.stadt.trim(); }
     if (Q.stage && STAGE_STATUS[Q.stage]) {
       const list = STAGE_STATUS[Q.stage];
       where.push(`l.status IN (${list.map((_, i) => '@st' + i).join(',')})`);
@@ -2133,7 +2220,9 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
   // der Gründer parallel zum Auto-Versand gezielt cold-callen kann. Bereits per
   // E-Mail kontaktierte Betriebe sind erlaubt (Mehrfach-Touch = höhere Conversion)
   // und werden als "bereits angeschrieben" markiert – ein starker Warm-Call-Anlass.
-  app.get<{ Querystring: { limit?: string; q?: string; branche?: string; stadt?: string; prio?: string; emailed?: string; track?: string; state?: string; direkt?: string } }>('/api/call-list', async (req) => {
+  app.get<{ Querystring: { limit?: string; q?: string; branche?: string; stadt?: string; prio?: string;
+    emailed?: string; track?: string; state?: string; direkt?: string;
+    gf?: string; versuche?: string } }>('/api/call-list', async (req) => {
     const db = getDb();
     const Q = req.query;
     const limit = Math.max(1, Math.min(200, Number(Q.limit) || 50));
@@ -2147,6 +2236,14 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     const where: string[] = [
       `COALESCE(l.telefon_direkt, l.telefon) IS NOT NULL AND length(TRIM(COALESCE(l.telefon_direkt, l.telefon))) > 5`,
       `l.status != 'archived'`,
+      // Kammern, Innungen, Fachverbände und Großhändler stehen in Google Maps
+      // unter derselben Branche wie die Betriebe, sind aber keine Kunden. Einen
+      // Fachverband anzurufen und ihm einen Telefonassistenten anzubieten kostet
+      // nicht nur die Zeit, sondern beim nächsten Betriebsgespräch den Ruf.
+      `COALESCE(l.kein_betrieb, 0) = 0`,
+      // Nummern, die schon an der Form scheitern (Hotline, zu kurz, Buchstaben),
+      // gehören nicht in eine Liste, die man von oben nach unten durchwählt.
+      `COALESCE(l.tel_problem, '') = ''`,
       // Die Praxen aus dem Vorfall 20.–22.08. fliegen aus JEDER Ansicht der
       // Anrufliste – nicht nur aus „offen". Wer 23 Mails bekommen hat und dann
       // auch noch angerufen wird, erlebt das als hartnäckige Belästigung, und
@@ -2182,6 +2279,11 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
                                 AND (se.lead_id = l.id
                                      OR (l.email IS NOT NULL AND l.email != ''
                                          AND LOWER(TRIM(se.to_email)) = LOWER(TRIM(l.email)))))`);
+    } else if (STATE === 'wiedervorlage') {
+      // Fällige Rückrufe – der wertvollste Teil der Liste. Wer „rufen Sie Dienstag
+      // nochmal an" gesagt hat, erwartet den Anruf; verpasst man ihn, war der
+      // erste umsonst.
+      where.push(`l.wiedervorlage_at IS NOT NULL AND l.wiedervorlage_at <= datetime('now')`);
     } else if (STATE === 'nicht_erreicht') {
       // recordManualCall setzt status='manual_review' + manual_call_done=1 als „nicht erreicht" markiert.
       where.push(`l.manual_call_done = 1`);
@@ -2216,22 +2318,36 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     if (Q.direkt === '1') where.push(`l.telefon_direkt IS NOT NULL`);
     if (Q.direkt === 'name') where.push(`l.telefon_direkt IS NOT NULL AND l.geschaeftsfuehrer IS NOT NULL AND TRIM(l.geschaeftsfuehrer) != ''`);
     if (Q.branche && Q.branche.trim()) {
-      if (Q.branche.trim() === HANDWERK_FILTER) {
+      const rohBranche = Q.branche.trim();
+      if (rohBranche.startsWith(GRUPPE_PREFIX)) {
+        // Gewerkegruppe: „Abbruch & Entsorgung" statt sechs einzelner Haken.
+        // Gefiltert wird über die echten Branchenwerte – am Lead wird nichts
+        // umgeschrieben, weil {branche} so in den Mails steht.
+        const treffer = branchenDerGruppe(rohBranche.slice(GRUPPE_PREFIX.length), alleBranchen());
+        if (treffer.length) {
+          where.push(`l.branche IN (${treffer.map((_, i) => '@gr' + i).join(', ')}) COLLATE NOCASE`);
+          treffer.forEach((g, i) => { params['gr' + i] = g; });
+        } else {
+          where.push('1 = 0');
+        }
+      } else if (rohBranche === HANDWERK_FILTER) {
         // Sammelfilter: alle Handwerksgewerke auf einmal. Die Branche am Lead
         // bleibt dabei die konkrete – sie steckt als {branche} in den Mails.
         const gewerke = alleBranchen().filter(istHandwerk);
         if (gewerke.length) {
-          where.push(`LOWER(l.branche) IN (${gewerke.map((_, i) => '@hw' + i).join(', ')})`);
-          gewerke.forEach((g, i) => { params['hw' + i] = g.toLowerCase(); });
+          where.push(`l.branche IN (${gewerke.map((_, i) => '@hw' + i).join(', ')}) COLLATE NOCASE`);
+          gewerke.forEach((g, i) => { params['hw' + i] = g; });
         } else {
           where.push('1 = 0');
         }
       } else {
-        where.push(`LOWER(l.branche) = @branche`);
-        params.branche = Q.branche.trim().toLowerCase();
+        where.push(`l.branche = @branche COLLATE NOCASE`);
+        params.branche = Q.branche.trim();
       }
     }
-    if (Q.stadt && Q.stadt.trim()) { where.push(`LOWER(l.stadt) = @stadt`); params.stadt = Q.stadt.trim().toLowerCase(); }
+    // COLLATE NOCASE statt LOWER(l.stadt): gleichwertig, aber ohne Funktion auf
+    // der Spalte – so kann SQLite den Index auf stadt benutzen.
+    if (Q.stadt && Q.stadt.trim()) { where.push(`l.stadt = @stadt COLLATE NOCASE`); params.stadt = Q.stadt.trim(); }
     if (Q.prio && /^[ABC]$/.test(Q.prio)) { where.push(`l.prioritaet = @prio`); params.prio = Q.prio; }
     if (Q.track && Q.track !== 'all') { where.push(`COALESCE(l.track,'voice_agent') = @track`); params.track = Q.track; }
     const emailedExpr = `CASE WHEN l.email IS NOT NULL AND LOWER(TRIM(l.email)) IN (
@@ -2239,6 +2355,19 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     ) THEN 1 ELSE 0 END`;
     if (Q.emailed === '1') where.push(`l.email IS NOT NULL AND LOWER(TRIM(l.email)) IN (SELECT LOWER(TRIM(to_email)) FROM sent_emails WHERE success=1 AND to_email IS NOT NULL AND to_email!='')`);
     if (Q.emailed === '0') where.push(`(l.email IS NULL OR LOWER(TRIM(l.email)) NOT IN (SELECT LOWER(TRIM(to_email)) FROM sent_emails WHERE success=1 AND to_email IS NOT NULL AND to_email!=''))`);
+    // Chef-Name: Wer persönlich ansprechen will, braucht einen Namen, dem er
+    // trauen kann. „belegt" sind die Namen aus dem Impressum bzw. die, die im
+    // Firmennamen stehen; „unsicher" ist alles andere – mit dem Namen sollte man
+    // nicht ins Gespräch gehen, sondern nach dem Inhaber fragen.
+    if (Q.gf === 'belegt') where.push(`l.gf_vertrauen IN ('hoch','mittel') AND COALESCE(l.gf_konflikt,'') = ''`);
+    if (Q.gf === 'hoch') where.push(`l.gf_vertrauen = 'hoch'`);
+    if (Q.gf === 'unsicher') where.push(`(l.gf_vertrauen = 'unsicher' OR l.gf_konflikt IS NOT NULL)`);
+    if (Q.gf === 'ohne') where.push(`(l.geschaeftsfuehrer IS NULL OR TRIM(l.geschaeftsfuehrer) = '')`);
+    // Anrufversuche: „noch nie gewählt" ist die kalte Liste, „1–2 Versuche" die
+    // Nachfass-Liste, „3+" die, bei der man aufhören oder eine Mail schicken sollte.
+    if (Q.versuche === '0') where.push(`COALESCE(l.anruf_versuche, 0) = 0`);
+    if (Q.versuche === '1-2') where.push(`COALESCE(l.anruf_versuche, 0) BETWEEN 1 AND 2`);
+    if (Q.versuche === '3+') where.push(`COALESCE(l.anruf_versuche, 0) >= 3`);
     const whereSql = where.join(' AND ');
     // Sortierung: bei „open" Priorität → Notdienst; sonst zuletzt bearbeitete zuerst.
     // Direktnummer schlägt Priorität: ein A-Lead nützt nichts, wenn die Bürokraft abblockt.
@@ -2246,7 +2375,13 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
     // durch, „kann ich den Verantwortlichen sprechen" nicht.
     const orderSql = STATE === 'open'
       ? `l.telefon_direkt IS NULL,
-         (l.geschaeftsfuehrer IS NULL OR TRIM(l.geschaeftsfuehrer) = ''),
+         -- Belegter Chef-Name vor unbelegtem vor keinem. Ein Name, dem man nicht
+         -- trauen kann, ist am Telefon schlechter als gar keiner: Mit „Herr Meyer
+         -- bitte" beim falschen Meyer ist das Gespräch vorbei, mit „wer ist bei
+         -- Ihnen der Inhaber?" fängt es an.
+         CASE l.gf_vertrauen WHEN 'hoch' THEN 0 WHEN 'mittel' THEN 1
+              WHEN 'unsicher' THEN 3 ELSE 4 END,
+         COALESCE(l.anruf_versuche, 0),
          CASE l.prioritaet WHEN 'A' THEN 0 WHEN 'B' THEN 1 ELSE 2 END,
          l.hat_notdienst_hinweis DESC, l.score_telefon DESC, l.score_gesamt DESC`
       : `COALESCE(l.last_manual_call_at, l.updated_at) DESC`;
@@ -2267,7 +2402,10 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
               l.email, l.website, l.adresse, l.geschaeftsfuehrer,
               l.prioritaet, l.score_gesamt, l.score_telefon, l.google_bewertung, l.google_anzahl_reviews,
               l.hat_notdienst_hinweis, l.status, l.kontakt_hinweis, l.manual_call_note,
-              l.last_manual_call_at, l.notiz,
+              l.last_manual_call_at, l.notiz, l.wiedervorlage_at,
+              l.anruf_versuche, l.anruf_ergebnis,
+              l.gf_vertrauen, l.gf_quelle, l.gf_konflikt,
+              l.tel_problem, l.tel_konflikt, l.impressum_url,
               (${emailedExpr}) AS already_emailed,
               ${emailsCountExpr} AS emails_sent_count
        FROM leads l
@@ -2283,6 +2421,8 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
          AND l.status IN ('new','checked','draft_ready','approved','manual_review','contacted')
          AND (COALESCE(l.manual_call_done, 0) = 0
               OR (l.wiedervorlage_at IS NOT NULL AND l.wiedervorlage_at <= datetime('now')))
+         AND COALESCE(l.kein_betrieb, 0) = 0
+         AND COALESCE(l.tel_problem, '') = ''
          AND ${vorfallAusschlussSql('l')}`
     ).get() as { n: number }).n;
     const calledToday = (db.prepare(
@@ -2325,13 +2465,29 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
        WHERE event_type = 'manual_call' AND date(created_at) = date('now','localtime')`
     ).get() as { n: number }).n;
     // Distinct branchen + städte für Filter-Dropdowns
-    const branchenRoh = (db.prepare(
-      `SELECT DISTINCT branche FROM leads WHERE telefon IS NOT NULL AND length(TRIM(telefon))>5 AND branche IS NOT NULL ORDER BY branche`
-    ).all() as Array<{ branche: string }>).map(r => r.branche);
-    // Handwerk als EIN Eintrag statt fünf einzelner Gewerke – gefiltert wird
-    // trotzdem über die echten Branchen, nichts wird umgeschrieben.
-    const branchen = brancheOptionen(branchenRoh);
-    const staedte = db.prepare(`SELECT DISTINCT stadt FROM leads WHERE telefon IS NOT NULL AND length(TRIM(telefon))>5 AND stadt IS NOT NULL ORDER BY stadt`).all() as Array<{stadt:string}>;
+    // Mit Anzahl: Wer die Liste öffnet, will sehen, wo überhaupt etwas zu holen
+    // ist. Gezählt wird genau das, was anrufbar ist – nicht der Gesamtbestand.
+    const branchenMengen = db.prepare(
+      `SELECT branche, COUNT(*) n FROM leads
+       WHERE COALESCE(telefon_direkt, telefon) IS NOT NULL AND length(TRIM(COALESCE(telefon_direkt, telefon)))>5
+         AND branche IS NOT NULL AND COALESCE(kein_betrieb,0) = 0 AND COALESCE(tel_problem,'') = ''
+       GROUP BY branche ORDER BY branche`
+    ).all() as Array<{ branche: string; n: number }>;
+    const branchenRoh = branchenMengen.map(r => r.branche);
+    // Handwerk als EIN Eintrag plus Gewerkegruppen – gefiltert wird trotzdem
+    // über die echten Branchen, nichts wird umgeschrieben.
+    const branchen = brancheOptionen(
+      branchenRoh,
+      Object.fromEntries(branchenMengen.map(r => [r.branche, r.n])),
+    );
+    // Städte nach Menge sortiert statt alphabetisch: Wer telefoniert, arbeitet
+    // die großen Städte ab, und die soll er oben finden.
+    const staedte = db.prepare(
+      `SELECT stadt, COUNT(*) n FROM leads
+       WHERE COALESCE(telefon_direkt, telefon) IS NOT NULL AND length(TRIM(COALESCE(telefon_direkt, telefon)))>5
+         AND stadt IS NOT NULL AND stadt != '' AND COALESCE(kein_betrieb,0) = 0
+       GROUP BY stadt HAVING n >= 3 ORDER BY n DESC`
+    ).all() as Array<{ stadt: string; n: number }>;
     // Offene Leads, bei denen der Chef selbst rangeht – die wertvollste Teilmenge der Liste.
     const direktOffen = (db.prepare(
       `SELECT COUNT(*) n FROM leads l
@@ -2339,6 +2495,8 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
          AND l.status IN ('new','checked','draft_ready','approved','manual_review','contacted')
          AND (COALESCE(l.manual_call_done, 0) = 0
               OR (l.wiedervorlage_at IS NOT NULL AND l.wiedervorlage_at <= datetime('now')))
+         AND COALESCE(l.kein_betrieb, 0) = 0
+         AND COALESCE(l.tel_problem, '') = ''
          AND ${vorfallAusschlussSql('l')}`
     ).get() as { n: number }).n;
     return {
@@ -2356,13 +2514,93 @@ Schreibe direkt und konkret. Kein Fachjargon. Keine Floskeln. Nur der Inhalt, ke
         kein_interesse_today: keinInteresseHeute,
         nicht_erreicht_today: nichtErreichtHeute,
         state: STATE,
+        // Vorrat in Tagen beim Tagesziel. Die reine Zahl „950 offen" sagt nichts;
+        // „9 Tage" sagt, wann man nachlegen muss, bevor die Liste leer ist.
+        anruf_vorrat: vorratAnrufbar(),
+        anruf_tage: anrufTageVorrat(),
+        anruf_ziel: ANRUFE_PRO_TAG,
+        // Datenqualität der Liste, die man gerade vor sich hat – damit man nicht
+        // erst beim Wählen merkt, dass der Name geraten ist.
+        qualitaet: (() => {
+          const q = db.prepare(
+            `SELECT
+               SUM(CASE WHEN l.gf_vertrauen IN ('hoch','mittel') AND COALESCE(l.gf_konflikt,'') = '' THEN 1 ELSE 0 END) gf_belegt,
+               SUM(CASE WHEN l.gf_vertrauen = 'unsicher' OR l.gf_konflikt IS NOT NULL THEN 1 ELSE 0 END) gf_unsicher,
+               SUM(CASE WHEN l.geschaeftsfuehrer IS NULL OR TRIM(l.geschaeftsfuehrer) = '' THEN 1 ELSE 0 END) gf_ohne,
+               SUM(CASE WHEN l.tel_konflikt IS NOT NULL THEN 1 ELSE 0 END) tel_konflikt
+             FROM leads l WHERE ${whereSql}`
+          ).get(params) as Record<string, number>;
+          return { ...q, offene_pruefungen: offenePruefungen() };
+        })(),
         // Damit man SIEHT, ob der Schutz steht. Eine stille Sperre, die man
         // nicht nachzaehlen kann, ist keine Zusicherung wert.
         vorfall_sperre: vorfallSperre(),
+        // Handversand: Modus und Tagesstand. Man muss sehen, wie viele Mails
+        // heute schon raus sind – sonst merkt man erst am Limit, dass es eins gibt.
+        versand: { modus: versandModus(), heute: sentTodayCount(), limit: HANDVERSAND_TAGESLIMIT },
       },
       branchen,
-      staedte: staedte.map(r=>r.stadt),
+      staedte: staedte.map(r => r.stadt),
+      staedte_zahlen: staedte,
     };
+  });
+
+  // ── Anrufversuch ohne Statuswechsel ───────────────────────────────────────
+  //
+  // „Durchgewählt, niemand da" ist kein Ergebnis, das den Lead in Nacharbeit
+  // schiebt – es ist nur ein Strich auf dem Zettel. Vorher gab es dafür keinen
+  // Knopf, also wurde gar nichts festgehalten, und am nächsten Tag stand die
+  // ganze Liste wieder unberührt da. Genau deshalb war nicht zu sehen, wen man
+  // schon angerufen hatte.
+  app.post<{ Body: { id?: string; note?: string } }>('/api/call-attempt', async (req, reply) => {
+    if (!req.body?.id) return reply.status(400).send({ error: 'Lead-ID fehlt' });
+    const r = recordCallAttempt(req.body.id, req.body.note);
+    return { ok: true, ...r };
+  });
+
+  // ── Bestandsreinigung: Stadt, Verbände, Chef-Namen, Nummern ───────────────
+  //
+  // GET zeigt nur, was passieren würde – damit man die Liste der Funde ansehen
+  // kann, bevor etwas geschrieben wird. POST schreibt.
+  app.get('/api/qualitaet/bericht', async () => ({
+    ...reinigeBestand(true),
+    staedte: staedteUebersicht().slice(0, 40),
+    offene_pruefungen: offenePruefungen(),
+  }));
+
+  app.post('/api/qualitaet/reinigen', async () => {
+    const bericht = reinigeBestand(false);
+    console.log(`[reinigung] ${bericht.geprueft} Leads geprüft: ${bericht.stadt_korrigiert} Städte vereinheitlicht, `
+      + `${bericht.kein_betrieb} Nicht-Betriebe markiert, ${bericht.gf_unsicher} unsichere Chef-Namen, `
+      + `${bericht.gf_konflikte} Namenskonflikte, ${bericht.tel_problem} unbrauchbare Nummern`);
+    return { ok: true, ...bericht, staedte: staedteUebersicht().slice(0, 40) };
+  });
+
+  // ── Impressum-Prüfung: Namen und Nummern wirklich belegen ─────────────────
+  app.post<{ Body: { max?: number } }>('/api/qualitaet/pruefen', async (req) => {
+    const p = prueferFortschritt();
+    if (p.laeuft) return { ok: false, ...p };
+    pruefeImpressen({ max: req.body?.max }).catch(err => console.error('[impressum-pruefung]', err));
+    return { ok: true, gestartet: true, ...prueferFortschritt() };
+  });
+  app.get('/api/qualitaet/pruefen', async () => prueferFortschritt());
+  app.post('/api/qualitaet/pruefen/stopp', async () => { stoppPruefer(); return { ok: true }; });
+
+  // ── Telefon-Nachschub: Betriebe MIT Nummer, Website egal ──────────────────
+  //
+  // Der bestehende Lauf verlangte eine Website, weil er für die E-Mail-Strecke
+  // gebaut war. Für die Anrufliste ist das der falsche Filter: OSM kennt in NRW
+  // tausende Handwerksbetriebe mit Telefon und ohne Homepage, und genau die
+  // nimmt niemand sonst ins Visier.
+  app.post<{ Body: { region?: string; mitNamenssuche?: boolean } }>('/api/leads/nachschub-anrufe', async (req) => {
+    const p = handwerkProgress();
+    if (p.laeuft) return { ok: false, ...p };
+    scrapeHandwerkRegion({
+      isoRegion: req.body?.region || 'DE-NW',
+      nurMitTelefon: true,
+      mitNamenssuche: req.body?.mitNamenssuche !== false,
+    }).catch(err => console.error('[nachschub-anrufe]', err));
+    return { ok: true, gestartet: true, ...handwerkProgress() };
   });
 
   // ── Kostenloser Lead-Nachschub: Handwerk aus OpenStreetMap ────────────────

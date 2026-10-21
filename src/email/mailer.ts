@@ -11,6 +11,12 @@ export interface EmailPayload {
   body: string;
   /** ID des sent_emails-Eintrags — aktiviert Öffnungs-Pixel + Klick-Tracking in der HTML-Version */
   trackingId?: string;
+  /**
+   * Ein Mensch hat diese eine Mail angeklickt. Nur damit kommt sie im Modus
+   * „hand" durch. Kein Worker darf das setzen – wer es setzt, behauptet, dass
+   * gerade jemand davorsitzt.
+   */
+  handversand?: boolean;
 }
 
 export interface SmtpStatus {
@@ -54,6 +60,7 @@ export interface BrevoEmailPayload {
 }
 
 type SmtpConfig = NonNullable<ReturnType<typeof getSharedSmtpConfig>>;
+type OutboundMailProvider = 'smtp' | 'brevo-api' | 'none';
 
 let workingConfigCache: { cfg: SmtpConfig; until: number } | null = null;
 
@@ -127,6 +134,12 @@ async function createTransport() {
   return { transport: createTransportFor(resolved.cfg), cfg: resolved.cfg };
 }
 
+export function getOutboundMailProvider(env: NodeJS.ProcessEnv = process.env): OutboundMailProvider {
+  if (env.BREVO_API_KEY?.trim()) return 'brevo-api';
+  if (getSharedSmtpConfig(env)) return 'smtp';
+  return 'none';
+}
+
 export function getBrevoStatus(env: NodeJS.ProcessEnv = process.env): BrevoStatus {
   const apiKeySet = Boolean(env.BREVO_API_KEY?.trim());
   if (!apiKeySet) return { ok: false, configured: false, error: 'BREVO_API_KEY fehlt' };
@@ -175,12 +188,26 @@ async function sendViaBrevoApi(payload: BrevoEmailInput): Promise<SendResult> {
 }
 
 export async function getSmtpStatus(): Promise<SmtpStatus> {
-  if (process.env.BREVO_API_KEY?.trim()) {
-    return { ok: true, configured: true, host: 'api.brevo.com', port: 443, from: 'Tawano <info@tawano.de>' };
+  if (getOutboundMailProvider() === 'brevo-api') {
+    try {
+      const response = await fetch('https://api.brevo.com/v3/account', {
+        headers: { 'api-key': process.env.BREVO_API_KEY!.trim() },
+        signal: AbortSignal.timeout(10000),
+      });
+      return { ok: response.ok, configured: true, host: 'api.brevo.com', port: 443,
+        from: 'Tawano <info@tawano.de>',
+        ...(response.ok ? {} : { error: classifyBrevoApiError(response.status, await response.text()) }) };
+    } catch {
+      return { ok: false, configured: true, host: 'api.brevo.com', port: 443,
+        error: 'Brevo API ist derzeit nicht erreichbar.' };
+    }
   }
   const cfg = getSharedSmtpConfig();
   if (!cfg) {
-    return { ok: false, configured: false, error: 'BREVO_API_KEY fehlt' };
+    if (process.env.BREVO_API_KEY?.trim()) {
+      return { ok: true, configured: true, host: 'api.brevo.com', port: 443, from: 'Tawano <info@tawano.de>' };
+    }
+    return { ok: false, configured: false, error: 'SMTP_HOST/USER/PASS oder BREVO_API_KEY fehlen' };
   }
   try {
     const resolved = await resolveWorkingConfig(cfg);
@@ -196,6 +223,24 @@ export async function getSmtpStatus(): Promise<SmtpStatus> {
       error: classifySmtpError(err),
       attempts,
     };
+  }
+}
+
+async function sendViaSmtp(payload: BrevoEmailInput): Promise<SendResult & { server: string }> {
+  const { transport, cfg } = await createTransport();
+  try {
+    const htmlBody = buildHtml(payload.body, payload.trackingId);
+    const info = await transport.sendMail({
+      from: cfg.from,
+      to: payload.to,
+      bcc: cfg.user,
+      subject: payload.subject,
+      text: payload.body,
+      html: htmlBody,
+    });
+    return { success: true, messageId: info.messageId, to: payload.to, server: cfg.host };
+  } finally {
+    transport.close();
   }
 }
 
@@ -223,13 +268,49 @@ export async function getSmtpStatus(): Promise<SmtpStatus> {
  */
 export function versandGestoppt(env: NodeJS.ProcessEnv = process.env): boolean {
   const v = (env.VERSAND_STOPP || '').trim().toLowerCase();
-  return ['1', 'true', 'on', 'an', 'ja', 'stop', 'stopp'].includes(v);
+  return ['1', 'true', 'on', 'an', 'ja', 'stop', 'stopp', 'hand'].includes(v);
 }
 
-function pruefeSperre(to: string): SendResult | null {
-  if (versandGestoppt()) {
-    console.warn(`[email] NOT-AUS aktiv – Versand an ${to} blockiert`);
-    return { success: false, to, error: 'Not-Aus aktiv (VERSAND_STOPP): Es wird derzeit keine E-Mail versendet.' };
+/**
+ * Drei Zustände statt zwei. „hand" ist der Modus zum Telefonieren:
+ *
+ *   frei   – alles laeuft, auch die Automatik
+ *   hand   – NUR was ein Mensch einzeln anklickt; jeder Automat bleibt tot
+ *   stopp  – nichts geht raus, auch keine Handmail
+ *
+ * Der Vorfall entstand nicht dadurch, dass Mails rausgingen, sondern dadurch,
+ * dass ein Automat sie ohne Gegenkontrolle wiederholte. Ein Mensch, der pro
+ * Praxis einmal klickt, kann keine 23 Mails an dieselbe Adresse schicken.
+ * Deshalb wird hier nicht der Versand freigegeben, sondern der Ausloeser.
+ */
+export type VersandModus = 'frei' | 'hand' | 'stopp';
+
+export function versandModus(env: NodeJS.ProcessEnv = process.env): VersandModus {
+  const v = (env.VERSAND_STOPP || '').trim().toLowerCase();
+  if (v === 'hand') return 'hand';
+  if (versandGestoppt(env)) return 'stopp';
+  return 'frei';
+}
+
+/** Darf ein Mensch gerade einzeln senden? */
+export function handversandErlaubt(env: NodeJS.ProcessEnv = process.env): boolean {
+  return versandModus(env) !== 'stopp';
+}
+
+function pruefeSperre(to: string, handversand = false): SendResult | null {
+  const modus = versandModus();
+  // Handversand kommt im Modus „hand" durch – aber nur, wenn die aufrufende
+  // Stelle das ausdruecklich behauptet. Kein Worker setzt dieses Kennzeichen.
+  const durch = modus === 'frei' || (modus === 'hand' && handversand);
+  if (!durch) {
+    console.warn(`[email] NOT-AUS (${modus}) – Versand an ${to} blockiert`);
+    return {
+      success: false,
+      to,
+      error: modus === 'hand'
+        ? 'Not-Aus steht auf „hand": nur von Hand ausgeloeste Einzelmails gehen raus, keine Automatik.'
+        : 'Not-Aus aktiv (VERSAND_STOPP): Es wird derzeit keine E-Mail versendet.',
+    };
   }
   if (!isSuppressed(to)) return null;
   const grund = suppressionReason(to);
@@ -242,26 +323,20 @@ function pruefeSperre(to: string): SendResult | null {
 }
 
 export async function sendLeadEmail(payload: EmailPayload): Promise<SendResult> {
-  const gesperrt = pruefeSperre(payload.to);
+  const gesperrt = pruefeSperre(payload.to, payload.handversand);
   if (gesperrt) return gesperrt;
   try {
     let result: SendResult;
     let server = 'Brevo API';
-    if (process.env.BREVO_API_KEY?.trim()) {
+    const provider = getOutboundMailProvider();
+    if (provider === 'smtp') {
+      const smtpResult = await sendViaSmtp(payload);
+      server = smtpResult.server;
+      result = smtpResult;
+    } else if (provider === 'brevo-api') {
       result = await sendViaBrevoApi(payload);
     } else {
-      const { transport, cfg } = await createTransport();
-      const htmlBody = buildHtml(payload.body, payload.trackingId);
-      const info = await transport.sendMail({
-        from: cfg.from,
-        to: payload.to,
-        bcc: cfg.user,
-        subject: payload.subject,
-        text: payload.body,
-        html: htmlBody,
-      });
-      server = cfg.host;
-      result = { success: true, messageId: info.messageId, to: payload.to };
+      throw new Error('Kein Mailversand konfiguriert. SMTP_HOST/USER/PASS oder BREVO_API_KEY setzen.');
     }
 
     if (!result.success) throw new Error(result.error || 'E-Mail-Versand fehlgeschlagen');
@@ -284,7 +359,7 @@ export async function sendLeadEmail(payload: EmailPayload): Promise<SendResult> 
 
     return result;
   } catch (err) {
-    const error = process.env.BREVO_API_KEY?.trim() ? (err instanceof Error ? err.message : String(err)) : classifySmtpError(err);
+    const error = getOutboundMailProvider() === 'smtp' ? classifySmtpError(err) : (err instanceof Error ? err.message : String(err));
     console.error(`[email] Versand an ${payload.to} fehlgeschlagen: ${error}`);
     recordOutreachEvent({
       lead_id: payload.leadId,
@@ -296,25 +371,16 @@ export async function sendLeadEmail(payload: EmailPayload): Promise<SendResult> 
   }
 }
 
-export async function sendBulkEmail(payload: { to: string; toName?: string; subject: string; body: string; trackingId?: string }): Promise<SendResult> {
-  const gesperrt = pruefeSperre(payload.to);
+export async function sendBulkEmail(payload: { to: string; toName?: string; subject: string; body: string; trackingId?: string; handversand?: boolean }): Promise<SendResult> {
+  const gesperrt = pruefeSperre(payload.to, payload.handversand);
   if (gesperrt) return gesperrt;
   try {
-    if (process.env.BREVO_API_KEY?.trim()) return await sendViaBrevoApi(payload);
-
-    const { transport, cfg } = await createTransport();
-    const htmlBody = buildHtml(payload.body, payload.trackingId);
-    const info = await transport.sendMail({
-      from: cfg.from,
-      to: payload.to,
-      bcc: cfg.user,
-      subject: payload.subject,
-      text: payload.body,
-      html: htmlBody,
-    });
-    return { success: true, messageId: info.messageId, to: payload.to };
+    const provider = getOutboundMailProvider();
+    if (provider === 'smtp') return await sendViaSmtp(payload);
+    if (provider === 'brevo-api') return await sendViaBrevoApi(payload);
+    return { success: false, error: 'Kein Mailversand konfiguriert. SMTP_HOST/USER/PASS oder BREVO_API_KEY setzen.', to: payload.to };
   } catch (err) {
-    const error = classifySmtpError(err);
+    const error = getOutboundMailProvider() === 'smtp' ? classifySmtpError(err) : (err instanceof Error ? err.message : String(err));
     console.error(`[smtp] Bulk-Versand an ${payload.to} fehlgeschlagen: ${error}`);
     return { success: false, error, to: payload.to };
   }

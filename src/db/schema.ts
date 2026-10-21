@@ -369,6 +369,41 @@ function initSchema(db: Database.Database) {
     impressum_checked_at: 'TEXT',
   });
 
+  // ── Anrufliste: Datenqualität und Anrufverlauf ──────────────────────────────
+  //
+  // Bisher gab es nur „manual_call_done" – ein Ja/Nein. Damit konnte man nicht
+  // sehen, WIE OFT man schon versucht hat durchzukommen, und ein zweiter Versuch
+  // am Nachmittag ging in derselben Zeile unter wie der erste. Wer 100 Nummern
+  // am Tag abtelefoniert, braucht aber genau das: Versuche, letzter Versuch,
+  // Ergebnis – in der Zeile, nicht in einem Log.
+  //
+  // Und: Der Chef-Name wird nicht länger als Tatsache geführt. 'gf_vertrauen'
+  // sagt, ob er belegt ist; 'gf_konflikt' nennt den Widerspruch, wenn der
+  // Firmenname selbst einen anderen Inhaber nennt. Ein falscher Name kostet am
+  // Telefon mehr als ein fehlender.
+  ensureColumns(db, 'leads', {
+    anruf_versuche: 'INTEGER DEFAULT 0',
+    anruf_ergebnis: 'TEXT',
+    gf_vertrauen: 'TEXT',
+    gf_quelle: 'TEXT',
+    gf_konflikt: 'TEXT',
+    // Nicht-Betriebe (Kammer, Innung, Großhandel) bleiben im Bestand, fliegen
+    // aber aus der Anrufliste. Löschen wäre falsch: Beim nächsten Scrape kämen
+    // sie wieder, und dann wüsste niemand mehr, warum sie schon mal weg waren.
+    kein_betrieb: 'INTEGER DEFAULT 0',
+    kein_betrieb_grund: 'TEXT',
+    tel_problem: 'TEXT',
+    // Zentrale (Maps) und Impressum-Nummer widersprechen sich → eine von beiden
+    // ist veraltet. Das sieht man nur, wenn man es festhält.
+    tel_konflikt: 'TEXT',
+    qualitaet_geprueft_at: 'TEXT',
+  });
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_leads_kein_betrieb ON leads(kein_betrieb);
+    CREATE INDEX IF NOT EXISTS idx_leads_anruf_versuche ON leads(anruf_versuche);
+    CREATE INDEX IF NOT EXISTS idx_leads_gf_vertrauen ON leads(gf_vertrauen);
+  `);
+
   // Nachrüst-Spalten für bestehende Installationen (kein Datenverlust).
   ensureColumns(db, 'email_templates', {
     category: 'TEXT',
@@ -387,6 +422,12 @@ function initSchema(db: Database.Database) {
     scheduled_id: 'TEXT',
     campaign: 'TEXT',
     track: "TEXT DEFAULT 'voice_agent'",
+    // A/B-Test: 'A' = mit personalisiertem Satz, 'B' = Vorlage unveraendert.
+    // Die Spalte wurde beim Einbau des Tests in INSERT und Auswertung benutzt,
+    // aber nie angelegt. Auf Datenbanken ohne sie ist damit JEDER Versand
+    // abgestuerzt – und weil erst gesendet und danach protokolliert wurde, ging
+    // die Mail raus und wurde nirgends vermerkt.
+    ab_gruppe: 'TEXT',
     // ── Brevo-verifizierter Zustellstatus (Quelle der Wahrheit statt Schätzung) ──
     // delivery_status: 'sent' (an Brevo übergeben, noch kein Event)
     //                | 'delivered' (Brevo bestätigt Zustellung)
