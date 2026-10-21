@@ -685,7 +685,37 @@ function kartenSymbol(klasse, beschriftung) {
  * ist auch die Stoppliste weg. Die Liste ist aber das Wichtigere.
  */
 function leafletDa() {
-  return typeof L !== 'undefined';
+  return typeof L !== 'undefined' && leafletStilDa();
+}
+
+/**
+ * Ist auch Leaflets Stylesheet angekommen?
+ *
+ * Das Skript und das Stylesheet kommen getrennt vom CDN, und manche
+ * Umgebungen lassen nur eines davon durch (strenge Content-Security-Policy,
+ * Werbeblocker, abgebrochener Download). Ohne die Stile stapelt Leaflet die
+ * Kacheln übereinander statt sie zu kacheln — das sieht aus wie ein Fehler
+ * im Programm, ist aber nur eine fehlende Datei. Lieber ehrlich sagen, was
+ * los ist, als eine zerfallene Karte zeigen.
+ *
+ * Geprüft wird an einer Regel, die nur aus Leaflets Stylesheet kommt:
+ * .leaflet-pane ist dort absolut positioniert.
+ */
+let stilGeprueft = null;
+
+function leafletStilDa() {
+  if (stilGeprueft !== null) return stilGeprueft;
+  try {
+    const probe = document.createElement('div');
+    probe.className = 'leaflet-pane';
+    probe.style.cssText = 'visibility:hidden;pointer-events:none';
+    document.body.appendChild(probe);
+    stilGeprueft = getComputedStyle(probe).position === 'absolute';
+    probe.remove();
+  } catch {
+    stilGeprueft = false;
+  }
+  return stilGeprueft;
 }
 
 function zeichneKarte() {
@@ -759,9 +789,13 @@ function zeichneKarte() {
 function karteVorbereiten() {
   if (!leafletDa()) {
     $('#karte').innerHTML =
-      '<p style="padding:16px">Die Kartenbibliothek konnte nicht geladen werden ' +
-      '(kein Netz oder CDN gesperrt). Die Tour unter <strong>Tour</strong> ' +
-      'funktioniert weiter, auch die Navigationsknöpfe.</p>';
+      '<div style="padding:20px">' +
+      '<p><strong>Die Karte lässt sich hier nicht laden.</strong></p>' +
+      '<p>Die Kartenbibliothek kommt von einem fremden Server, und der ist in ' +
+      'dieser Umgebung gesperrt — oder es ist gerade kein Netz da.</p>' +
+      '<p>Alles Übrige funktioniert: die Tagesliste unter <strong>Tour</strong>, ' +
+      'das Abhaken, die Notizen und die Navigationsknöpfe.</p>' +
+      '</div>';
     return;
   }
   if (zustand.karte) {
