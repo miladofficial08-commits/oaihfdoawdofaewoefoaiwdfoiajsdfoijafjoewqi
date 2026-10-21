@@ -49,7 +49,7 @@ export const config = {
   // ── Startadresse (Betriebssitz) ────────────────────────────────────────────
   // Die Hausnummer stand in der Aufgabenstellung nicht eindeutig drin, deshalb
   // wird die Adresse beim Import geokodiert und ist in der App überschreibbar.
-  startAdresse: process.env.START_ADRESSE || 'Dillenburger Weg 1, 40229 Düsseldorf',
+  startAdresse: process.env.START_ADRESSE || 'Dillenburger Weg 17, 40229 Düsseldorf',
   /**
    * Nur Rückfalloption, wenn das Geocoding nicht erreichbar ist: Mittelpunkt
    * von Düsseldorf-Eller, nicht die Hausnummer selbst. Die App zeigt an,

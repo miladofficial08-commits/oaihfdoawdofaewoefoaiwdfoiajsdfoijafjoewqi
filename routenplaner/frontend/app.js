@@ -267,6 +267,11 @@ async function statistikLaden() {
           ? 'noch nicht bestätigt, Mittelpunkt Eller'
           : `Quelle: ${s.start.quelle}`);
       if (!$('#start-adresse').value) $('#start-adresse').value = s.start.adresse;
+      if (!$('#gen-adresse').value) {
+        // Bei noch unbestätigtem Startpunkt die Vorgabe aus der Konfiguration
+        // stehen lassen, statt den Eller-Mittelpunkt als Adresse auszugeben.
+        $('#gen-adresse').value = s.start.quelle === 'fallback' ? '' : s.start.adresse;
+      }
     }
     const zusatz = s.tour
       ? `${s.tour.tage} Tage · ${s.tour.stopps} Stopps · ${s.tour.strecke_text}`
@@ -750,6 +755,175 @@ function detailOeffnen(id) {
   });
 }
 
+/* ── Generieren: ein Knopf für alles ───────────────────────────────────── */
+
+async function schluesselStandLaden() {
+  try {
+    const info = await api('/api/google-key');
+    const el = $('#key-status');
+    if (!info.gesetzt) {
+      el.textContent =
+        'Kein Schlüssel hinterlegt. Ohne ihn läuft alles über OpenStreetMap — kostenlos, ' +
+        'aber nicht vollständig.';
+      return;
+    }
+    el.textContent =
+      info.quelle === 'umgebung'
+        ? `Schlüssel kommt aus den Railway-Variablen (endet auf …${info.endet_auf}).`
+        : `Schlüssel hinterlegt (endet auf …${info.endet_auf}).`;
+  } catch {
+    $('#key-status').textContent = 'Schlüsselstand nicht abrufbar.';
+  }
+}
+
+async function schluesselSpeichern() {
+  const feld = $('#gen-key');
+  const knopf = $('#knopf-key-speichern');
+  if (!feld.value.trim()) {
+    melde('Erst den Schlüssel einfügen.', true);
+    return;
+  }
+  knopf.disabled = true;
+  $('#key-status').textContent = 'Wird bei Google geprüft …';
+  try {
+    const antwort = await api('/api/google-key', {
+      method: 'POST',
+      body: { key: feld.value.trim() },
+    });
+    // Das Feld sofort leeren: der Schlüssel liegt jetzt im Backend, im
+    // Browser muss er nicht noch einmal herumstehen.
+    feld.value = '';
+    const p = antwort.pruefung || {};
+    $('#key-status').textContent = p.ok
+      ? `${p.meldung}${p.beispiele && p.beispiele.length ? ' Beispiel: ' + p.beispiele[0] : ''}`
+      : `Schlüssel gespeichert, aber die Probeanfrage schlug fehl: ${p.meldung || 'unbekannt'}`;
+    melde(p.ok ? 'Schlüssel funktioniert.' : 'Schlüssel gespeichert, aber ungeprüft.', !p.ok);
+    kostenSchaetzenGen();
+  } catch (err) {
+    $('#key-status').textContent = `Nicht gespeichert: ${err.message}`;
+    melde(err.message, true);
+  } finally {
+    knopf.disabled = false;
+  }
+}
+
+async function schluesselLoeschen() {
+  try {
+    await api('/api/google-key', { method: 'POST', body: { key: null } });
+    melde('Schlüssel entfernt.');
+    schluesselStandLaden();
+  } catch (err) {
+    melde(err.message, true);
+  }
+}
+
+async function kostenSchaetzenGen() {
+  const el = $('#gen-kosten');
+  const testlauf = $('#gen-testlauf').checked;
+  const radius = testlauf ? 1.5 : Number($('#gen-radius').value);
+  const zelle = testlauf ? 1000 : 700;
+  let mitGoogle = false;
+  try {
+    mitGoogle = (await api('/api/google-key')).gesetzt;
+  } catch {
+    /* dann eben ohne Angabe */
+  }
+  if (!mitGoogle) {
+    el.textContent =
+      'Läuft nur über OpenStreetMap — kostenlos. Für Vollständigkeit oben einen Google-Schlüssel hinterlegen.';
+    return;
+  }
+  try {
+    const s = await api(`/api/import/kosten?radiusKm=${radius}&zellRadiusM=${zelle}`);
+    const k = s.google_kosten_usd_schaetzung;
+    el.textContent =
+      `${testlauf ? 'Testlauf: ' : ''}etwa ${s.google_anfragen} Google-Anfragen, grob ` +
+      `${k.von}–${k.bis} USD. ${k.hinweis}`;
+  } catch {
+    el.textContent = 'Kosten konnten nicht geschätzt werden.';
+  }
+}
+
+async function generieren() {
+  const knopf = $('#knopf-generieren');
+  const testlauf = $('#gen-testlauf').checked;
+  let mitGoogle = false;
+  try {
+    mitGoogle = (await api('/api/google-key')).gesetzt;
+  } catch {
+    /* ohne Schlüsselstand einfach nur OSM */
+  }
+
+  // Beim großen Lauf mit Google einmal nachfragen: das kostet echtes Geld,
+  // und ein versehentlicher Klick auf 12 km wäre teuer.
+  if (mitGoogle && !testlauf) {
+    const text = $('#gen-kosten').textContent;
+    if (!window.confirm(`Jetzt mit Google-Abfrage starten?\n\n${text}`)) return;
+  }
+
+  knopf.disabled = true;
+  knopf.textContent = 'Läuft …';
+  $('#gen-log').hidden = false;
+  $('#gen-log').textContent = 'Startet …';
+  try {
+    await api('/api/generieren', {
+      method: 'POST',
+      body: {
+        startAdresse: $('#gen-adresse').value || undefined,
+        radiusKm: Number($('#gen-radius').value),
+        mitGoogle,
+        stoppsProTag: Number($('#gen-pro-tag').value),
+        kategorien: $$('#kategorie-liste input:checked').map(i => i.value),
+        testlauf,
+      },
+    });
+    generierenVerfolgen();
+  } catch (err) {
+    melde(`Nicht gestartet: ${err.message}`, true);
+    $('#gen-log').textContent = err.message;
+    knopf.disabled = false;
+    knopf.textContent = 'Generieren';
+  }
+}
+
+let genUhr = null;
+
+function generierenVerfolgen() {
+  clearInterval(genUhr);
+  genUhr = setInterval(async () => {
+    try {
+      const stand = await api('/api/import/status');
+      $('#gen-log').textContent = [
+        ...stand.meldungen,
+        '',
+        `Gefunden: ${stand.gefunden} · neu: ${stand.neu} · aufgefrischt: ${stand.aktualisiert} · zusammengeführt: ${stand.zusammengefuehrt}`,
+        ...(stand.google_anfragen ? [`Google-Anfragen: ${stand.google_anfragen}`] : []),
+        ...(stand.fehler.length ? ['', 'Hinweise und Fehler:', ...stand.fehler] : []),
+      ].join('\n');
+      $('#gen-log').scrollTop = $('#gen-log').scrollHeight;
+      if (stand.laeuft) return;
+
+      clearInterval(genUhr);
+      $('#knopf-generieren').disabled = false;
+      $('#knopf-generieren').textContent = 'Generieren';
+      await tourLaden({ still: true });
+      await statistikLaden();
+      if (stand.tour) {
+        melde(
+          `Fertig: ${stand.tour.tage} Tage, ${stand.tour.stopps} Stopps, ${meterText(stand.tour.strecke_m)}.`,
+        );
+        ansichtWechseln('tour');
+      } else {
+        melde('Durchgang beendet — es kam keine Tour heraus, siehe Protokoll.', true);
+      }
+    } catch {
+      clearInterval(genUhr);
+      $('#knopf-generieren').disabled = false;
+      $('#knopf-generieren').textContent = 'Generieren';
+    }
+  }, 2000);
+}
+
 /* ── Import und Tourbau ────────────────────────────────────────────────── */
 
 let importUhr = null;
@@ -1007,6 +1181,12 @@ function ereignisseBinden() {
   $('#import-radius').addEventListener('change', kostenSchaetzen);
   $('#import-zelle').addEventListener('change', kostenSchaetzen);
 
+  $('#knopf-generieren').addEventListener('click', generieren);
+  $('#knopf-key-speichern').addEventListener('click', schluesselSpeichern);
+  $('#knopf-key-loeschen').addEventListener('click', schluesselLoeschen);
+  $('#gen-radius').addEventListener('change', kostenSchaetzenGen);
+  $('#gen-testlauf').addEventListener('change', kostenSchaetzenGen);
+
   $('#knopf-import').addEventListener('click', importStarten);
   $('#knopf-tour-bauen').addEventListener('click', tourBauen);
 
@@ -1119,6 +1299,8 @@ async function starten() {
     return;
   }
   await infoLaden();
+  await schluesselStandLaden();
+  await kostenSchaetzenGen();
   await warteschlangeSenden({ still: true });
   await tourLaden({ still: true });
   await statistikLaden();
@@ -1126,9 +1308,15 @@ async function starten() {
   try {
     const stand = await api('/api/import/status');
     if (stand.laeuft) {
+      // Beides anzeigen: man weiß von außen nicht, über welchen der beiden
+      // Knöpfe der Lauf gestartet wurde.
       $('#import-log').hidden = false;
+      $('#gen-log').hidden = false;
       $('#knopf-import').disabled = true;
+      $('#knopf-generieren').disabled = true;
+      $('#knopf-generieren').textContent = 'Läuft …';
       importVerfolgen();
+      generierenVerfolgen();
     }
   } catch {
     /* egal */

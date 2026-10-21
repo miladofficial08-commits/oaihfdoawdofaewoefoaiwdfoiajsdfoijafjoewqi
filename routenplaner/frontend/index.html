@@ -94,11 +94,60 @@
 
   <!-- ── Daten ────────────────────────────────────────────────────────── -->
   <section id="ansicht-daten" class="ansicht" hidden>
+
+    <!-- Der Ein-Knopf-Weg: Schlüssel rein, Generieren, fertig. Alles
+         darunter ist für den Fall, dass man einzelne Schritte steuern will. -->
+    <div class="karte">
+      <h2>Alles generieren</h2>
+      <p class="klein">
+        Startpunkt setzen, Praxen laden und Tour bauen — in einem Durchgang.
+      </p>
+
+      <label>Google-API-Schlüssel <span class="klein">(optional, für Vollständigkeit)</span>
+        <input type="password" id="gen-key" autocomplete="off" placeholder="AIza…">
+      </label>
+      <div class="knopf-reihe">
+        <button id="knopf-key-speichern" class="knopf leise" type="button">Schlüssel prüfen &amp; merken</button>
+        <button id="knopf-key-loeschen" class="knopf leise" type="button">Schlüssel entfernen</button>
+      </div>
+      <p id="key-status" class="hinweis">Wird geladen …</p>
+
+      <label>Startadresse
+        <input type="text" id="gen-adresse" placeholder="Dillenburger Weg 17, 40229 Düsseldorf">
+      </label>
+
+      <label>Umkreis
+        <select id="gen-radius">
+          <option value="3">3 km – nur Eller und direkt angrenzend</option>
+          <option value="5">5 km – Eller, Vennhausen, Lierenfeld, Wersten, Oberbilk</option>
+          <option value="6" selected>6 km – dazu Gerresheim, Benrath-Nord, Flingern</option>
+          <option value="8">8 km – halbes Düsseldorf</option>
+          <option value="12">12 km – ganz Düsseldorf</option>
+        </select>
+      </label>
+
+      <label>Stopps pro Tag
+        <input type="number" id="gen-pro-tag" min="3" max="60" value="18">
+      </label>
+
+      <label class="schalter">
+        <input type="checkbox" id="gen-testlauf">
+        <span>Erst ein Testlauf
+          <span class="klein">1,5 km Umkreis, grobes Raster — kostet bei Google ein paar Cent
+          statt zweistelliger Beträge. Zeigt trotzdem, ob die ganze Kette läuft.</span></span>
+      </label>
+
+      <p id="gen-kosten" class="hinweis">–</p>
+
+      <button id="knopf-generieren" class="knopf gross">Generieren</button>
+      <pre id="gen-log" class="protokoll" hidden></pre>
+    </div>
+
     <div class="karte">
       <h2>Startpunkt</h2>
       <p class="klein" id="start-anzeige">–</p>
       <label>Adresse des Betriebs
-        <input type="text" id="start-adresse" placeholder="Dillenburger Weg 1, 40229 Düsseldorf">
+        <input type="text" id="start-adresse" placeholder="Dillenburger Weg 17, 40229 Düsseldorf">
       </label>
       <div class="knopf-reihe">
         <button id="knopf-start-speichern" class="knopf" type="button">Adresse suchen &amp; übernehmen</button>
@@ -111,7 +160,7 @@
     </div>
 
     <div class="karte">
-      <h2>Praxen laden</h2>
+      <h2>Praxen laden <span class="klein">(Einzelschritt)</span></h2>
       <label>Umkreis
         <select id="import-radius">
           <option value="3">3 km – nur Eller und direkt angrenzend</option>
@@ -141,7 +190,7 @@
     </div>
 
     <div class="karte">
-      <h2>Tour bauen</h2>
+      <h2>Tour bauen <span class="klein">(Einzelschritt)</span></h2>
       <fieldset id="kategorie-liste">
         <legend>Wen besuchen wir?</legend>
       </fieldset>

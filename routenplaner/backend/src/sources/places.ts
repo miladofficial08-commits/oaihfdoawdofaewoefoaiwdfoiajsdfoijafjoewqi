@@ -12,8 +12,8 @@
 // zerlegt. /api/import/kosten rechnet die Anfragen vorher aus, damit niemand
 // versehentlich ein größeres Gebiet abfragt als gedacht.
 
-import { config } from '../config';
 import { haversineM, type Punkt } from '../geo';
+import { googleSchluessel } from '../google-key';
 import type { Kategorie, PraxisEingang } from '../typen';
 
 const ENDPOINT = 'https://places.googleapis.com/v1/places:searchNearby';
@@ -143,8 +143,11 @@ export async function placesImport(
   zellRadiusM = 700,
   melde: (text: string) => void = () => {},
 ): Promise<PlacesErgebnis> {
-  if (!config.googlePlacesKey) {
-    throw new Error('GOOGLE_PLACES_KEY ist nicht gesetzt – Google-Import nicht möglich.');
+  const schluessel = googleSchluessel();
+  if (!schluessel) {
+    throw new Error(
+      'Kein Google-Schlüssel hinterlegt – weder in der App eingegeben noch als GOOGLE_PLACES_KEY gesetzt.',
+    );
   }
   const gitter = zellen(mitte, radiusKm, zellRadiusM);
   const praxen = new Map<string, PraxisEingang>();
@@ -165,7 +168,7 @@ export async function placesImport(
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Goog-Api-Key': config.googlePlacesKey,
+            'X-Goog-Api-Key': schluessel,
             'X-Goog-FieldMask': FELDER,
           },
           body: JSON.stringify({
@@ -237,4 +240,80 @@ export async function placesImport(
     );
   }
   return { praxen: [...praxen.values()], anfragen, fehler, volle_zellen: volleZellen };
+}
+
+
+export interface SchluesselPruefung {
+  ok: boolean;
+  meldung: string;
+  /** Treffer dieser einen Probeanfrage – zeigt, dass wirklich Daten kommen. */
+  beispiele: string[];
+}
+
+/**
+ * Prüft den Schlüssel mit genau EINER Anfrage (Größenordnung 3 Cent).
+ *
+ * Grund für diese Funktion: Einen Schlüssel einzutippen und dann einen Lauf
+ * über mehrere hundert Anfragen zu starten, der an Zeile eins an einem
+ * Tippfehler scheitert, ist ärgerlich und kostet Vertrauen. Lieber vorher
+ * einmal anklopfen.
+ */
+export async function schluesselPruefen(mitte: Punkt): Promise<SchluesselPruefung> {
+  const schluessel = googleSchluessel();
+  if (!schluessel) {
+    return { ok: false, meldung: 'Kein Schlüssel hinterlegt.', beispiele: [] };
+  }
+  try {
+    const res = await fetch(ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': schluessel,
+        'X-Goog-FieldMask': 'places.displayName,places.shortFormattedAddress',
+      },
+      body: JSON.stringify({
+        includedTypes: ['doctor'],
+        maxResultCount: 5,
+        locationRestriction: {
+          circle: { center: { latitude: mitte.lat, longitude: mitte.lon }, radius: 1500 },
+        },
+        languageCode: 'de',
+        regionCode: 'DE',
+      }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!res.ok) {
+      const text = (await res.text()).slice(0, 300);
+      // Die häufigsten Fälle im Klartext, statt den Nutzer eine Google-
+      // Fehlermeldung auseinandernehmen zu lassen.
+      const rat =
+        res.status === 403
+          ? ' Meist: Places API (New) im Projekt nicht aktiviert, oder der Schlüssel ist auf Website-Referrer beschränkt – für einen Server-Aufruf muss die Beschränkung "keine" oder "IP-Adressen" sein.'
+          : res.status === 400
+            ? ' Meist ein Tippfehler im Schlüssel.'
+            : res.status === 429
+              ? ' Kontingent erschöpft.'
+              : '';
+      return { ok: false, meldung: `Google antwortete ${res.status}.${rat} ${text}`, beispiele: [] };
+    }
+    const daten = (await res.json()) as {
+      places?: Array<{ displayName?: { text?: string }; shortFormattedAddress?: string }>;
+    };
+    const beispiele = (daten.places ?? [])
+      .map(o => [o.displayName?.text, o.shortFormattedAddress].filter(Boolean).join(', '))
+      .filter(Boolean);
+    return {
+      ok: true,
+      meldung: beispiele.length
+        ? `Schlüssel funktioniert – ${beispiele.length} Treffer in der Probeanfrage.`
+        : 'Schlüssel funktioniert, die Probeanfrage lieferte allerdings keine Treffer.',
+      beispiele,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      meldung: `Google nicht erreichbar: ${err instanceof Error ? err.message : String(err)}`,
+      beispiele: [],
+    };
+  }
 }

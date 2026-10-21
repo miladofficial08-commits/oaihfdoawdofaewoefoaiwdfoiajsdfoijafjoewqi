@@ -19,7 +19,12 @@ import {
   type BesuchAenderung,
 } from './praxen-repo';
 import { importFortschritt, importStarten } from './import-job';
-import { anfragenSchaetzung } from './sources/places';
+import { anfragenSchaetzung, schluesselPruefen } from './sources/places';
+import {
+  googleSchluesselInfo,
+  googleSchluesselLoeschen,
+  googleSchluesselSetzen,
+} from './google-key';
 import {
   betriebssitzLesen,
   betriebssitzSetzen,
@@ -79,7 +84,7 @@ app.get('/api/info', async () => ({
   radius_km_standard: config.radiusKmDefault,
   stopps_pro_tag_standard: config.stoppsProTagDefault,
   passwort_erforderlich: Boolean(config.passwort),
-  google_verfuegbar: Boolean(config.googlePlacesKey),
+  google_verfuegbar: googleSchluesselInfo().gesetzt,
   datenbank_persistent: config.dbPersistent,
 }));
 
@@ -173,6 +178,77 @@ app.get<{ Querystring: { radiusKm?: string; zellRadiusM?: string } }>(
     };
   },
 );
+
+// ── Google-Schlüssel ────────────────────────────────────────────────────────
+//
+// Der Schlüssel lässt sich in der Oberfläche hinterlegen, weil der Weg über
+// die Railway-Variablen nicht immer offen ist. Er wird nie wieder
+// herausgegeben — die API sagt nur, ob einer da ist und worauf er endet.
+
+app.get('/api/google-key', async () => googleSchluesselInfo());
+
+app.post<{ Body: { key?: string | null } }>('/api/google-key', async (req, reply) => {
+  const key = req.body?.key;
+  if (key === null || key === '') {
+    googleSchluesselLoeschen();
+    return googleSchluesselInfo();
+  }
+  if (typeof key !== 'string' || key.trim().length < 20) {
+    return reply
+      .code(400)
+      .send({ fehler: 'Das sieht nicht nach einem Google-API-Schlüssel aus (zu kurz).' });
+  }
+  googleSchluesselSetzen(key);
+  // Direkt einmal anklopfen: lieber jetzt eine klare Fehlermeldung als
+  // mitten in einem Lauf über hunderte Anfragen.
+  const pruefung = await schluesselPruefen(betriebssitzLesen());
+  return { ...googleSchluesselInfo(), pruefung };
+});
+
+app.post('/api/google-key/pruefen', async () => schluesselPruefen(betriebssitzLesen()));
+
+// ── Generieren: Import und Tourbau in einem Durchgang ───────────────────────
+
+app.post<{
+  Body: {
+    startAdresse?: string;
+    radiusKm?: number;
+    mitGoogle?: boolean;
+    zellRadiusM?: number;
+    kategorien?: string[];
+    stoppsProTag?: number;
+    /**
+     * Probelauf: kleiner Radius, grobes Raster. Kostet bei Google ein paar
+     * Cent statt zweistelliger Beträge und zeigt trotzdem, ob die ganze
+     * Kette funktioniert.
+     */
+    testlauf?: boolean;
+  };
+}>('/api/generieren', async (req, reply) => {
+  const body = req.body ?? {};
+  if (importFortschritt().laeuft) {
+    return reply
+      .code(409)
+      .send({ fehler: 'Es läuft schon ein Durchgang.', stand: importFortschritt() });
+  }
+  const testlauf = body.testlauf === true;
+  const radiusKm = testlauf ? 1.5 : zahl(body.radiusKm, config.radiusKmDefault, 0.5, 30);
+  const kategorien = (body.kategorien ?? STANDARD_KATEGORIEN).filter(istKategorie);
+  if (kategorien.length === 0) {
+    return reply.code(400).send({ fehler: 'Mindestens eine Kategorie auswählen.' });
+  }
+  return importStarten({
+    radiusKm,
+    mitGoogle: body.mitGoogle === true,
+    zellRadiusM: testlauf ? 1000 : zahl(body.zellRadiusM, 700, 200, 3000),
+    startAdresse: body.startAdresse,
+    tour: {
+      kategorien,
+      radiusKm,
+      stoppsProTag: zahl(body.stoppsProTag, config.stoppsProTagDefault, 3, 60),
+    },
+  });
+});
 
 // ── Praxen & Besuche ────────────────────────────────────────────────────────
 

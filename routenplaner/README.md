@@ -65,16 +65,25 @@ dem eigenen Namen. Das merkt sich das Handy.
 
 ## Erster Lauf
 
-1. **Daten → Startpunkt**: Adresse prüfen und „Adresse suchen & übernehmen".
-   Steht man gerade davor, geht auch „Aktuellen Standort nehmen" — das ist
-   genauer als jeder Geocoder.
-   Die Hausnummer war in der Aufgabenstellung nicht eindeutig; bis sie
-   bestätigt ist, rechnet das System mit dem Mittelpunkt von Eller und sagt
-   das auch dazu.
-2. **Daten → Praxen laden**: Umkreis wählen, laden. Dauert mit OpenStreetMap
-   ein bis drei Minuten; das Fenster darf zu.
-3. **Daten → Tour bauen**: Kategorien ankreuzen, Stopps pro Tag setzen, bauen.
-4. **Tour**: Tag wählen, losfahren.
+Der kurze Weg: **Daten → Alles generieren**. Dort Google-Schlüssel eintragen
+(optional), Umkreis und Stopps pro Tag setzen, **Generieren** drücken. Das
+setzt den Startpunkt, lädt die Praxen und baut die Tour in einem Durchgang;
+am Ende springt die App in die Tour-Ansicht.
+
+**Vorher einmal den Testlauf anhaken.** Der nimmt 1,5 km Umkreis und ein
+grobes Raster — bei Google ein paar Cent statt zweistelliger Beträge. Wenn da
+eine plausible Tour herauskommt, funktioniert die ganze Kette, und der große
+Lauf ist kein Blindflug.
+
+Den Google-Schlüssel kann man entweder in Railway als `GOOGLE_PLACES_KEY`
+setzen oder direkt in der App eintragen. Der eingetragene gewinnt. Beim
+Speichern macht das Backend **eine** Probeanfrage und sagt sofort, ob der
+Schlüssel funktioniert — statt dass ein Lauf über hunderte Anfragen an einem
+Tippfehler scheitert. Der Schlüssel wird nie wieder herausgegeben, die API
+zeigt nur die letzten vier Zeichen.
+
+Wer die Schritte einzeln steuern will, findet sie darunter weiterhin als
+„Praxen laden" und „Tour bauen".
 
 Im Auto:
 - **Navigation** öffnet Google Maps für den einzelnen Stopp.
@@ -97,9 +106,21 @@ Praxis X?"), wird Lücken finden.
 Dagegen hilft der **Google-Places-Import**: Praktisch jede Praxis mit
 Google-Profil taucht dort auf. Das kostet Geld — bei 6 km Umkreis und 700 m
 Raster rund 435 Anfragen, grob 13–15 USD nach Listenpreis. Die App rechnet die
-Zahl vor dem Start aus (`Daten → Praxen laden → Google ankreuzen`). Beide
-Quellen werden über Adresse und Name zusammengeführt, es entstehen keine
-Dubletten. Dafür braucht es `GOOGLE_PLACES_KEY` in Railway.
+Zahl vor dem Start aus und fragt bei einem kostenpflichtigen Lauf noch einmal
+nach. Beide Quellen werden über Adresse und Name zusammengeführt, es entstehen
+keine Dubletten.
+
+Damit der Schlüssel serverseitig funktioniert, muss im Google-Cloud-Projekt
+die **Places API (New)** aktiviert sein, und der Schlüssel darf **nicht** auf
+HTTP-Referrer beschränkt sein (das ist eine Browser-Beschränkung; die Anfragen
+kommen hier vom Server). „Keine Beschränkung" oder eine IP-Beschränkung
+funktionieren. Sinnvoll ist es, den Schlüssel auf die Places API zu begrenzen
+und ein Tageslimit zu setzen.
+
+**Noch nicht vollständig: die amtliche Quelle.** Die lückenloseste Liste der
+Hausärzte ist die Arztsuche der KV Nordrhein (116117) — dort ist jede Praxis
+registriert, die Krankenfahrten überhaupt verordnen darf. Dieser Import ist
+noch nicht eingebaut.
 
 Kommt die Meldung „*n* Zellen waren mit 20 Treffern voll", war das Raster zu
 grob: dort hat Google mehr, als eine Anfrage zurückgibt. Dann mit 400 m noch
@@ -175,6 +196,9 @@ Alle Pfade außer `/health` und `/api/info` brauchen den Kopf
 | GET | `/api/info` | Kategorien, Statuswerte, Vorgaben |
 | GET | `/api/statistik` | Zahlen zu Praxen, Besuchen, aktueller Tour |
 | GET/POST | `/api/start` | Betriebssitz lesen / setzen (Adresse oder lat/lon) |
+| POST | `/api/generieren` | Startpunkt, Import und Tourbau in einem Durchgang |
+| GET/POST | `/api/google-key` | Schlüsselstand lesen / setzen / entfernen (nie im Klartext zurück) |
+| POST | `/api/google-key/pruefen` | Eine Probeanfrage, um den Schlüssel zu testen |
 | POST | `/api/import` | Import starten (läuft im Hintergrund) |
 | GET | `/api/import/status` | Fortschritt und Meldungen |
 | GET | `/api/import/kosten` | Google-Anfragen und grobe Kostenschätzung |

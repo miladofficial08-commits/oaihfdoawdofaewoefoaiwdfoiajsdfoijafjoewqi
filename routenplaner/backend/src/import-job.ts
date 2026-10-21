@@ -8,11 +8,16 @@
 // Es läuft bewusst nur ein Import gleichzeitig — zwei parallele Läufe würden
 // sich beim Zusammenführen gegenseitig in die Quere kommen.
 
-import { config } from './config';
+import { googleSchluessel } from './google-key';
 import { praxenSpeichern } from './praxen-repo';
 import { osmImport } from './sources/overpass';
 import { placesImport } from './sources/places';
-import { betriebssitzLesen, betriebssitzSetzen } from './routing/tour';
+import {
+  betriebssitzLesen,
+  betriebssitzSetzen,
+  tourBauen,
+  type TourBauParams,
+} from './routing/tour';
 
 export interface ImportFortschritt {
   laeuft: boolean;
@@ -26,6 +31,8 @@ export interface ImportFortschritt {
   fehler: string[];
   gestartet?: string;
   fertig?: string;
+  /** Ergebnis des angehängten Tourbaus, falls einer angefordert war. */
+  tour?: { tage: number; stopps: number; strecke_m: number; fahrzeit_s: number } | null;
 }
 
 const stand: ImportFortschritt = {
@@ -38,6 +45,7 @@ const stand: ImportFortschritt = {
   zusammengefuehrt: 0,
   google_anfragen: 0,
   fehler: [],
+  tour: null,
 };
 
 export function importFortschritt(): ImportFortschritt {
@@ -59,6 +67,12 @@ export interface ImportParams {
   zellRadiusM: number;
   /** Startadresse neu geokodieren, falls angegeben. */
   startAdresse?: string;
+  /**
+   * Wenn gesetzt, wird direkt im Anschluss die Tour gebaut. Das ist der
+   * "Generieren"-Knopf: ein Druck, und am Ende steht eine fahrbare Tour,
+   * statt dass man nach dem Import noch einen zweiten Schritt auslösen muss.
+   */
+  tour?: TourBauParams;
 }
 
 export function importStarten(params: ImportParams): ImportFortschritt {
@@ -73,6 +87,7 @@ export function importStarten(params: ImportParams): ImportFortschritt {
     zusammengefuehrt: 0,
     google_anfragen: 0,
     fehler: [],
+    tour: null,
     gestartet: new Date().toISOString(),
     fertig: undefined,
   });
@@ -123,11 +138,11 @@ async function lauf(params: ImportParams): Promise<void> {
     );
 
     if (params.mitGoogle) {
-      if (!config.googlePlacesKey) {
+      if (!googleSchluessel()) {
         stand.fehler.push(
-          'Google-Import angefordert, aber GOOGLE_PLACES_KEY ist nicht gesetzt.',
+          'Google-Import angefordert, aber es ist kein Schlüssel hinterlegt.',
         );
-        melde('Google übersprungen: kein Schlüssel gesetzt.');
+        melde('Google übersprungen: kein Schlüssel hinterlegt.');
       } else {
         melde('Google Places: Lauf beginnt (kostenpflichtig)');
         const google = await placesImport(sitz, params.radiusKm, params.zellRadiusM, melde);
@@ -148,7 +163,43 @@ async function lauf(params: ImportParams): Promise<void> {
       }
     }
 
-    melde('fertig');
+    if (params.tour) {
+      melde('Tour wird gebaut …');
+      try {
+        const tour = await tourBauen(params.tour);
+        stand.tour = {
+          tage: tour.tage.length,
+          stopps: tour.tage.reduce((n, t) => n + t.stopps.length, 0),
+          strecke_m: tour.strecke_m,
+          fahrzeit_s: tour.fahrzeit_s,
+        };
+        for (const h of tour.hinweise) stand.fehler.push(h);
+        melde(
+          `Tour fertig: ${stand.tour.tage} Tage, ${stand.tour.stopps} Stopps, ` +
+            `${(stand.tour.strecke_m / 1000).toFixed(1)} km`,
+        );
+      } catch (err) {
+        // Der Import war erfolgreich – das darf eine fehlgeschlagene
+        // Tourberechnung nicht entwerten. Die Praxen sind gespeichert, die
+        // Tour lässt sich einzeln noch einmal auslösen.
+        stand.fehler.push(
+          `Tourbau fehlgeschlagen: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        melde(
+          stand.gefunden > 0
+            ? 'Praxen sind da, aber der Tourbau ist fehlgeschlagen.'
+            : 'Keine Praxen eingesammelt – deshalb konnte auch keine Tour entstehen.',
+        );
+      }
+    }
+
+    // "fertig" darf nicht dranstehen, wenn nichts ankam. Sonst sucht man den
+    // Fehler später in der Tour statt beim Import.
+    if (stand.gefunden === 0 && stand.fehler.length > 0) {
+      melde('Durchgang beendet, aber es kam nichts an – siehe Fehler oben.');
+    } else {
+      melde('fertig');
+    }
   } finally {
     stand.laeuft = false;
     stand.fertig = new Date().toISOString();
