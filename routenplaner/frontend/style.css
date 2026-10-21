@@ -439,7 +439,9 @@ legend { font-size: .85rem; font-weight: 600; color: var(--text-leise); padding:
   overflow-y: auto;
 }
 
-.detail-karte { position: relative; }
+/* Beide Karten brauchen position:relative, sonst hängt der absolut
+   positionierte Schließen-Knopf an einem fremden Vorfahren. */
+.setup-karte, .detail-karte { position: relative; }
 
 .detail-zu {
   position: absolute;

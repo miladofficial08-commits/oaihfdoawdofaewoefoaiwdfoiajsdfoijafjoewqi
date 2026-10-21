@@ -15,15 +15,17 @@
 <!-- ── Einrichtung: ohne Backend-Adresse geht nichts ─────────────────────── -->
 <div id="setup" class="overlay" hidden>
   <form class="karte setup-karte" id="setup-form">
-    <h1>Einrichten</h1>
+    <button type="button" id="setup-zu" class="knopf leise detail-zu" aria-label="Schließen">✕</button>
+    <h1 class="detail-kopf">Backend verbinden</h1>
     <p class="hinweis">
-      Die Adresse des Backends auf Railway. Einmal eintragen, danach merkt sich
-      das Handy sie. Dauerhaft festnageln lässt sie sich in der Datei
-      <code>config.js</code> — dann erscheint dieser Dialog nie wieder.
+      Die Internetadresse deines Backends auf Railway — die, unter der es im
+      Browser erreichbar ist. Einmal eintragen, danach merkt sich das Handy sie.
+      Für alle Geräte auf einmal: in der Datei <code>config.js</code> bei
+      <code>backendUrl</code> eintragen.
     </p>
     <label>Backend-Adresse
-      <input type="url" id="setup-url" inputmode="url" autocomplete="url"
-             placeholder="https://xyz.up.railway.app">
+      <input type="text" id="setup-url" inputmode="url" autocomplete="url"
+             placeholder="xyz.up.railway.app">
     </label>
     <label>Dein Name <span class="klein">(steht später an den Besuchen)</span>
       <input type="text" id="setup-name" autocomplete="name" placeholder="z. B. Milad">
@@ -40,13 +42,10 @@
 
     <button type="submit" class="knopf gross">Verbinden</button>
     <p id="setup-fehler" class="fehler" hidden></p>
-
-    <p class="hinweis">
-      Noch kein Backend? Dann erst einmal anschauen:
+    <p class="klein">
+      Noch kein Backend? Dialog schließen — die Seite läuft dann weiter mit
+      Beispieldaten.
     </p>
-    <button type="button" id="knopf-demo" class="knopf leise gross">
-      Vorschau mit Beispieldaten öffnen
-    </button>
   </form>
 </div>
 
@@ -65,7 +64,7 @@
 <div id="demo-banner" class="demo-banner" hidden>
   <strong>Vorschau mit Beispieldaten.</strong>
   Diese Praxen sind erfunden. Abhaken und Notizen bleiben nur auf diesem Gerät.
-  <button type="button" id="knopf-demo-ende" class="knopf leise">Beenden</button>
+  <button type="button" id="knopf-demo-verbinden" class="knopf leise">Backend verbinden</button>
 </div>
 
 <nav class="reiter" role="tablist">

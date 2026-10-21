@@ -265,15 +265,18 @@ function demoStarten() {
   starten();
 }
 
-function demoBeenden() {
+/**
+ * Vorschau verlassen. Die Beispieldaten und alles, was darin abgehakt wurde,
+ * fliegen weg — sonst vermischten sie sich mit den echten Praxen.
+ */
+function demoVerlassen() {
   zustand.demo = false;
   zustand.tour = null;
+  zustand.warteschlange = [];
   lege(ABLAGE.demo, false);
   lege(ABLAGE.tour, null);
   lege(ABLAGE.warteschlange, []);
-  zustand.warteschlange = [];
   $('#demo-banner').hidden = true;
-  starten();
 }
 
 /* ── Meldungen ─────────────────────────────────────────────────────────── */
@@ -1229,9 +1232,55 @@ function einrichtungZeigen() {
   if (zustand.passwort) $('#setup-passwort-block').open = true;
 }
 
+/**
+ * Macht aus dem, was jemand eintippt, eine brauchbare Adresse: Leerzeichen
+ * weg, fehlendes https:// ergänzen, Schrägstrich am Ende abschneiden.
+ * "xyz.up.railway.app" soll funktionieren, ohne dass man darüber nachdenkt.
+ */
+function adresseAufraeumen(roh) {
+  let wert = String(roh || '').trim().replace(/\/+$/, '');
+  if (!wert) return '';
+  if (!/^https?:\/\//i.test(wert)) wert = 'https://' + wert;
+  return wert;
+}
+
+/**
+ * Sagt, was an einer Adresse nicht stimmt — oder null, wenn sie taugt.
+ *
+ * Nötig, weil adresseAufraeumen() ein fehlendes https:// ergänzt: aus einem
+ * Dateipfad wird dadurch eine formal gültige URL, die der Browser anstandslos
+ * schluckt und die dann in einer nichtssagenden Verbindungsmeldung endet.
+ */
+function adresseBeanstanden(url) {
+  let zerlegt;
+  try {
+    zerlegt = new URL(url);
+  } catch {
+    return 'Das ist keine gültige Internetadresse.';
+  }
+  const dateiEndung = /\.(js|mjs|html?|json|css|ts|md)$/i;
+  // Ein Dateiname steht hier mit Abstand am häufigsten drin, wenn es schiefgeht
+  // — mal als Pfad, mal ganz allein. "config.js" wird durch das ergänzte
+  // https:// sonst zu einem formal gültigen Hostnamen.
+  if (dateiEndung.test(zerlegt.hostname) || dateiEndung.test(zerlegt.pathname)) {
+    return (
+      'Das ist ein Dateiname, keine Server-Adresse. config.js bearbeitest du ' +
+      'im Repository; hier gehört die Railway-Adresse hin, z. B. xyz.up.railway.app.'
+    );
+  }
+  // localhost hat keinen Punkt, ist aber beim lokalen Entwickeln richtig.
+  if (!zerlegt.hostname.includes('.') && zerlegt.hostname !== 'localhost') {
+    return (
+      'Da fehlt die Domain. Gemeint ist die Adresse, unter der dein Backend ' +
+      'im Browser erreichbar ist — z. B. xyz.up.railway.app.'
+    );
+  }
+  return null;
+}
+
 async function einrichtungSpeichern(ereignis) {
   ereignis.preventDefault();
-  const url = $('#setup-url').value.trim().replace(/\/+$/, '');
+  const url = adresseAufraeumen($('#setup-url').value);
   const passwort = $('#setup-passwort').value;
   const name = $('#setup-name').value.trim();
   const fehlerFeld = $('#setup-fehler');
@@ -1239,7 +1288,14 @@ async function einrichtungSpeichern(ereignis) {
 
   if (!url) {
     fehlerFeld.textContent =
-      'Ohne Backend-Adresse geht es nur als Vorschau — Knopf unten.';
+      'Hier gehört die Internetadresse deines Backends hin, z. B. ' +
+      'xyz.up.railway.app. Abbrechen geht oben rechts.';
+    fehlerFeld.hidden = false;
+    return;
+  }
+  const beanstandung = adresseBeanstanden(url);
+  if (beanstandung) {
+    fehlerFeld.textContent = beanstandung;
     fehlerFeld.hidden = false;
     return;
   }
@@ -1265,6 +1321,8 @@ async function einrichtungSpeichern(ereignis) {
   lege(ABLAGE.url, url);
   lege(ABLAGE.passwort, passwort);
   lege(ABLAGE.name, name);
+  // Die Verbindung steht — ab jetzt echte Daten statt Beispiele.
+  demoVerlassen();
   $('#setup').hidden = true;
   await starten();
 }
@@ -1273,9 +1331,13 @@ async function einrichtungSpeichern(ereignis) {
 
 function ereignisseBinden() {
   $('#setup-form').addEventListener('submit', einrichtungSpeichern);
-  $('#knopf-demo').addEventListener('click', demoStarten);
-  $('#knopf-demo-ende').addEventListener('click', () => {
-    demoBeenden();
+  $('#setup-zu').addEventListener('click', () => {
+    $('#setup').hidden = true;
+    // Dialog weggeklickt und es gibt kein Backend: dann eben weiter in der
+    // Vorschau, statt den Nutzer vor einer leeren Seite stehen zu lassen.
+    if (!zustand.url && !zustand.demo) demoStarten();
+  });
+  $('#knopf-demo-verbinden').addEventListener('click', () => {
     einrichtungZeigen();
   });
   $('#knopf-einstellungen').addEventListener('click', () => ansichtWechseln('daten'));
@@ -1424,7 +1486,9 @@ function ereignisseBinden() {
   $('#knopf-warteschlange').addEventListener('click', () => warteschlangeSenden());
 
   $('#knopf-einst-speichern').addEventListener('click', async () => {
-    zustand.url = $('#einst-url').value.trim().replace(/\/+$/, '');
+    const neueUrl = adresseAufraeumen($('#einst-url').value);
+    if (neueUrl && zustand.demo) demoVerlassen();
+    zustand.url = neueUrl;
     zustand.passwort = $('#einst-passwort').value;
     zustand.name = $('#einst-name').value.trim();
     lege(ABLAGE.url, zustand.url);
@@ -1476,6 +1540,16 @@ async function starten() {
     : 'Ohne Namen steht an den Besuchen kein Bearbeiter.';
 
   warteschlangeAnzeigen();
+
+  // Ist keine Backend-Adresse eingerichtet, startet die Seite in der Vorschau,
+  // statt einen Dialog vor die Tür zu stellen. Wer die Seite aufmacht, will
+  // etwas sehen — nicht erst ein Formular ausfüllen. Der Weg zum echten
+  // Backend steht im Banner und unter Daten → Einstellungen.
+  if (!zustand.url && !zustand.demo) {
+    zustand.demo = true;
+    lege(ABLAGE.demo, true);
+  }
+
   $('#demo-banner').hidden = !zustand.demo;
 
   if (zustand.demo) {
