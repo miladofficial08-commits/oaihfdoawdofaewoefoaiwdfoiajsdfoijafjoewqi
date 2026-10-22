@@ -3,16 +3,19 @@
 // User-Agent. Beides hält diese Datei ein; die Startadresse wird außerdem in
 // den Einstellungen gecacht und nicht bei jedem Aufruf neu geschlagen.
 
-import { config } from '../config';
-import type { Punkt } from '../geo';
+import type { DienstKonfig } from './dienste';
+import type { Punkt } from './geo';
 
 export interface GeoTreffer extends Punkt {
   anzeigename: string;
 }
 
-export async function geokodieren(adresse: string): Promise<GeoTreffer | null> {
+export async function geokodieren(
+  adresse: string,
+  dienste: DienstKonfig,
+): Promise<GeoTreffer | null> {
   const url =
-    `${config.nominatimBase}/search?` +
+    `${dienste.nominatimBase}/search?` +
     new URLSearchParams({
       q: adresse,
       format: 'jsonv2',
@@ -22,7 +25,7 @@ export async function geokodieren(adresse: string): Promise<GeoTreffer | null> {
     }).toString();
 
   const res = await fetch(url, {
-    headers: { 'User-Agent': config.userAgent, Accept: 'application/json' },
+    headers: { 'User-Agent': dienste.userAgent, Accept: 'application/json' },
     signal: AbortSignal.timeout(30_000),
   });
   if (!res.ok) throw new Error(`Nominatim ${res.status}`);

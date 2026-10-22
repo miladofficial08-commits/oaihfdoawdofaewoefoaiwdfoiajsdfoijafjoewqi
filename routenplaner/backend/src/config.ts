@@ -3,6 +3,7 @@
 
 import * as path from 'path';
 import * as dotenv from 'dotenv';
+import type { DienstKonfig } from '../../shared/dienste';
 
 dotenv.config();
 
@@ -84,3 +85,16 @@ export const config = {
   /** Optional: schließt die Lücken, die OpenStreetMap bei Arztpraxen hat. */
   googlePlacesKey: process.env.GOOGLE_PLACES_KEY || '',
 } as const;
+
+
+/**
+ * Dieselben Werte in der Form, die das gemeinsame Paket erwartet. Die Logik
+ * dort kennt keine Umgebungsvariablen — sie bekommt alles übergeben.
+ */
+export const dienste: DienstKonfig = {
+  overpassEndpoints: config.overpassEndpoints as unknown as string[],
+  nominatimBase: config.nominatimBase,
+  osrmBase: config.osrmBase,
+  userAgent: config.userAgent,
+  googlePlacesKey: config.googlePlacesKey || undefined,
+};

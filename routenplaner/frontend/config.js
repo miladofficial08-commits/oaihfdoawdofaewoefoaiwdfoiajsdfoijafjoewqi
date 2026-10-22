@@ -8,10 +8,14 @@
  */
 window.PT_KONFIG = {
   /**
-   * Adresse des Backends, OHNE Schrägstrich am Ende.
+   * Adresse eines eigenen Backends, OHNE Schrägstrich am Ende.
    * Beispiel: 'https://routenplaner-production.up.railway.app'
    *
-   * Bleibt das leer, startet die Seite in der Vorschau mit Beispieldaten.
+   * LEER LASSEN für die Netlify-Variante: dann spricht die Seite die API
+   * unter /api auf derselben Adresse an, bedient von den Funktionen in
+   * netlify/functions. Kein zweiter Dienst, kein CORS, keine Einrichtung.
+   *
+   * Nur ausfüllen, wenn das Backend woanders läuft (etwa auf Railway).
    */
   backendUrl: '',
 

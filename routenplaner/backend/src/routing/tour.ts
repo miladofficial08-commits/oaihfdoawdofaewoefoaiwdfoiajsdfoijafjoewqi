@@ -9,13 +9,13 @@
 //    nichts: der Besuchsstand hängt an der Praxis, nicht an der Tour.
 
 import { getDb, leseEinstellung, setzeEinstellung } from '../db';
-import { config } from '../config';
-import { haversineM, type Punkt } from '../geo';
+import { config, dienste } from '../config';
+import { haversineM, type Punkt } from '../../../shared/geo';
 import { praxenLesen } from '../praxen-repo';
-import { geokodieren } from '../sources/nominatim';
-import type { PraxisAusgang } from '../typen';
-import { fahrzeitMatrix, routeAbfahren } from './osrm';
-import { gruppiereStopps, optimiere, sweepTage, type Stopp } from './optimize';
+import { geokodieren } from '../../../shared/nominatim';
+import type { PraxisAusgang } from '../../../shared/typen';
+import { fahrzeitMatrix, routeAbfahren } from '../../../shared/osrm';
+import { gruppiereStopps, optimiere, sweepTage, type Stopp } from '../../../shared/optimize';
 
 export interface Betriebssitz extends Punkt {
   adresse: string;
@@ -59,7 +59,7 @@ export function betriebssitzSetzenManuell(adresse: string, lat: number, lon: num
  * komplette Tour an der falschen Stelle aufhängen.
  */
 export async function betriebssitzSetzen(adresse: string): Promise<Betriebssitz> {
-  const treffer = await geokodieren(adresse);
+  const treffer = await geokodieren(adresse, dienste);
   if (!treffer) throw new Error(`Adresse nicht gefunden: ${adresse}`);
   setzeEinstellung('start_adresse', treffer.anzeigename);
   setzeEinstellung('start_lat', String(treffer.lat));
@@ -151,7 +151,7 @@ export async function tourBauen(params: TourBauParams): Promise<TourAusgang> {
   for (let t = 0; t < tage.length; t++) {
     const tagStopps = tage[t];
     const punkte: Punkt[] = [start, ...tagStopps];
-    const matrix = await fahrzeitMatrix(punkte);
+    const matrix = await fahrzeitMatrix(punkte, dienste);
     matrixQuellen.add(matrix.quelle);
     if (matrix.hinweis) hinweise.push(`Tag ${t + 1}: ${matrix.hinweis}`);
 
@@ -161,7 +161,7 @@ export async function tourBauen(params: TourBauParams): Promise<TourAusgang> {
 
     // folge enthält [0, …Stopps…, 0]. Für die Fahrt zählt genau das.
     const geordnet = folge.map(i => punkte[i]);
-    const gefahren = await routeAbfahren(geordnet);
+    const gefahren = await routeAbfahren(geordnet, dienste);
 
     const stoppFolge = folge.slice(1, -1); // ohne Start und Rückkehr
     const stoppListe = stoppFolge.map((idx, pos) => ({
@@ -474,12 +474,12 @@ export async function weiterAbHier(
   // zuletzt der Betrieb als festes Ziel.
   const punkte: Punkt[] = [position, ...offen, heim];
   const zielIdx = punkte.length - 1;
-  const matrix = await fahrzeitMatrix(punkte);
+  const matrix = await fahrzeitMatrix(punkte, dienste);
   const mitte = offen.map((_, i) => i + 1);
   const { folge } = optimiere(matrix.dauern, 0, zielIdx, mitte);
 
   const geordnet = folge.map(i => punkte[i]);
-  const gefahren = await routeAbfahren(geordnet);
+  const gefahren = await routeAbfahren(geordnet, dienste);
 
   const stoppFolge = folge.slice(1, -1);
   const neueStopps = stoppFolge.map((idx, pos) => ({

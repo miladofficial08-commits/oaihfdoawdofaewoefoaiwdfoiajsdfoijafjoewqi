@@ -1,0 +1,64 @@
+# Netlify baut hier beides: die Seite und die API.
+#
+# Im Netlify-Dienst einstellen:
+#   Base directory:    routenplaner
+#   Build command:     npm install
+#   Publish directory: routenplaner/frontend
+#   Branch to deploy:  claude/practical-thompson-t49wh4
+#
+# Damit braucht es keinen zweiten Dienst und kein Railway: die Funktionen
+# übernehmen, was dort der Server tat, und Netlify Blobs ersetzt die Datenbank.
+
+[build]
+  base = "routenplaner"
+  publish = "frontend"
+  command = "npm install"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# Der lange Import läuft als Hintergrundfunktion (bis 15 Minuten) und
+# antwortet sofort mit 202. Deshalb eine eigene Weiterleitung vor der
+# allgemeinen /api/*-Regel — die Reihenfolge entscheidet.
+[[redirects]]
+  from = "/api/import"
+  to = "/.netlify/functions/import-background"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/generieren"
+  to = "/.netlify/functions/import-background"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+  force = true
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    # Die Seite lädt Leaflet vom CDN, Kartenkacheln von OpenStreetMap und
+    # spricht mit der eigenen API unter /api — alles gleiche Herkunft, daher
+    # kein CORS und kein offenes connect-src mehr nötig.
+    Content-Security-Policy = "default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; img-src 'self' data: https://*.tile.openstreetmap.org https://cdnjs.cloudflare.com; connect-src 'self' https://*.up.railway.app; frame-ancestors 'none'; base-uri 'self'; form-action 'none'"
+    Referrer-Policy = "no-referrer"
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Permissions-Policy = "geolocation=(self), camera=(), microphone=(), payment=()"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    # Die Seite selbst nie aus dem Cache: sonst sieht man nach einem Deploy
+    # tagelang die alte Fassung.
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/config.js"
+  [headers.values]
+    Cache-Control = "no-cache"

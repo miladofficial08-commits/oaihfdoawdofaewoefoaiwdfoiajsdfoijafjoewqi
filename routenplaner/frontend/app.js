@@ -99,16 +99,28 @@ const $$ = sel => Array.from(document.querySelectorAll(sel));
 
 /* ── Netz ──────────────────────────────────────────────────────────────── */
 
+/**
+ * Wohin die Anfragen gehen.
+ *
+ * Leer bedeutet "gleiche Herkunft": auf Netlify liegt die API unter /api
+ * neben der Seite, bedient von den Funktionen in netlify/functions. Dann
+ * braucht es keine Adresse, kein CORS und keine Einrichtung — Seite
+ * aufmachen reicht. Eine eingetragene Adresse zeigt dagegen auf einen
+ * eigenen Server (etwa Railway) und gewinnt.
+ */
+function basisUrl() {
+  return zustand.url ? zustand.url.replace(/\/+$/, '') : '';
+}
+
 async function api(pfad, optionen = {}) {
   // Der Demo-Modus hat kein Backend. Statt überall Sonderfälle zu verteilen,
   // werden die wenigen gebrauchten Pfade hier beantwortet.
   if (zustand.demo) return demoAntwort(pfad, optionen);
-  if (!zustand.url) throw new Error('Keine Backend-Adresse eingerichtet.');
   const kopf = { ...(optionen.headers || {}) };
   if (zustand.passwort) kopf['X-Passwort'] = zustand.passwort;
   if (optionen.body) kopf['Content-Type'] = 'application/json';
 
-  const antwort = await fetch(zustand.url.replace(/\/+$/, '') + pfad, {
+  const antwort = await fetch(basisUrl() + pfad, {
     ...optionen,
     headers: kopf,
     body: optionen.body ? JSON.stringify(optionen.body) : undefined,
@@ -280,6 +292,26 @@ function demoVerlassen() {
 }
 
 /**
+ * Antwortet eine API? Geprüft wird /api/info, weil der Pfad ohne Passwort
+ * auskommt — sonst sähe ein gesetztes Passwort wie ein fehlendes Backend aus.
+ */
+async function apiErreichbar() {
+  try {
+    const antwort = await fetch(basisUrl() + '/api/info', {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!antwort.ok) return false;
+    const typ = antwort.headers.get('content-type') || '';
+    // Netlify liefert bei fehlender Funktion die index.html aus. Ohne diese
+    // Prüfung hielte die Seite ihre eigene HTML-Seite für eine API-Antwort.
+    return typ.includes('application/json');
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Zustand ohne Backend und ohne Vorschau. Lieber eine klare Ansage als eine
  * leere Seite, bei der man rätselt, ob etwas kaputt ist.
  */
@@ -289,10 +321,12 @@ function zeichneKeinBackend() {
   $('#stopp-liste').innerHTML = '';
   $('#tour-leer').innerHTML =
     '<h2>Kein Backend verbunden</h2>' +
-    '<p>Diese Seite zeigt nur echte Daten, und die kommen aus dem Backend auf ' +
-    'Railway. Solange keines verbunden ist, gibt es hier nichts zu sehen.</p>' +
-    '<p class="klein">Adresse eintragen in <code>config.js</code> bei ' +
-    '<code>backendUrl</code>, oder einmalig für dieses Gerät:</p>' +
+    '<p>Diese Seite zeigt nur echte Daten, und die kommen aus der API. ' +
+    'Unter <code>/api</code> auf dieser Seite antwortet gerade keine — die ' +
+    'Netlify-Funktionen sind entweder noch nicht ausgeliefert oder beim Bauen ' +
+    'gescheitert (im Netlify-Protokoll unter "Deploys" nachsehen).</p>' +
+    '<p class="klein">Läuft die API woanders, etwa auf Railway, hier die ' +
+    'Adresse eintragen:</p>' +
     '<button type="button" class="knopf gross" id="knopf-kein-backend">Backend verbinden</button>';
   const knopf = $('#knopf-kein-backend');
   if (knopf) knopf.addEventListener('click', einrichtungZeigen);
@@ -1595,27 +1629,30 @@ async function starten() {
 
   warteschlangeAnzeigen();
 
-  // Eine Backend-Adresse schlägt die Vorschau — immer und ohne Nachfrage.
-  // Ohne diese Zeile bliebe ein Gerät, das einmal in der Vorschau war, auch
-  // nach dem Einrichten des Backends bei den Beispieldaten hängen: das
-  // Merkmal steht im Speicher des Geräts und überlebt jeden Seitenaufruf.
+  // Eine eingetragene Backend-Adresse schlägt die Vorschau — immer und ohne
+  // Nachfrage. Ohne diese Zeile bliebe ein Gerät, das einmal in der Vorschau
+  // war, auch nach dem Einrichten des Backends bei den Beispieldaten hängen:
+  // das Merkmal steht im Speicher des Geräts und überlebt jeden Aufruf.
   if (zustand.url && zustand.demo) demoVerlassen();
 
-  // Ohne Backend-Adresse: Vorschau statt Dialog — wer die Seite aufmacht,
-  // will etwas sehen. Wer das nicht will, setzt in config.js
-  // demoErlauben auf false; dann bleibt die Seite lieber leer als falsch.
-  if (!zustand.url && !zustand.demo && KONFIG.demoErlauben !== false) {
-    zustand.demo = true;
-    lege(ABLAGE.demo, true);
+  // Ist gar keine Vorschau im Gang, zuerst prüfen, ob eine API antwortet —
+  // auf Netlify liegt sie unter /api neben der Seite, ganz ohne Einrichtung.
+  if (!zustand.demo) {
+    const erreichbar = await apiErreichbar();
+    if (!erreichbar) {
+      if (KONFIG.demoErlauben === false) {
+        $('#demo-banner').hidden = true;
+        zeichneKeinBackend();
+        return;
+      }
+      // Nichts erreichbar und Vorschau erlaubt: lieber etwas zeigen als eine
+      // leere Seite.
+      zustand.demo = true;
+      lege(ABLAGE.demo, true);
+    }
   }
 
   $('#demo-banner').hidden = !zustand.demo;
-
-  // Kein Backend und keine Vorschau erlaubt: ehrlich sagen, was fehlt.
-  if (!zustand.url && !zustand.demo) {
-    zeichneKeinBackend();
-    return;
-  }
 
   if (zustand.demo) {
     // In der Vorschau gibt es nichts zu senden und nichts nachzuladen.
@@ -1630,10 +1667,9 @@ async function starten() {
 
   zeichneTour();
 
-  if (!zustand.url) {
-    einrichtungZeigen();
-    return;
-  }
+  // Kein Dialog mehr an dieser Stelle: eine leere Adresse ist seit der
+  // Netlify-Variante kein Mangel, sondern bedeutet "API unter /api auf
+  // dieser Seite". Dass dort wirklich etwas antwortet, wurde oben geprüft.
   await infoLaden();
   await schluesselStandLaden();
   await kostenSchaetzenGen();

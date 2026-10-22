@@ -10,8 +10,8 @@
 // Für Dauerbetrieb lohnt ein eigener OSRM-Container (OSRM_BASE umstellen);
 // dann fallen Drosselung und Größengrenze weg.
 
-import { config } from '../config';
-import { haversineM, type Punkt } from '../geo';
+import type { DienstKonfig } from './dienste';
+import { haversineM, type Punkt } from './geo';
 
 /** Maximale Koordinatenzahl pro /table-Anfrage beim Demo-Server. */
 const MATRIX_GRENZE = 95;
@@ -56,7 +56,10 @@ function koordinatenListe(punkte: Punkt[]): string {
   return punkte.map(p => `${p.lon.toFixed(6)},${p.lat.toFixed(6)}`).join(';');
 }
 
-export async function fahrzeitMatrix(punkte: Punkt[]): Promise<Matrix> {
+export async function fahrzeitMatrix(
+  punkte: Punkt[],
+  dienste: DienstKonfig,
+): Promise<Matrix> {
   if (punkte.length < 2) return luftlinienMatrix(punkte);
   if (punkte.length > MATRIX_GRENZE) {
     return luftlinienMatrix(
@@ -65,11 +68,11 @@ export async function fahrzeitMatrix(punkte: Punkt[]): Promise<Matrix> {
     );
   }
   const url =
-    `${config.osrmBase}/table/v1/driving/${koordinatenListe(punkte)}` +
+    `${dienste.osrmBase}/table/v1/driving/${koordinatenListe(punkte)}` +
     `?annotations=duration,distance`;
   try {
     const res = await fetch(url, {
-      headers: { 'User-Agent': config.userAgent },
+      headers: { 'User-Agent': dienste.userAgent },
       signal: AbortSignal.timeout(60_000),
     });
     if (!res.ok) {
@@ -127,7 +130,10 @@ export interface GefahreneRoute {
  * Fährt die Punkte in der übergebenen Reihenfolge ab und liefert Strecke,
  * Zeit und Linienverlauf. Für die Anzeige, nicht für die Optimierung.
  */
-export async function routeAbfahren(punkte: Punkt[]): Promise<GefahreneRoute> {
+export async function routeAbfahren(
+  punkte: Punkt[],
+  dienste: DienstKonfig,
+): Promise<GefahreneRoute> {
   const ersatz = (): GefahreneRoute => {
     const abschnitte: Streckenabschnitt[] = [];
     let gesamt_m = 0;
@@ -154,11 +160,11 @@ export async function routeAbfahren(punkte: Punkt[]): Promise<GefahreneRoute> {
   if (punkte.length > MATRIX_GRENZE) return ersatz();
 
   const url =
-    `${config.osrmBase}/route/v1/driving/${koordinatenListe(punkte)}` +
+    `${dienste.osrmBase}/route/v1/driving/${koordinatenListe(punkte)}` +
     `?overview=simplified&geometries=polyline&annotations=false&steps=false`;
   try {
     const res = await fetch(url, {
-      headers: { 'User-Agent': config.userAgent },
+      headers: { 'User-Agent': dienste.userAgent },
       signal: AbortSignal.timeout(60_000),
     });
     if (!res.ok) return ersatz();

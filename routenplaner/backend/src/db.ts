@@ -148,16 +148,7 @@ export function leseEinstellung(schluessel: string): string | null {
   return row ? row.wert : null;
 }
 
-export const STATUS_WERTE = [
-  'offen',
-  'besucht',
-  'nochmal',
-  'kein_interesse',
-  'geschlossen',
-] as const;
-
-export type Status = (typeof STATUS_WERTE)[number];
-
-export function istStatus(wert: unknown): wert is Status {
-  return typeof wert === 'string' && (STATUS_WERTE as readonly string[]).includes(wert);
-}
+// Eine einzige Definition für beide Speicher-Varianten: sie steht im
+// gemeinsamen Paket und wird hier nur weitergereicht, damit bestehende
+// Importe aus './db' weiter funktionieren.
+export { STATUS_WERTE, istStatus, type Status } from '../../shared/typen';

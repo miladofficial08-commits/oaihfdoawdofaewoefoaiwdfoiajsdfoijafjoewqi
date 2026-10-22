@@ -9,7 +9,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { config } from './config';
 import { getDb, istStatus, STATUS_WERTE, type Status } from './db';
-import { dauerText, meterText } from './geo';
+import { dauerText, meterText } from '../../shared/geo';
 import {
   besuchSetzen,
   praxenLesen,
@@ -19,8 +19,9 @@ import {
   type BesuchAenderung,
 } from './praxen-repo';
 import { importFortschritt, importStarten } from './import-job';
-import { anfragenSchaetzung, schluesselPruefen } from './sources/places';
+import { anfragenSchaetzung, schluesselPruefen } from '../../shared/places';
 import {
+  googleSchluessel,
   googleSchluesselInfo,
   googleSchluesselLoeschen,
   googleSchluesselSetzen,
@@ -34,7 +35,7 @@ import {
   weiterAbHier,
   type TourBauParams,
 } from './routing/tour';
-import { KATEGORIEN, STANDARD_KATEGORIEN, istKategorie } from './typen';
+import { KATEGORIEN, STANDARD_KATEGORIEN, istKategorie } from '../../shared/typen';
 
 const app = Fastify({
   logger: { level: process.env.LOG_LEVEL || 'info' },
@@ -201,11 +202,13 @@ app.post<{ Body: { key?: string | null } }>('/api/google-key', async (req, reply
   googleSchluesselSetzen(key);
   // Direkt einmal anklopfen: lieber jetzt eine klare Fehlermeldung als
   // mitten in einem Lauf über hunderte Anfragen.
-  const pruefung = await schluesselPruefen(betriebssitzLesen());
+  const pruefung = await schluesselPruefen(betriebssitzLesen(), googleSchluessel());
   return { ...googleSchluesselInfo(), pruefung };
 });
 
-app.post('/api/google-key/pruefen', async () => schluesselPruefen(betriebssitzLesen()));
+app.post('/api/google-key/pruefen', async () =>
+  schluesselPruefen(betriebssitzLesen(), googleSchluessel()),
+);
 
 // ── Generieren: Import und Tourbau in einem Durchgang ───────────────────────
 

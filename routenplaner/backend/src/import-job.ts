@@ -8,10 +8,11 @@
 // Es läuft bewusst nur ein Import gleichzeitig — zwei parallele Läufe würden
 // sich beim Zusammenführen gegenseitig in die Quere kommen.
 
+import { dienste } from './config';
 import { googleSchluessel } from './google-key';
 import { praxenSpeichern } from './praxen-repo';
-import { osmImport } from './sources/overpass';
-import { placesImport } from './sources/places';
+import { osmImport } from '../../shared/overpass';
+import { placesImport } from '../../shared/places';
 import {
   betriebssitzLesen,
   betriebssitzSetzen,
@@ -123,7 +124,7 @@ async function lauf(params: ImportParams): Promise<void> {
     const sitz = betriebssitzLesen();
     melde(`Suche im Radius ${params.radiusKm} km um ${sitz.adresse}`);
 
-    const osm = await osmImport(sitz, params.radiusKm, melde);
+    const osm = await osmImport(sitz, params.radiusKm, dienste, melde);
     for (const g of osm.gruppen) {
       if (g.fehler) stand.fehler.push(`OSM ${g.name}: ${g.fehler}`);
     }
@@ -145,7 +146,13 @@ async function lauf(params: ImportParams): Promise<void> {
         melde('Google übersprungen: kein Schlüssel hinterlegt.');
       } else {
         melde('Google Places: Lauf beginnt (kostenpflichtig)');
-        const google = await placesImport(sitz, params.radiusKm, params.zellRadiusM, melde);
+        const google = await placesImport(
+          sitz,
+          params.radiusKm,
+          googleSchluessel(),
+          params.zellRadiusM,
+          melde,
+        );
         stand.google_anfragen = google.anfragen;
         stand.gefunden += google.praxen.length;
         for (const f of google.fehler) stand.fehler.push(`Google: ${f}`);

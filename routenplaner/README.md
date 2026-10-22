@@ -4,14 +4,17 @@ Rundtouren zu Hausarzt- und Physiopraxen rund um den Betriebssitz, zum
 Abfahren, Abhaken und Protokollieren. Gebaut für Vor-Ort-Akquise von
 Krankenfahrten.
 
-Zwei Teile, getrennt deploybar:
+**Alles auf Netlify, kein zweiter Dienst nötig.** Die Seite und die API liegen
+unter derselben Adresse; den Speicher stellt Netlify Blobs. Railway wird nicht
+gebraucht — der Server dafür liegt weiterhin bei, falls du lieber einen
+eigenen betreibst.
 
-| Teil | Wo | Was |
+| Ordner | Was | Wo |
 |---|---|---|
-| `backend/` | Railway | Praxen importieren, Route rechnen, Besuche speichern |
-| `frontend/` | Netlify | Oberfläche fürs Handy, funktioniert auch offline |
-
----
+| `frontend/` | Oberfläche fürs Handy, offlinefähig | Netlify (statisch) |
+| `netlify/functions/` | die API: Import, Tourbau, Besuche | Netlify Functions + Blobs |
+| `shared/` | die eigentliche Logik — beide Varianten nutzen dieselbe | — |
+| `backend/` | Alternative: eigener Server mit SQLite | Railway (optional) |
 
 ## Was das System macht
 
@@ -32,62 +35,52 @@ Zwei Teile, getrennt deploybar:
 
 ---
 
-## Deploy: Backend auf Railway
+## Deploy auf Netlify
 
-1. Neuen Dienst aus diesem Repository anlegen.
-2. **Settings → Root Directory: `routenplaner/backend`.**
-   Ohne das nimmt Railway das Dockerfile im Wurzelverzeichnis (das ist der
-   Leadgen-Server, ein anderes Projekt).
-3. **Volume anlegen und mounten**, z. B. auf `/data`. Railway setzt dann
-   `RAILWAY_VOLUME_MOUNT_PATH` selbst, und das Backend legt die Datenbank
-   dorthin. *Ohne Volume sind nach jedem Deploy alle Häkchen und Notizen weg* —
-   das Backend schreibt beim Start eine Warnung ins Log, wenn es kein Volume
-   findet.
-4. Variablen setzen (siehe `backend/.env.example`), mindestens:
-   - `APP_PASSWORT` — sonst kann jeder mit der URL mitlesen und mitschreiben
-   - `HTTP_USER_AGENT` — mit echter Kontaktadresse, Nominatim verlangt das
-   - `START_ADRESSE` — lässt sich später in der App ändern
-5. `PORT` **nicht** setzen, das macht Railway selbst.
+Ein Dienst, fertig:
+
+1. Neue Site aus diesem Repository.
+2. **Branch to deploy:** `claude/practical-thompson-t49wh4`
+3. **Base directory:** `routenplaner`
+4. **Build command:** `npm install`
+5. **Publish directory:** `routenplaner/frontend`
+6. Deployen. Die Funktionen unter `netlify/functions` werden automatisch
+   mitgebaut und liegen danach unter `/api`.
+
+Optional als Umgebungsvariablen (Site configuration → Environment variables):
+
+| Variable | Wofür |
+|---|---|
+| `APP_PASSWORT` | gemeinsames Passwort; ohne ist die API für jeden offen, der die Adresse kennt |
+| `HTTP_USER_AGENT` | eigene Kontaktadresse — Nominatim verlangt das |
+| `START_ADRESSE` | Betriebssitz, in der App überschreibbar |
+| `GOOGLE_PLACES_KEY` | statt der Eingabe in der App |
+| `OSRM_BASE` | eigener Routing-Server statt des Demo-Servers |
+
+**Netlify Blobs** muss nicht eingerichtet werden; der Speicher gehört zur Site
+und ist ohne Zutun da. Anders als beim Railway-Volume kann hier nichts
+schiefgehen: Besuchsprotokolle überleben jedes Deploy.
+
+### Wenn `/api` nichts beantwortet
+
+Dann sagt die Seite das auch und erfindet nichts. Nachsehen in Netlify unter
+**Deploys → (letztes Deploy) → Deploy log**, ob die Funktionen gebaut wurden,
+und unter **Logs → Functions**, ob sie beim Aufruf abstürzen.
+
+## Alternative: eigener Server auf Railway
+
+Nur nötig, wenn du den Speicher selbst in der Hand haben willst.
+
+1. **Root Directory:** `routenplaner` (nicht `routenplaner/backend`), denn der
+   Build braucht auch `shared/`. **Dockerfile-Pfad:** `backend/Dockerfile`.
+2. **Volume anlegen und mounten**, z. B. auf `/data`. *Ohne Volume sind nach
+   jedem Deploy alle Häkchen und Notizen weg* — das Backend warnt beim Start.
+3. Variablen aus `backend/.env.example` setzen, mindestens `APP_PASSWORT` und
+   `HTTP_USER_AGENT`. `PORT` **nicht** setzen, das macht Railway.
+4. In `frontend/config.js` die Railway-Adresse bei `backendUrl` eintragen —
+   damit spricht die Seite diesen Server an statt der Netlify-Funktionen.
 
 Prüfen: `https://<dienst>.up.railway.app/health` muss `{"ok":true,…}` liefern.
-
-## Deploy: Frontend auf Netlify
-
-1. Neue Site aus demselben Repository.
-2. **Base directory: `routenplaner/frontend`**, **Build command leer**,
-   **Publish directory: `routenplaner/frontend`**.
-3. Fertig — es gibt keinen Buildschritt und keine Abhängigkeiten.
-
-**Backend-Adresse einmalig festnageln:** In `frontend/config.js` die Railway-
-Adresse bei `backendUrl` eintragen, committen, pushen. Dann startet die Seite
-direkt mit der Tour und fragt nie wieder danach. Bleibt das Feld leer, fragt
-die App beim ersten Öffnen auf jedem Gerät einmal.
-
-Ein Passwort braucht es nur, wenn im Backend `APP_PASSWORT` gesetzt ist; im
-Einrichtungsdialog ist das Feld deshalb weggeklappt. Trägt man es in
-`config.js` ein, steht es im öffentlichen Quelltext der Seite — dann schützt
-nur noch die Unkenntnis der Netlify-Adresse. Wer das nicht will, lässt es leer
-und gibt es einmal pro Handy ein.
-
-## Vorschau ohne Backend
-
-Die veröffentlichte Seite zeigt **nur echte Daten**: in `config.js` steht
-`demoErlauben: false`. Ohne erreichbares Backend bleibt sie leer und sagt,
-dass keines verbunden ist — damit niemand versehentlich eine erfundene Praxis
-abklappert.
-
-Zum Anschauen ohne Railway lässt sich `demoErlauben` kurz auf `true` stellen.
-Dann läuft die komplette Oberfläche mit Beispieldaten: Tagesliste, Karte,
-Detailansicht, Abhaken, Notizen. Die Praxen darin sind **erfunden** (ein
-Banner sagt das dauerhaft), die Tour selbst ist echt gerechnet — dieselbe
-Gruppierung, dieselbe Reihenfolgeoptimierung wie im Betrieb. Abgehaktes bleibt
-im Browser.
-
-Sobald `backendUrl` gesetzt ist, spielt die Einstellung keine Rolle mehr: eine
-konfigurierte Adresse schlägt die Vorschau immer, auch auf einem Gerät, das
-vorher in der Vorschau war.
-
----
 
 ## Erster Lauf
 
@@ -244,7 +237,7 @@ Alle Pfade außer `/health` und `/api/info` brauchen den Kopf
 ```bash
 cd routenplaner/backend
 npm install
-npm test                 # 59 Tests, ohne Netz
+npm test                 # 70 Tests, ohne Netz
 APP_PASSWORT=test npm run dev
 
 # in einem zweiten Terminal:
@@ -255,6 +248,13 @@ npx http-server . -p 4178
 
 Die Tests decken Geometrie, Einordnung der OSM- und Google-Tags,
 Adressgruppierung, Dublettenerkennung, Tagesaufteilung, Reihenfolge-
-Optimierung, Besuchsprotokolle und einen kompletten Tourdurchlauf ab.
+Optimierung, Besuchsprotokolle und einen kompletten Tourdurchlauf ab — und
+zwar für beide Speicher-Varianten: die SQL-Fassung und die JSON-Fassung, die
+auf Netlify läuft. Laufen die beiden auseinander, fällt es dort sofort auf.
+
+Die Netlify-Funktionen selbst (`netlify/functions/`) sind typgeprüft, aber
+nicht zur Laufzeit getestet — dafür bräuchte es eine echte Netlify-Umgebung.
+Die Logik, die sie aufrufen, liegt in `shared/` und ist getestet; die
+Funktionen selbst lesen, rufen auf und schreiben.
 Netzaufrufe zu Overpass, Nominatim und OSRM sind bewusst nicht getestet — das
 wären Tests gegen fremde, gedrosselte Dienste und damit keine Tests.

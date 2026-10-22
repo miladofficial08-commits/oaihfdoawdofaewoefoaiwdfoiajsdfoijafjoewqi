@@ -8,16 +8,16 @@
 
 import Database from 'better-sqlite3';
 import * as assert from 'assert';
-import { haversineM, peilung, bbox, meterText, dauerText } from '../src/geo';
-import { adressKey, einordnen, fachrichtungText } from '../src/sources/overpass';
-import { einordnenGoogle, zellen } from '../src/sources/places';
+import { haversineM, peilung, bbox, meterText, dauerText } from '../../shared/geo';
+import { adressKey, einordnen, fachrichtungText } from '../../shared/overpass';
+import { einordnenGoogle, zellen } from '../../shared/places';
 import {
   gruppiereStopps,
   optimiere,
   sweepTage,
   folgeKosten,
   type Stopp,
-} from '../src/routing/optimize';
+} from '../../shared/optimize';
 import { setTestDb } from '../src/db';
 import {
   gleichePraxis,
@@ -28,7 +28,15 @@ import {
   besuchSetzen,
   praxisLesen,
 } from '../src/praxen-repo';
-import type { PraxisAusgang, PraxisEingang } from '../src/typen';
+import type { PraxisAusgang, PraxisEingang } from '../../shared/typen';
+import {
+  besuchAnwenden,
+  statistikAus,
+  zusammenfuehren,
+  zusammenstellen,
+  type BesuchsBuch,
+  type PraxisSatz,
+} from '../../shared/praxen-logik';
 import {
   betriebssitzSetzenManuell,
   tourBauen,
@@ -629,6 +637,168 @@ test('Zurück auf offen räumt den Besuchszeitpunkt weg', () => {
   const p = praxisLesen('osm:node/1');
   assert.strictEqual(p?.status, 'offen');
   assert.strictEqual(p?.besucht_am, null);
+});
+
+// ── Dieselben Regeln ohne Datenbank (Netlify-Variante) ──────────────────────
+//
+// Auf Netlify gibt es keine Datenbank, sondern JSON im Key-Value-Speicher.
+// Diese Tests spiegeln die SQL-Tests oben: Wenn beide Fassungen bei
+// denselben Eingaben auseinanderlaufen, zeigt das hier es sofort.
+
+console.log('\nPraxenlogik ohne Datenbank');
+
+const SITZ = { lat: 51.2033, lon: 6.8419 };
+
+function eingangRein(teil: Partial<PraxisEingang> & { id: string; name: string }): PraxisEingang {
+  return { kategorie: 'hausarzt', lat: 51.21, lon: 6.86, quelle: 'osm', ...teil } as PraxisEingang;
+}
+
+test('Praxen werden angelegt und bekommen Adressschlüssel und Entfernung', () => {
+  const { bestand, bilanz } = zusammenfuehren(
+    [],
+    [
+      eingangRein({ id: 'osm:node/1', name: 'Hausarzt Meier', strasse: 'Gumbertstraße', hausnummer: '100', plz: '40229' }),
+      eingangRein({ id: 'osm:node/2', name: 'Physio Bauer', kategorie: 'physio', strasse: 'Gumbertstraße', hausnummer: '100', plz: '40229' }),
+    ],
+    SITZ,
+  );
+  assert.strictEqual(bilanz.neu, 2);
+  assert.strictEqual(bestand.length, 2);
+  assert.strictEqual(bestand[0].adress_key, bestand[1].adress_key, 'gleiche Adresse, gleicher Stopp');
+  assert.ok(bestand[0].entfernung_m > 500, `Entfernung unplausibel: ${bestand[0].entfernung_m}`);
+});
+
+test('Erneuter Import legt keine Dubletten an', () => {
+  const erst = zusammenfuehren([], [eingangRein({ id: 'osm:node/1', name: 'Hausarzt Meier' })], SITZ);
+  const zweit = zusammenfuehren(erst.bestand, [eingangRein({ id: 'osm:node/1', name: 'Hausarzt Meier' })], SITZ);
+  assert.strictEqual(zweit.bilanz.neu, 0);
+  assert.strictEqual(zweit.bilanz.aktualisiert, 1);
+  assert.strictEqual(zweit.bestand.length, 1);
+});
+
+test('Google ergänzt den OSM-Eintrag, statt ihn zu verdoppeln', () => {
+  const erst = zusammenfuehren(
+    [],
+    [eingangRein({ id: 'osm:node/1', name: 'Hausarzt Meier', strasse: 'Gumbertstraße', hausnummer: '100', plz: '40229' })],
+    SITZ,
+  );
+  const zweit = zusammenfuehren(
+    erst.bestand,
+    [eingangRein({
+      id: 'google:abc', name: 'Hausarztpraxis Dr. med. Meier', quelle: 'google',
+      strasse: 'Gumbertstraße', hausnummer: '100', plz: '40229', telefon: '0211 123456',
+    })],
+    SITZ,
+  );
+  assert.strictEqual(zweit.bilanz.zusammengefuehrt, 1);
+  assert.strictEqual(zweit.bestand.length, 1);
+  assert.strictEqual(zweit.bestand[0].telefon, '0211 123456');
+  assert.ok(zweit.bestand[0].quelle.includes('google'), `Quelle: ${zweit.bestand[0].quelle}`);
+});
+
+test('Physio im selben Haus bleibt ein eigener Eintrag', () => {
+  const erst = zusammenfuehren(
+    [],
+    [eingangRein({ id: 'osm:node/1', name: 'Praxis Eller', strasse: 'Gumbertstraße', hausnummer: '100', plz: '40229' })],
+    SITZ,
+  );
+  const zweit = zusammenfuehren(
+    erst.bestand,
+    [eingangRein({
+      id: 'google:xyz', name: 'Physiotherapie Eller', kategorie: 'physio', quelle: 'google',
+      strasse: 'Gumbertstraße', hausnummer: '100', plz: '40229',
+    })],
+    SITZ,
+  );
+  assert.strictEqual(zweit.bilanz.neu, 1, 'Physio und Arzt sind zwei Stopps');
+  assert.strictEqual(zweit.bestand.length, 2);
+});
+
+test('Unklare Fachrichtung wird durch eine klare ersetzt, nicht umgekehrt', () => {
+  const erst = zusammenfuehren(
+    [],
+    [eingangRein({ id: 'osm:node/1', name: 'Praxis Meier', kategorie: 'arzt_unklar', strasse: 'A', hausnummer: '1' })],
+    SITZ,
+  );
+  const zweit = zusammenfuehren(
+    erst.bestand,
+    [eingangRein({ id: 'google:a', name: 'Hausarztpraxis Meier', kategorie: 'hausarzt', quelle: 'google', strasse: 'A', hausnummer: '1' })],
+    SITZ,
+  );
+  assert.strictEqual(zweit.bestand[0].kategorie, 'hausarzt');
+  const dritt = zusammenfuehren(
+    zweit.bestand,
+    [eingangRein({ id: 'osm:node/9', name: 'Hausarztpraxis Meier', kategorie: 'arzt_unklar', strasse: 'A', hausnummer: '1' })],
+    SITZ,
+  );
+  assert.strictEqual(dritt.bestand[0].kategorie, 'hausarzt', 'eine klare Kategorie darf nicht verwässert werden');
+});
+
+test('Besuch abhaken setzt Status und Zeitpunkt', () => {
+  let buch: BesuchsBuch = {};
+  buch = besuchAnwenden(buch, 'osm:node/1', {
+    status: 'besucht', notiz: 'Flyer da', ansprechpartner: 'Frau Yilmaz',
+    potenzial: 3, material_da: true, bearbeiter: 'Milad',
+  });
+  assert.strictEqual(buch['osm:node/1'].status, 'besucht');
+  assert.strictEqual(buch['osm:node/1'].potenzial, 3);
+  assert.ok(buch['osm:node/1'].besucht_am);
+});
+
+test('Eine Notiz setzt den Status nicht zurück', () => {
+  let buch: BesuchsBuch = besuchAnwenden({}, 'x', { status: 'besucht', potenzial: 2, bearbeiter: 'Milad' });
+  buch = besuchAnwenden(buch, 'x', { notiz: 'Nachtrag' });
+  assert.strictEqual(buch['x'].status, 'besucht');
+  assert.strictEqual(buch['x'].potenzial, 2);
+  assert.strictEqual(buch['x'].bearbeiter, 'Milad');
+  assert.strictEqual(buch['x'].notiz, 'Nachtrag');
+});
+
+test('Zurück auf offen räumt den Besuchszeitpunkt weg', () => {
+  let buch = besuchAnwenden({}, 'x', { status: 'besucht' });
+  buch = besuchAnwenden(buch, 'x', { status: 'offen' });
+  assert.strictEqual(buch['x'].besucht_am, null);
+});
+
+test('Import überschreibt keinen Besuchsstand', () => {
+  const erst = zusammenfuehren([], [eingangRein({ id: 'osm:node/1', name: 'Hausarzt Meier' })], SITZ);
+  const buch = besuchAnwenden({}, 'osm:node/1', { status: 'besucht', notiz: 'war da' });
+  const zweit = zusammenfuehren(erst.bestand, [eingangRein({ id: 'osm:node/1', name: 'Hausarzt Meier' })], SITZ);
+  const zeilen = zusammenstellen(zweit.bestand, buch);
+  assert.strictEqual(zeilen[0].status, 'besucht');
+  assert.strictEqual(zeilen[0].notiz, 'war da');
+});
+
+test('Filter nach Kategorie, Entfernung und Status', () => {
+  const { bestand } = zusammenfuehren(
+    [],
+    [
+      eingangRein({ id: 'a', name: 'Hausarzt A', lat: 51.205, lon: 6.845 }),
+      eingangRein({ id: 'b', name: 'Physio B', kategorie: 'physio', lat: 51.30, lon: 6.95 }),
+    ],
+    SITZ,
+  );
+  const buch = besuchAnwenden({}, 'a', { status: 'besucht' });
+  assert.deepStrictEqual(zusammenstellen(bestand, buch, { kategorien: ['physio'] }).map(p => p.id), ['b']);
+  assert.deepStrictEqual(zusammenstellen(bestand, buch, { status: ['offen'] }).map(p => p.id), ['b']);
+  assert.deepStrictEqual(zusammenstellen(bestand, buch, { maxEntfernungM: 2000 }).map(p => p.id), ['a']);
+});
+
+test('Statistik zählt richtig', () => {
+  const { bestand } = zusammenfuehren(
+    [],
+    [
+      eingangRein({ id: 'a', name: 'A', telefon: '0211 1' }),
+      eingangRein({ id: 'b', name: 'B', kategorie: 'physio' }),
+    ],
+    SITZ,
+  );
+  const s = statistikAus(bestand, besuchAnwenden({}, 'a', { status: 'besucht' }));
+  assert.strictEqual(s.gesamt, 2);
+  assert.strictEqual(s.mitTelefon, 1);
+  assert.strictEqual(s.nachStatus.besucht, 1);
+  assert.strictEqual(s.nachStatus.offen, 1);
+  assert.strictEqual(s.nachKategorie.physio, 1);
 });
 
 // ── Durchlauf: aus Praxen eine fahrbare Tour machen ─────────────────────────

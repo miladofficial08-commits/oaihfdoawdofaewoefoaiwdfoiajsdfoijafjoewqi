@@ -9,8 +9,8 @@
 // Alle Funktionen hier sind rein (Matrix rein, Reihenfolge raus) — damit sind
 // sie ohne Netz und ohne Datenbank testbar.
 
-import { peilung, type Punkt } from '../geo';
-import type { PraxisAusgang } from '../typen';
+import { peilung, type Punkt } from './geo';
+import type { PraxisAusgang } from './typen';
 
 export interface Stopp {
   adress_key: string;

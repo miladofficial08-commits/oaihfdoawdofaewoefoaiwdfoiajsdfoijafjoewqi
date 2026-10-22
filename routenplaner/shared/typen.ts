@@ -1,4 +1,20 @@
-import type { Status } from './db';
+/**
+ * Besuchsstatus. Liegt hier und nicht bei der Datenbank, weil ihn beide
+ * Speicher-Varianten brauchen — SQLite auf Railway und Blobs auf Netlify.
+ */
+export const STATUS_WERTE = [
+  'offen',
+  'besucht',
+  'nochmal',
+  'kein_interesse',
+  'geschlossen',
+] as const;
+
+export type Status = (typeof STATUS_WERTE)[number];
+
+export function istStatus(wert: unknown): wert is Status {
+  return typeof wert === 'string' && (STATUS_WERTE as readonly string[]).includes(wert);
+}
 
 /** Kategorien, nach denen im Frontend gefiltert wird. */
 export const KATEGORIEN = {

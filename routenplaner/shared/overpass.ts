@@ -7,9 +7,9 @@
 // Google-Places-Import zu (siehe sources/places.ts); die Dedup-Logik führt
 // beide Quellen über den Adress-Schlüssel zusammen.
 
-import { config } from '../config';
-import { haversineM, type Punkt } from '../geo';
-import type { Kategorie, PraxisEingang } from '../typen';
+import type { DienstKonfig } from './dienste';
+import { haversineM, type Punkt } from './geo';
+import type { Kategorie, PraxisEingang } from './typen';
 
 interface OverpassElement {
   type: 'node' | 'way' | 'relation';
@@ -214,19 +214,22 @@ export function adressKey(p: {
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-async function overpassAbfrage(query: string): Promise<OverpassElement[]> {
+async function overpassAbfrage(
+  query: string,
+  dienste: DienstKonfig,
+): Promise<OverpassElement[]> {
   let letzterFehler: unknown;
   // Overpass ist ein geteilter Gratis-Dienst und drosselt unter Last (429/504).
   const wartezeiten = [0, 4000, 12000];
   for (const warten of wartezeiten) {
     if (warten) await sleep(warten);
-    for (const endpoint of config.overpassEndpoints) {
+    for (const endpoint of dienste.overpassEndpoints) {
       try {
         const res = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
-            'User-Agent': config.userAgent,
+            'User-Agent': dienste.userAgent,
           },
           body: 'data=' + encodeURIComponent(query),
           signal: AbortSignal.timeout(180_000),
@@ -271,6 +274,7 @@ export interface OsmErgebnis {
 export async function osmImport(
   mitte: Punkt,
   radiusKm: number,
+  dienste: DienstKonfig,
   melde: (text: string) => void = () => {},
 ): Promise<OsmErgebnis> {
   const praxen: PraxisEingang[] = [];
@@ -282,7 +286,7 @@ export async function osmImport(
     if (i > 0) await sleep(3000); // Gratis-Dienst nicht überfahren
     melde(`OpenStreetMap: ${gruppe.name} …`);
     try {
-      const elemente = await overpassAbfrage(query(gruppe.filter, mitte, radiusKm));
+      const elemente = await overpassAbfrage(query(gruppe.filter, mitte, radiusKm), dienste);
       let uebernommen = 0;
       for (const el of elemente) {
         const tags = el.tags ?? {};

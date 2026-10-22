@@ -1,8 +1,9 @@
 # Eigenes Image für den Routenplaner. Railway baut daraus einen Dienst, der
 # unabhängig vom Leadgen-Server im selben Repository läuft.
 #
-# Wichtig für Railway: "Root Directory" des Dienstes auf routenplaner/backend
-# stellen, sonst nimmt Railway das Dockerfile im Repository-Wurzelverzeichnis.
+# Wichtig für Railway: "Root Directory" des Dienstes auf routenplaner stellen
+# (nicht routenplaner/backend), denn der Build braucht auch shared/.
+# Dockerfile-Pfad: backend/Dockerfile
 
 FROM node:20-bookworm-slim
 
@@ -14,20 +15,25 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-COPY package*.json ./
+COPY backend/package*.json ./backend/
+WORKDIR /app/backend
 RUN npm ci
 
-COPY tsconfig.json ./
-COPY src ./src
-COPY tests ./tests
+WORKDIR /app
+COPY shared ./shared
+COPY backend/tsconfig.json ./backend/
+COPY backend/src ./backend/src
+COPY backend/tests ./backend/tests
+
+WORKDIR /app/backend
 RUN npm run build
 
 # Die Tests laufen ohne Netz und ohne Datenbankdatei. Sie hier mitlaufen zu
 # lassen kostet Sekunden und verhindert, dass ein kaputter Stand überhaupt
 # erst deployt wird.
-RUN node dist/tests/run-tests.js
+RUN node dist/backend/tests/run-tests.js
 
 ENV NODE_ENV=production
 EXPOSE 4100
 
-CMD ["node", "dist/src/server.js"]
+CMD ["node", "dist/backend/src/server.js"]

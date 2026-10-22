@@ -12,9 +12,8 @@
 // zerlegt. /api/import/kosten rechnet die Anfragen vorher aus, damit niemand
 // versehentlich ein größeres Gebiet abfragt als gedacht.
 
-import { haversineM, type Punkt } from '../geo';
-import { googleSchluessel } from '../google-key';
-import type { Kategorie, PraxisEingang } from '../typen';
+import { haversineM, type Punkt } from './geo';
+import type { Kategorie, PraxisEingang } from './typen';
 
 const ENDPOINT = 'https://places.googleapis.com/v1/places:searchNearby';
 
@@ -140,10 +139,10 @@ export interface PlacesErgebnis {
 export async function placesImport(
   mitte: Punkt,
   radiusKm: number,
+  schluessel: string,
   zellRadiusM = 700,
   melde: (text: string) => void = () => {},
 ): Promise<PlacesErgebnis> {
-  const schluessel = googleSchluessel();
   if (!schluessel) {
     throw new Error(
       'Kein Google-Schlüssel hinterlegt – weder in der App eingegeben noch als GOOGLE_PLACES_KEY gesetzt.',
@@ -258,8 +257,10 @@ export interface SchluesselPruefung {
  * Tippfehler scheitert, ist ärgerlich und kostet Vertrauen. Lieber vorher
  * einmal anklopfen.
  */
-export async function schluesselPruefen(mitte: Punkt): Promise<SchluesselPruefung> {
-  const schluessel = googleSchluessel();
+export async function schluesselPruefen(
+  mitte: Punkt,
+  schluessel: string,
+): Promise<SchluesselPruefung> {
   if (!schluessel) {
     return { ok: false, meldung: 'Kein Schlüssel hinterlegt.', beispiele: [] };
   }

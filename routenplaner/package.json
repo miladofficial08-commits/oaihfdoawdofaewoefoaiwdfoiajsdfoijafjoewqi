@@ -1,0 +1,21 @@
+{
+  "name": "praxis-routenplaner",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Routenplaner für Praxisbesuche — Netlify-Variante (Funktionen + Blobs).",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.netlify.json"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
+  },
+  "devDependencies": {
+    "@netlify/functions": "^2.8.2",
+    "@types/node": "^20.19.43",
+    "typescript": "^5.4.5"
+  }
+}
