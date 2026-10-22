@@ -14,7 +14,7 @@ import { diensteAusUmgebung } from '../../shared/dienste';
 import { geokodieren } from '../../shared/nominatim';
 import { osmImport } from '../../shared/overpass';
 import { placesImport } from '../../shared/places';
-import { zusammenfuehren, zusammenstellen } from '../../shared/praxen-logik';
+import { entfernungenNeu, zusammenfuehren, zusammenstellen } from '../../shared/praxen-logik';
 import { tourBauenAus } from '../../shared/tour-bauen';
 import { istKategorie, STANDARD_KATEGORIEN } from '../../shared/typen';
 import {
@@ -127,6 +127,9 @@ export default async (req: Request, _context: Context) => {
     melde(`OpenStreetMap: ${osm.praxen.length} Einrichtungen gefunden`);
 
     let bestand = await praxenLesen(store);
+    // Der Sitz kann sich seit dem letzten Import geändert haben; dann
+    // stimmten die gespeicherten Entfernungen nicht mehr.
+    bestand = entfernungenNeu(bestand, sitz);
     const bilanzOsm = zusammenfuehren(bestand, osm.praxen, sitz);
     bestand = bilanzOsm.bestand;
     stand.neu += bilanzOsm.bilanz.neu;

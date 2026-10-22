@@ -262,6 +262,20 @@ export function optimiere(
   // rechnet derselbe Code beide Fälle.
   const mitZiel = [...nn, ziel];
   const nach2opt = zweiOpt(mitZiel, kosten);
-  const fertig = orOpt(nach2opt, kosten);
+  let fertig = orOpt(nach2opt, kosten);
+
+  // Beim geschlossenen Ring sind beide Fahrtrichtungen exakt gleich lang —
+  // man fährt dieselbe Schleife, nur andersherum. Dann lieber die Richtung
+  // nehmen, die mit dem näheren Stopp beginnt: Es kostet nichts, man ist
+  // früher beim ersten Gespräch, und es erspart die berechtigte Frage, warum
+  // die Tour an der eigenen Haustür vorbei in die Ferne startet.
+  if (start === ziel && fertig.length > 3) {
+    const ersterWeg = kosten[fertig[0]][fertig[1]];
+    const letzterWeg = kosten[fertig[fertig.length - 2]][fertig[fertig.length - 1]];
+    if (letzterWeg < ersterWeg) {
+      fertig = [fertig[0], ...fertig.slice(1, -1).reverse(), fertig[fertig.length - 1]];
+    }
+  }
+
   return { folge: fertig, kosten: folgeKosten(fertig, kosten) };
 }

@@ -76,6 +76,12 @@ export function zusammenfuehren(
     const alt = liste[index];
     liste[index] = {
       ...alt,
+      // Immer neu rechnen, nicht nur bei neuen Einträgen: der Betriebssitz
+      // kann sich zwischen zwei Importen geändert haben (etwa weil die
+      // Adresse erst später geokodiert wurde). Eine stehengebliebene
+      // Entfernung lässt den Radiusfilter danach die falschen Praxen
+      // durchlassen — und man wundert sich im Auto über den ersten Stopp.
+      entfernung_m: Math.round(haversineM(betriebssitz, alt)),
       telefon: ergaenze(alt.telefon, neu.telefon),
       website: ergaenze(alt.website, neu.website),
       email: ergaenze(alt.email, neu.email),
@@ -136,6 +142,17 @@ export function zusammenfuehren(
   }
 
   return { bestand: liste, bilanz };
+}
+
+/**
+ * Alle Entfernungen gegen einen neuen Betriebssitz neu rechnen.
+ *
+ * Aufzurufen, sobald der Startpunkt sich ändert. Ohne das bezieht sich der
+ * Radiusfilter weiter auf den alten Punkt, und die Tour beginnt mit Stopps,
+ * die gar nicht in der Nähe sind.
+ */
+export function entfernungenNeu(bestand: PraxisSatz[], betriebssitz: Punkt): PraxisSatz[] {
+  return bestand.map(p => ({ ...p, entfernung_m: Math.round(haversineM(betriebssitz, p)) }));
 }
 
 export interface PraxenFilter {

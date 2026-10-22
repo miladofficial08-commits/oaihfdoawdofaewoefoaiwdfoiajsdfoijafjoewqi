@@ -1306,13 +1306,19 @@ async function tourBauen() {
 }
 
 async function abHierNeuSortieren() {
-  if (!zustand.standort) {
-    melde('Erst Standort holen.', true);
-    return;
-  }
   const knopf = $('#knopf-weiter');
   knopf.disabled = true;
+  const beschriftung = knopf.textContent;
   try {
+    // Den Standort selbst holen, statt ihn vorauszusetzen. Vorher waren das
+    // zwei Knöpfe, und der erste sah aus, als täte er nichts: er holte nur
+    // die Position und schaltete den zweiten frei.
+    if (!zustand.standort) {
+      knopf.textContent = 'Standort …';
+      zustand.standort = await standortHolen();
+      standortAnzeigen();
+    }
+    knopf.textContent = 'Sortiert neu …';
     // Erst die Warteschlange leeren: sonst sortiert der Server nach einem
     // Stand, in dem die gerade abgehakten Praxen noch offen sind.
     await warteschlangeSenden({ still: true });
@@ -1329,10 +1335,26 @@ async function abHierNeuSortieren() {
       );
     }
   } catch (err) {
-    melde(`Neu sortieren fehlgeschlagen: ${err.message}`, true);
+    melde(err.message, true);
   } finally {
     knopf.disabled = false;
+    knopf.textContent = beschluss(beschriftung);
   }
+}
+
+/** Fällt auf die ursprüngliche Beschriftung zurück, falls sie leer war. */
+function beschluss(text) {
+  return text && text.trim() ? text : 'Ab meinem Standort neu sortieren';
+}
+
+/** Standortzeile und Karte auffrischen, nachdem die Position da ist. */
+function standortAnzeigen() {
+  $('#standort-info').hidden = false;
+  $('#standort-info').textContent =
+    `Standort auf ${Math.round(zustand.standort.genauigkeit)} m genau. ` +
+    `An jedem Stopp steht jetzt die Luftlinie von dir aus.`;
+  zeichneTour();
+  zeichneKarte();
 }
 
 /* ── Ansichten ─────────────────────────────────────────────────────────── */
@@ -1525,13 +1547,8 @@ function ereignisseBinden() {
     knopf.disabled = true;
     try {
       zustand.standort = await standortHolen();
-      $('#standort-info').hidden = false;
-      $('#standort-info').textContent =
-        `Standort auf ${Math.round(zustand.standort.genauigkeit)} m genau. ` +
-        `Jetzt lässt sich die Restroute ab hier neu sortieren.`;
-      $('#knopf-weiter').disabled = false;
-      zeichneTour();
-      zeichneKarte();
+      standortAnzeigen();
+      melde('Standort übernommen.');
     } catch (err) {
       melde(err.message, true);
     } finally {

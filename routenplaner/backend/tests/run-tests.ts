@@ -31,6 +31,7 @@ import {
 import type { PraxisAusgang, PraxisEingang } from '../../shared/typen';
 import {
   besuchAnwenden,
+  entfernungenNeu,
   statistikAus,
   zusammenfuehren,
   zusammenstellen,
@@ -470,6 +471,34 @@ test('Die Rundtour kreuzt sich am Ende nicht mehr', () => {
   );
 });
 
+test('Die Rundtour fährt in der Richtung, die näher beginnt', () => {
+  // Vier Stopps im Ring um den Betrieb, einer davon dicht dran. Egal in
+  // welche Richtung man fährt, die Schleife ist gleich lang — also soll die
+  // Richtung gewinnen, die den nahen Stopp zuerst nimmt.
+  const start = { lat: 51.2, lon: 6.86 };
+  const punkte = [
+    start,
+    { lat: 51.2015, lon: 6.8615 }, // dicht am Betrieb
+    { lat: 51.215, lon: 6.875 },
+    { lat: 51.220, lon: 6.860 },
+    { lat: 51.212, lon: 6.845 },
+  ];
+  const k = matrix(punkte);
+  const { folge, kosten } = optimiere(k, 0, 0, [1, 2, 3, 4]);
+  const ersterWeg = k[folge[0]][folge[1]];
+  const letzterWeg = k[folge[folge.length - 2]][folge[folge.length - 1]];
+  assert.ok(
+    ersterWeg <= letzterWeg + 0.5,
+    `erste Etappe (${Math.round(ersterWeg)} m) sollte nicht länger sein als die letzte (${Math.round(letzterWeg)} m)`,
+  );
+  // Und die Umkehr darf die Tour nicht länger gemacht haben.
+  const rueckwaerts = [folge[0], ...folge.slice(1, -1).reverse(), folge[folge.length - 1]];
+  assert.ok(
+    Math.abs(kosten - folgeKosten(rueckwaerts, k)) < 1,
+    'beide Richtungen müssen gleich lang sein',
+  );
+});
+
 test('Weiterfahrt ab Standort endet am festen Ziel', () => {
   const punkte = [
     { lat: 51.25, lon: 6.9 }, // aktueller Standort
@@ -732,6 +761,48 @@ test('Unklare Fachrichtung wird durch eine klare ersetzt, nicht umgekehrt', () =
     SITZ,
   );
   assert.strictEqual(dritt.bestand[0].kategorie, 'hausarzt', 'eine klare Kategorie darf nicht verwässert werden');
+});
+
+test('Ein Umzug des Betriebssitzes zieht alle Entfernungen nach', () => {
+  // Genau der Fall aus dem Feld: erst mit dem Ortsmittelpunkt importiert,
+  // danach die echte Adresse geokodiert. Bleiben die Entfernungen stehen,
+  // filtert der Radius gegen den alten Punkt und die Tour fängt mit einem
+  // Stopp an, der gar nicht in der Nähe liegt.
+  const alterSitz = { lat: 51.2033, lon: 6.8419 };
+  const neuerSitz = { lat: 51.19727, lon: 6.82675 };
+  const { bestand } = zusammenfuehren(
+    [],
+    [eingangRein({ id: 'p1', name: 'Praxis Nord', lat: 51.215, lon: 6.845 })],
+    alterSitz,
+  );
+  const vorher = bestand[0].entfernung_m;
+
+  const gezogen = entfernungenNeu(bestand, neuerSitz);
+  assert.notStrictEqual(gezogen[0].entfernung_m, vorher, 'Entfernung muss sich ändern');
+  const erwartet = Math.round(haversineM(neuerSitz, { lat: 51.215, lon: 6.845 }));
+  assert.strictEqual(gezogen[0].entfernung_m, erwartet);
+
+  // Und auch ein erneuter Import gegen den neuen Sitz darf den alten Wert
+  // nicht stehen lassen.
+  const nochmal = zusammenfuehren(bestand, [eingangRein({ id: 'p1', name: 'Praxis Nord', lat: 51.215, lon: 6.845 })], neuerSitz);
+  assert.strictEqual(nochmal.bestand[0].entfernung_m, erwartet);
+});
+
+test('Der Radiusfilter greift nach dem Umzug auf die richtigen Praxen', () => {
+  const alterSitz = { lat: 51.2033, lon: 6.8419 };
+  const neuerSitz = { lat: 51.19727, lon: 6.82675 };
+  const { bestand } = zusammenfuehren(
+    [],
+    [
+      eingangRein({ id: 'nah-am-alten', name: 'A', lat: 51.2040, lon: 6.8425 }),
+      eingangRein({ id: 'nah-am-neuen', name: 'B', lat: 51.1980, lon: 6.8275 }),
+    ],
+    alterSitz,
+  );
+  const gezogen = entfernungenNeu(bestand, neuerSitz);
+  const imUmkreis = zusammenstellen(gezogen, {}, { maxEntfernungM: 500 }).map(p => p.id);
+  assert.deepStrictEqual(imUmkreis, ['nah-am-neuen'],
+    'nach dem Umzug darf nur noch die Praxis beim neuen Sitz im 500-m-Umkreis sein');
 });
 
 test('Besuch abhaken setzt Status und Zeitpunkt', () => {

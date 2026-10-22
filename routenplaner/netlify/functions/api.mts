@@ -11,6 +11,7 @@ import { geokodieren } from '../../shared/nominatim';
 import { anfragenSchaetzung, schluesselPruefen } from '../../shared/places';
 import {
   besuchAnwenden,
+  entfernungenNeu,
   statistikAus,
   zusammenstellen,
   type BesuchAenderung,
@@ -177,6 +178,12 @@ export default async (req: Request, _context: Context): Promise<Response> => {
     // ── Startpunkt ─────────────────────────────────────────────────────────
     if (pfad === '/start') {
       if (req.method === 'GET') return antwort(betriebssitz(await einstellungenLesen(store)));
+      // Nach jeder Änderung des Sitzes müssen die Entfernungen neu gerechnet
+      // werden, sonst filtert der Radius gegen den alten Punkt.
+      const nachSitzwechsel = async (sitz: Punkt) => {
+        const bestand = await praxenLesen(store);
+        if (bestand.length > 0) await schreib(store, SCHLUESSEL.praxen, entfernungenNeu(bestand, sitz));
+      };
       const { adresse, lat, lon } = körper as { adresse?: string; lat?: number; lon?: number };
       if (typeof lat === 'number' && typeof lon === 'number') {
         const neu = await aendere<Einstellungen>(store, SCHLUESSEL.einstellungen, {}, alt => ({
@@ -186,6 +193,7 @@ export default async (req: Request, _context: Context): Promise<Response> => {
           start_lon: lon,
           start_quelle: 'manuell',
         }));
+        await nachSitzwechsel({ lat, lon });
         return antwort(betriebssitz(neu));
       }
       if (!adresse) return fehler('adresse oder lat/lon angeben.');
@@ -198,6 +206,7 @@ export default async (req: Request, _context: Context): Promise<Response> => {
         start_lon: treffer.lon,
         start_quelle: 'geokodiert',
       }));
+      await nachSitzwechsel({ lat: treffer.lat, lon: treffer.lon });
       return antwort(betriebssitz(neu));
     }
 
