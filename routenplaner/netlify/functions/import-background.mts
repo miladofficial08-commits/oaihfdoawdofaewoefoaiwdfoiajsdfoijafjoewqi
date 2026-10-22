@@ -116,10 +116,15 @@ export default async (req: Request, _context: Context) => {
     melde(`Suche im Radius ${radiusKm} km um ${sitz.adresse}`);
 
     // ── OpenStreetMap ──────────────────────────────────────────────────────
-    const osm = await osmImport(sitz, radiusKm, dienste, melde);
+    const osm = await osmImport(sitz, radiusKm, dienste, melde, zwischen => {
+      // Laufend mitzählen statt erst am Ende: die Anzeige soll zeigen, dass
+      // etwas ankommt, solange der Lauf noch dauert.
+      stand.gefunden = zwischen.gefunden;
+      void sichern();
+    });
     for (const g of osm.gruppen) if (g.fehler) stand.fehler.push(`OSM ${g.name}: ${g.fehler}`);
-    stand.gefunden += osm.praxen.length;
-    melde(`OpenStreetMap: ${osm.praxen.length} Einrichtungen`);
+    stand.gefunden = osm.praxen.length;
+    melde(`OpenStreetMap: ${osm.praxen.length} Einrichtungen gefunden`);
 
     let bestand = await praxenLesen(store);
     const bilanzOsm = zusammenfuehren(bestand, osm.praxen, sitz);

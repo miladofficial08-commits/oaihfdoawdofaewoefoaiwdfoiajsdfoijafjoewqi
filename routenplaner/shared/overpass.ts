@@ -276,6 +276,14 @@ export async function osmImport(
   radiusKm: number,
   dienste: DienstKonfig,
   melde: (text: string) => void = () => {},
+  /**
+   * Wird nach jeder Tag-Gruppe mit dem Zwischenstand aufgerufen.
+   *
+   * Ohne das stünde in der Anzeige die ganze Laufzeit über "Gefunden: 0",
+   * während im Protokoll darüber schon "17 übernommen" steht — das sieht aus
+   * wie ein Fehler, ist aber nur eine Zahl, die zu spät kommt.
+   */
+  aufGruppe: (zwischenstand: { gefunden: number }) => void = () => {},
 ): Promise<OsmErgebnis> {
   const praxen: PraxisEingang[] = [];
   const gruppen: OsmErgebnis['gruppen'] = [];
@@ -324,6 +332,7 @@ export async function osmImport(
       }
       gruppen.push({ name: gruppe.name, objekte: elemente.length, uebernommen });
       melde(`OpenStreetMap: ${gruppe.name} – ${uebernommen} übernommen`);
+      aufGruppe({ gefunden: praxen.length });
     } catch (err) {
       const text = err instanceof Error ? err.message : String(err);
       gruppen.push({ name: gruppe.name, objekte: 0, uebernommen: 0, fehler: text });

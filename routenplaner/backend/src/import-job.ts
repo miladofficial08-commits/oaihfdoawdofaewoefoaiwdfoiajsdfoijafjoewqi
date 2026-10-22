@@ -124,12 +124,14 @@ async function lauf(params: ImportParams): Promise<void> {
     const sitz = betriebssitzLesen();
     melde(`Suche im Radius ${params.radiusKm} km um ${sitz.adresse}`);
 
-    const osm = await osmImport(sitz, params.radiusKm, dienste, melde);
+    const osm = await osmImport(sitz, params.radiusKm, dienste, melde, zwischen => {
+      stand.gefunden = zwischen.gefunden;
+    });
     for (const g of osm.gruppen) {
       if (g.fehler) stand.fehler.push(`OSM ${g.name}: ${g.fehler}`);
     }
-    stand.gefunden += osm.praxen.length;
-    melde(`OpenStreetMap: ${osm.praxen.length} Einrichtungen`);
+    stand.gefunden = osm.praxen.length;
+    melde(`OpenStreetMap: ${osm.praxen.length} Einrichtungen gefunden`);
     const bilanzOsm = praxenSpeichern(osm.praxen, sitz);
     stand.neu += bilanzOsm.neu;
     stand.aktualisiert += bilanzOsm.aktualisiert;

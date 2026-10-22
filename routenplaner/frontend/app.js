@@ -1159,16 +1159,35 @@ async function generieren() {
 
 let genUhr = null;
 
+/** "1:23" — damit sichtbar ist, dass es vorangeht und wie lange schon. */
+function laufzeitText(seit) {
+  if (!seit) return '';
+  const sekunden = Math.max(0, Math.round((Date.now() - new Date(seit).getTime()) / 1000));
+  return `${Math.floor(sekunden / 60)}:${String(sekunden % 60).padStart(2, '0')}`;
+}
+
 function generierenVerfolgen() {
   clearInterval(genUhr);
   genUhr = setInterval(async () => {
     try {
       const stand = await api('/api/import/status');
+      const laufzeit = laufzeitText(stand.gestartet);
+      if (stand.laeuft && laufzeit) {
+        $('#knopf-generieren').textContent = `Läuft … ${laufzeit}`;
+      }
       $('#gen-log').textContent = [
         ...stand.meldungen,
         '',
         `Gefunden: ${stand.gefunden} · neu: ${stand.neu} · aufgefrischt: ${stand.aktualisiert} · zusammengeführt: ${stand.zusammengefuehrt}`,
         ...(stand.google_anfragen ? [`Google-Anfragen: ${stand.google_anfragen}`] : []),
+        ...(stand.laeuft
+          ? [
+              '',
+              `Läuft seit ${laufzeit}. OpenStreetMap antwortet mal in Sekunden, mal erst`,
+              'nach einer Minute — der Dienst ist gratis und wird geteilt. Rechne mit',
+              '2 bis 5 Minuten, danach kommt noch der Tourbau. Das Fenster darf zu.',
+            ]
+          : []),
         ...(stand.fehler.length ? ['', 'Hinweise und Fehler:', ...stand.fehler] : []),
       ].join('\n');
       $('#gen-log').scrollTop = $('#gen-log').scrollHeight;
