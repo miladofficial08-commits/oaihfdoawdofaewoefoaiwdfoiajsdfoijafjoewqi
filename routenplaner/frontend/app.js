@@ -295,18 +295,32 @@ function demoVerlassen() {
  * Antwortet eine API? Geprüft wird /api/info, weil der Pfad ohne Passwort
  * auskommt — sonst sähe ein gesetztes Passwort wie ein fehlendes Backend aus.
  */
+let letzteApiDiagnose = '';
+
 async function apiErreichbar() {
+  const ziel = (basisUrl() || location.origin) + '/api/info';
   try {
     const antwort = await fetch(basisUrl() + '/api/info', {
       headers: { Accept: 'application/json' },
       signal: AbortSignal.timeout(8000),
     });
-    if (!antwort.ok) return false;
     const typ = antwort.headers.get('content-type') || '';
+    if (!antwort.ok) {
+      letzteApiDiagnose = `${ziel} antwortete mit ${antwort.status}.`;
+      return false;
+    }
     // Netlify liefert bei fehlender Funktion die index.html aus. Ohne diese
     // Prüfung hielte die Seite ihre eigene HTML-Seite für eine API-Antwort.
-    return typ.includes('application/json');
-  } catch {
+    if (!typ.includes('application/json')) {
+      letzteApiDiagnose =
+        `${ziel} lieferte "${typ || 'keinen Typ'}" statt JSON — das ist die ` +
+        `Seite selbst, nicht die API. Die Funktionen wurden nicht ausgeliefert.`;
+      return false;
+    }
+    letzteApiDiagnose = '';
+    return true;
+  } catch (err) {
+    letzteApiDiagnose = `${ziel} war nicht erreichbar (${err.name || 'Fehler'}).`;
     return false;
   }
 }
@@ -322,9 +336,11 @@ function zeichneKeinBackend() {
   $('#tour-leer').innerHTML =
     '<h2>Kein Backend verbunden</h2>' +
     '<p>Diese Seite zeigt nur echte Daten, und die kommen aus der API. ' +
-    'Unter <code>/api</code> auf dieser Seite antwortet gerade keine — die ' +
-    'Netlify-Funktionen sind entweder noch nicht ausgeliefert oder beim Bauen ' +
-    'gescheitert (im Netlify-Protokoll unter "Deploys" nachsehen).</p>' +
+    'Gerade antwortet keine.</p>' +
+    (letzteApiDiagnose ? '<p class="klein">' + escape(letzteApiDiagnose) + '</p>' : '') +
+    '<p class="hinweis">Häufigste Ursache auf Netlify: <strong>Base directory</strong> ' +
+    'steht auf <code>routenplaner/frontend</code> statt auf <code>routenplaner</code>. ' +
+    'Dann sucht Netlify die Funktionen im falschen Ordner und findet keine.</p>' +
     '<p class="klein">Läuft die API woanders, etwa auf Railway, hier die ' +
     'Adresse eintragen:</p>' +
     '<button type="button" class="knopf gross" id="knopf-kein-backend">Backend verbinden</button>';
@@ -1634,6 +1650,12 @@ async function starten() {
   // war, auch nach dem Einrichten des Backends bei den Beispieldaten hängen:
   // das Merkmal steht im Speicher des Geräts und überlebt jeden Aufruf.
   if (zustand.url && zustand.demo) demoVerlassen();
+
+  // Verbietet die Konfiguration die Vorschau, zählt das mehr als ein
+  // Merkmal im Gerätespeicher. Ohne diese Zeile zeigte ein Handy, das die
+  // Vorschau einmal gesehen hat, weiter Beispieldaten an — auch wenn die
+  // Seite längst auf "nur echte Daten" steht. Genau das ist passiert.
+  if (KONFIG.demoErlauben === false && zustand.demo) demoVerlassen();
 
   // Ist gar keine Vorschau im Gang, zuerst prüfen, ob eine API antwortet —
   // auf Netlify liegt sie unter /api neben der Seite, ganz ohne Einrichtung.
